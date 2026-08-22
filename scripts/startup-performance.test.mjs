@@ -54,19 +54,19 @@ describe("startup performance contract", () => {
 
   it("does not block first dashboard render on care reminder fetches", () => {
     const forcedReminder = app.lastIndexOf("refreshCareReminderBadge({ force: true })");
-    const firstDashboard = app.indexOf("await appRouter.switchTab('dashboard-view')");
+    const firstTab = app.indexOf('await appRouter.switchTab(resumePlan ? "plan-view" : "dashboard-view")');
 
     expect(forcedReminder).toBeGreaterThan(-1);
-    expect(firstDashboard).toBeGreaterThan(-1);
-    expect(forcedReminder).toBeGreaterThan(firstDashboard);
+    expect(firstTab).toBeGreaterThan(-1);
+    expect(forcedReminder).toBeGreaterThan(firstTab);
   });
 
   it("does not block first dashboard render on organization-directory loading", () => {
-    const firstDashboard = app.indexOf("await appRouter.switchTab('dashboard-view')");
+    const firstTab = app.indexOf('await appRouter.switchTab(resumePlan ? "plan-view" : "dashboard-view")');
     const orgLoad = app.lastIndexOf("db.loadOrgStructure()");
 
-    expect(firstDashboard).toBeGreaterThan(-1);
-    expect(orgLoad).toBeGreaterThan(firstDashboard);
+    expect(firstTab).toBeGreaterThan(-1);
+    expect(orgLoad).toBeGreaterThan(firstTab);
   });
 
   it("defers secondary dashboard widgets after the core dashboard card renders", () => {

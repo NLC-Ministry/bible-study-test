@@ -54,12 +54,12 @@ describe("release onboarding startup timing", () => {
 
   it("checks onboarding only after initial data load and dashboard render", () => {
     const loadUserData = app.indexOf("db.loadUserData(true)");
-    const firstDashboard = app.indexOf("await appRouter.switchTab('dashboard-view')");
+    const firstTab = app.indexOf('await appRouter.switchTab(resumePlan ? "plan-view" : "dashboard-view")');
     const onboarding = app.indexOf("maybeShowReleaseOnboarding({");
 
     expect(loadUserData).toBeGreaterThan(-1);
-    expect(firstDashboard).toBeGreaterThan(loadUserData);
-    expect(onboarding).toBeGreaterThan(firstDashboard);
+    expect(firstTab).toBeGreaterThan(loadUserData);
+    expect(onboarding).toBeGreaterThan(firstTab);
   });
 
   it("only marks the initial session sync successful after a Logto profile sync", () => {
