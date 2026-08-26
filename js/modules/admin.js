@@ -1761,15 +1761,22 @@ function renderAdminQuizCustomQuestionBlock(index, question = {}) {
   </fieldset>`;
 }
 
-function renderAdminQuizCustomEditorHtml() {
+function renderAdminQuizCustomEditorHtml(context) {
+  const reviewQuizzes = Array.isArray(context?.reviewQuizzes) ? context.reviewQuizzes : [];
+  const canCopy = variant => reviewQuizzes.some(item => item.variant === variant && Array.isArray(item.questions) && item.questions.length > 0);
   return `<div class="admin-daily-quiz-editor admin-quiz-custom-editor" data-quiz-custom-editor>
+    <div class="admin-quiz-custom-copy-row">
+      <span class="admin-quiz-custom-copy-label">從既有版本開始：</span>
+      <button type="button" class="secondary-btn" data-quiz-custom-copy="A" ${canCopy('A') ? '' : 'disabled'}>複製 A 版題目</button>
+      <button type="button" class="secondary-btn" data-quiz-custom-copy="B" ${canCopy('B') ? '' : 'disabled'}>複製 B 版題目</button>
+    </div>
     <div class="admin-quiz-custom-questions" data-quiz-custom-questions>
       ${[0, 1].map(index => renderAdminQuizCustomQuestionBlock(index)).join('')}
     </div>
     <div class="admin-daily-quiz-carousel-actions">
       <button type="button" class="secondary-btn" data-quiz-custom-add>新增題目</button>
     </div>
-    <p class="admin-daily-quiz-note">自訂題目 2～10 題，發佈者自行負責內容，不需牧者審核，也不會出現在牧者共用審核清單。</p>
+    <p class="admin-daily-quiz-note">自訂題目 2～10 題，發佈者自行負責內容，不需牧者審核，也不會出現在牧者共用審核清單。可先複製 A／B 版題目再修改。</p>
   </div>`;
 }
 
@@ -1788,6 +1795,7 @@ function bindAdminQuizCustomEditor(container, onChange) {
     });
     addBtn.disabled = list.children.length >= 10;
   };
+  container._quizCustomRenumber = renumber;
   addBtn.addEventListener('click', () => {
     if (list.children.length >= 10) return;
     list.insertAdjacentHTML('beforeend', renderAdminQuizCustomQuestionBlock(list.children.length));
@@ -1804,6 +1812,26 @@ function bindAdminQuizCustomEditor(container, onChange) {
   });
   list.addEventListener('input', () => { if (typeof onChange === 'function') onChange(); });
   renumber();
+}
+
+function bindAdminQuizCustomCopyButtons(container, context, onChange) {
+  const list = container.querySelector('[data-quiz-custom-questions]');
+  if (!list) return;
+  container.querySelectorAll('[data-quiz-custom-copy]').forEach(button => {
+    button.addEventListener('click', () => {
+      if (button.disabled) return;
+      const variant = button.dataset.quizCustomCopy;
+      const source = (context.reviewQuizzes || []).find(item => item.variant === variant && Array.isArray(item.questions) && item.questions.length);
+      if (!source) return;
+      const hasContent = collectAdminQuizCustomQuestions(container).some(question =>
+        question.question || question.verseRef || question.explanation || question.options.some(Boolean));
+      if (hasContent && !window.confirm(`複製版本 ${variant} 的題目會覆蓋目前已輸入的自訂題目，確定要複製嗎？`)) return;
+      list.innerHTML = source.questions.map((question, index) => renderAdminQuizCustomQuestionBlock(index, question)).join('');
+      if (typeof container._quizCustomRenumber === 'function') container._quizCustomRenumber();
+      if (typeof hydrateIcons === 'function') hydrateIcons(list);
+      if (typeof onChange === 'function') onChange();
+    });
+  });
 }
 
 function collectAdminQuizCustomQuestions(container) {
@@ -1892,9 +1920,10 @@ function bindAdminQuizPublishPanel(root, context, quizDate) {
       versionButtons.forEach(other => other.classList.toggle('active', other === button));
       if (selectedVersion === 'C') {
         if (!customSlot.dataset.rendered) {
-          customSlot.innerHTML = renderAdminQuizCustomEditorHtml();
+          customSlot.innerHTML = renderAdminQuizCustomEditorHtml(context);
           customSlot.dataset.rendered = 'true';
           bindAdminQuizCustomEditor(customSlot, refresh);
+          bindAdminQuizCustomCopyButtons(customSlot, context, refresh);
           if (typeof hydrateIcons === 'function') hydrateIcons(customSlot);
         }
         customSlot.classList.remove('hidden');
