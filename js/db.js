@@ -46,6 +46,25 @@ export function safeStorageSet(key, value, debounceMs = 0) {
 if (typeof window !== "undefined") {
   window.safeStorageSet = safeStorageSet;
 }
+
+// Relative-time label for the offline-mode banner — tells the user how
+// stale the cached plan/reading-log snapshot they're looking at actually is.
+export function formatOfflineSnapshotSyncedAt(isoString) {
+  if (!isoString) return "（尚未有可用的離線快照）";
+  const syncedAtMs = Date.parse(isoString);
+  if (!Number.isFinite(syncedAtMs)) return "（尚未有可用的離線快照）";
+  const diffMs = Date.now() - syncedAtMs;
+  if (diffMs < 60000) return "（資料同步於剛剛）";
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes < 60) return `（資料同步於 ${diffMinutes} 分鐘前）`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `（資料同步於 ${diffHours} 小時前）`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `（資料同步於 ${diffDays} 天前）`;
+}
+if (typeof window !== "undefined") {
+  window.formatOfflineSnapshotSyncedAt = formatOfflineSnapshotSyncedAt;
+}
 /**
  * 依計畫名稱查找目前階段定義的 key。
  * @param {string} name
@@ -322,6 +341,12 @@ const db = {
         btn.removeAttribute("aria-disabled");
       }
     });
+    if (locked) {
+      const syncedAtEl = document.getElementById("offline-mode-banner-synced-at");
+      if (syncedAtEl) {
+        syncedAtEl.textContent = formatOfflineSnapshotSyncedAt(localStorage.getItem("offline_snapshot_synced_at"));
+      }
+    }
   },
 
   tryRestoreOfflineSession() {
@@ -1723,6 +1748,16 @@ const db = {
 
   // Save log to DB/LocalStorage
   async logChapterRead(book, chapter, isChecked, roundOverride = null, planOverride = null) {
+    // Offline reading mode only ever has the cached 30-day-old snapshot —
+    // there is no live session to write through, and nothing queues these
+    // writes for later (unlike the authenticated-online IndexedDB queue).
+    // Fail fast and clearly instead of attempting (and always losing) a
+    // network round-trip.
+    if (state.offlineMode) {
+      const offlineError = new Error("離線閱讀模式無法記錄進度，恢復連線後再試");
+      offlineError.code = "OFFLINE_READ_ONLY";
+      throw offlineError;
+    }
     console.log('🏗️ [系統審計] 進入資料讀寫，當前操作類型：資料庫寫入進度', '資料版本:', state.dataVersion);
     const todayISO = new Date().toISOString();
     const targetPlan = planOverride || state.activePlan;
