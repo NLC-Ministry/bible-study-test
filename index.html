@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260826_plan_tasklist_single_scroll" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260827_offline_mode_nav_lock" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -251,6 +251,15 @@
         </div>
       </div>
     </header>
+
+    <!-- Offline reading mode: shown whenever the app falls back to the cached
+         trusted identity instead of a live session. Only the Bible reader tab
+         stays usable (see body.offline-mode nav rules below); everything else
+         needs a live connection. -->
+    <div id="offline-mode-banner" role="status">
+      <span class="nlc-icon nlc-icon--sm" data-icon="lock" aria-hidden="true"></span>
+      <span>離線閱讀模式：僅能閱讀已下載的聖經內容，其他功能請連線後再試</span>
+    </div>
 
     <!-- Main Content Area -->
     <main class="main-content">
@@ -2553,7 +2562,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260826_reconnect_relogin_fix"></script>
+  <script type="module" src="js/app.js?v=20260827_offline_mode_nav_lock"></script>
 </body>
 
 </html>
