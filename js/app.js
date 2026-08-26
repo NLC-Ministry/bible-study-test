@@ -407,9 +407,25 @@ async function refreshCurrentAppView() {
   window._cachedAllUsersList = null;
   window._cachedAllUsersListKey = null;
 
+  const currentTab = appRouter.currentTab || "dashboard-view";
+
   if (typeof db !== "undefined") {
     if (typeof db.loadOrgStructure === "function") {
       await db.loadOrgStructure();
+    }
+    // Plan tab only: force a fresh member-context resync before re-reading
+    // the profile row. Without this, a stale member_context_synced_at from a
+    // background sync job can outlast the 15-minute gate window and silently
+    // bounce the user out of the plan tab into the Member Hub gate on every
+    // refocus. Retrying quietly here first gives the backend a chance to
+    // catch up; if it's still genuinely unavailable, the gate still shows.
+    if (currentTab === "plan-view" && typeof db.syncNlcSessionWithSupabase === "function") {
+      const forceMemberContextResync = true;
+      try {
+        await db.syncNlcSessionWithSupabase(forceMemberContextResync);
+      } catch (error) {
+        console.warn("[refreshCurrentAppView] Background member context resync failed", error);
+      }
     }
     if (typeof db.loadUserData === "function") {
       await db.loadUserData(true);
@@ -423,7 +439,6 @@ async function refreshCurrentAppView() {
     updateAdminNavVisibility();
   }
 
-  const currentTab = appRouter.currentTab || "dashboard-view";
   // Scripture text never changes once loaded — re-running switchTab here would
   // tear down and rebuild the verse list (renderReaderText resets scrollTop to 0)
   // for no reason. Skip it so refocusing the app doesn't yank the reader back
