@@ -866,6 +866,46 @@ appRouter.switchTab = async function (tabId, options = {}) {
   }
 };
 
+// If the reader's current version has no downloaded offline pack, silently
+// switch to whichever offline pack IS installed (remembering the original
+// choice in state.readerState.onlinePreferredVersion so the "online" handler
+// can restore it later) so offline reading shows real, correctly-labeled
+// content instead of the tiny hardcoded BIBLE_FALLBACK mislabeled with the
+// unavailable version's name. If nothing has been downloaded at all, this
+// intentionally leaves state.readerState.version untouched — the caller may
+// still want to warn the user via notifyToast in that case.
+async function applyOfflineBibleVersionFallback({ notifyToast = false } = {}) {
+  if (!window.offlineBibleRepository) return;
+  try {
+    const installedPacks = await window.offlineBibleRepository.listInstalledPacks();
+    const installedVersions = new Set(installedPacks.map(pack => pack.translation));
+    const currentVersion = String(state.readerState.version || "CUNP").toUpperCase();
+    if (installedVersions.has(currentVersion)) return;
+
+    const offlineVersion = installedVersions.has("OCCB") ? "OCCB" : (installedVersions.has("WEB") ? "WEB" : null);
+    if (!offlineVersion) {
+      if (notifyToast && typeof window.showToast === "function") {
+        window.showToast("目前離線，且尚未下載離線聖經版本，部分經文可能無法顯示。可到讀經設定下載離線版本。");
+      }
+      return;
+    }
+
+    state.readerState.onlinePreferredVersion = currentVersion;
+    state.readerState.version = offlineVersion;
+    document.documentElement.dataset.offlineBibleFallback = offlineVersion;
+
+    if (typeof window.updatePillLabels === "function") window.updatePillLabels();
+    if (typeof window.renderReaderText === "function" && appRouter.currentTab === "reader-view") {
+      window.renderReaderText();
+    }
+    if (notifyToast && typeof window.showToast === "function") {
+      window.showToast(`目前離線，已暫時切換為已下載的「${offlineVersion}」版本經文`);
+    }
+  } catch (error) {
+    console.warn("[PWA] Could not select an installed offline Bible.", error);
+  }
+}
+
 // Bootstrap the application on DomContentLoaded
 document.addEventListener("DOMContentLoaded", async () => {
   // Clear badge notification count on app startup / load
@@ -938,21 +978,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.warn("[PWA] Offline Bible controls failed to initialize.", error);
   });
   if (state.offlineMode) {
-    try {
-      const installedPacks = await window.offlineBibleRepository.listInstalledPacks();
-      const installedVersions = new Set(installedPacks.map(pack => pack.translation));
-      const currentVersion = String(state.readerState.version || "CUNP").toUpperCase();
-      if (!installedVersions.has(currentVersion)) {
-        const offlineVersion = installedVersions.has("OCCB") ? "OCCB" : (installedVersions.has("WEB") ? "WEB" : null);
-        if (offlineVersion) {
-          state.readerState.onlinePreferredVersion = currentVersion;
-          state.readerState.version = offlineVersion;
-          document.documentElement.dataset.offlineBibleFallback = offlineVersion;
-        }
-      }
-    } catch (error) {
-      console.warn("[PWA] Could not select an installed offline Bible.", error);
-    }
+    await applyOfflineBibleVersionFallback();
   }
   window.readingLogRepository = new SupabaseRepository({
     table: "reading_logs",
@@ -1050,18 +1076,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (window.db?.tryRestoreOfflineSession?.()) {
       window.showToast?.("已切換為離線閱讀模式");
     }
+    applyOfflineBibleVersionFallback({ notifyToast: true });
   });
 
   window.addEventListener("online", async () => {
+    // Restore the reader's actual preferred version whenever offline
+    // substituted it — independent of state.offlineMode, since a normal
+    // online session that simply loses connectivity mid-use never sets that
+    // flag (it only marks the cached-trusted-identity offline login path).
+    const preferredVersion = state.readerState.onlinePreferredVersion;
+    if (preferredVersion) {
+      state.readerState.version = preferredVersion;
+      delete state.readerState.onlinePreferredVersion;
+      delete document.documentElement.dataset.offlineBibleFallback;
+      if (typeof window.updatePillLabels === "function") window.updatePillLabels();
+      if (typeof window.renderReaderText === "function" && appRouter.currentTab === "reader-view") {
+        window.renderReaderText();
+      }
+      window.showToast?.(`已恢復連線，切回「${preferredVersion}」版本經文`);
+    }
+
     if (!state.offlineMode || typeof auth === "undefined" || !auth.isLoggedIn()) return;
     try {
       await window.db.syncNlcSessionWithSupabase(true);
       await db.loadUserData(true);
-      const preferredVersion = state.readerState.onlinePreferredVersion;
-      if (preferredVersion) {
-        state.readerState.version = preferredVersion;
-        delete state.readerState.onlinePreferredVersion;
-      }
       window.showToast?.("已恢復連線並同步登入狀態");
       if (appRouter.currentTab) await appRouter.switchTab(appRouter.currentTab);
     } catch (error) {
