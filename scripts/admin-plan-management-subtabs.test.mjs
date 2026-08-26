@@ -101,6 +101,9 @@ describe("plan management: 4-tab restructure", () => {
     expect(admin).toContain("panel.classList.toggle('hidden', name !== requested)");
     expect(admin).toContain("void loadActiveAdminPlanSubtab(false)");
     expect(admin).toContain("initAdminPlanSubtabs();");
+    expect(admin).toContain("const hideSharedOrgFilter = requested === 'quizzes'");
+    expect(admin).toContain("sharedOrgFilter.classList.toggle('hidden', hideSharedOrgFilter)");
+    expect(admin).toContain("sharedOrgFilter.style.display = hideSharedOrgFilter ? 'none' : 'flex'");
   });
 
   it("lazy-loads only the visible subtab and parallelizes the two first-screen member lists", () => {

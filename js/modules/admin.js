@@ -1408,6 +1408,14 @@ function setAdminPlanSubtab(subtab, loadData = true) {
     panel.classList.toggle('hidden', name !== requested);
     panel.style.display = name === requested ? 'flex' : 'none';
   });
+  // 小測驗的「發布範圍」已經在發布面板內提供完整的大區／牧區／小組
+  // 選擇器；隱藏共用查看範圍，避免畫面上下出現兩組相同篩選器。
+  const sharedOrgFilter = document.querySelector('.admin-plan-filter-card--org');
+  if (sharedOrgFilter) {
+    const hideSharedOrgFilter = requested === 'quizzes';
+    sharedOrgFilter.classList.toggle('hidden', hideSharedOrgFilter);
+    sharedOrgFilter.style.display = hideSharedOrgFilter ? 'none' : 'flex';
+  }
   if (loadData && state.activePlan) {
     void loadActiveAdminPlanSubtab(false);
   }
@@ -2161,7 +2169,7 @@ async function loadActiveAdminPlanSubtab(forceRefresh = false) {
   // here unconditionally instead — it's a cheap, synchronous DOM operation
   // (reads already-loaded state.orgStructure/state.currentUser, no network
   // call) and is idempotent (its change-listener bindings are dataset-guarded).
-  if (typeof window.populateMembersSelector === 'function') {
+  if (activeAdminPlanSubtab !== 'quizzes' && typeof window.populateMembersSelector === 'function') {
     try { window.populateMembersSelector(); } catch (e) { console.warn('[Admin] populateMembersSelector error caught:', e); }
   }
 

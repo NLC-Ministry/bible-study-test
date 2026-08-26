@@ -2,20 +2,20 @@
 
 // Import support and core files needed before first paint.
 import '../config.js';
-import './data/bible_data.js?v=20260826_offline_bible_trusted_login';
+import './data/bible_data.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './data/bible_verse_counts.js';
-import './copy/zh-Hant.js?v=20260826_offline_bible_trusted_login';
-import './data/church_campaign.js?v=20260826_offline_bible_trusted_login';
+import './copy/zh-Hant.js?v=20260826_quiz_remove_duplicate_scope_filter';
+import './data/church_campaign.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './design/design-tokens.js';
-import './design/design-system-helpers.js?v=20260826_offline_bible_trusted_login';
-import './design/icon-registry.js?v=20260826_offline_bible_trusted_login';
+import './design/design-system-helpers.js?v=20260826_quiz_remove_duplicate_scope_filter';
+import './design/icon-registry.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './design/icons.js';
-import './state.js?v=20260826_offline_bible_trusted_login';
-import './auth.js?v=20260826_offline_bible_trusted_login';
+import './state.js?v=20260826_quiz_remove_duplicate_scope_filter';
+import './auth.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './auth-launch.mjs';
-import './db.js?v=20260826_merged_users_pagination_fix';
-import './utils.js?v=20260826_offline_bible_trusted_login';
-import './gamification.js?v=20260826_offline_bible_trusted_login';
+import './db.js?v=20260826_quiz_remove_duplicate_scope_filter';
+import './utils.js?v=20260826_quiz_remove_duplicate_scope_filter';
+import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import { initModalManager } from './modules/modal-manager.mjs';
 
 import {
@@ -25,7 +25,7 @@ import {
   launchMemberHubContinue
 } from './login-onboarding-gate.mjs';
 import { cleanupProductionStorage } from './production-cleanup.mjs';
-import { initializePwa } from './pwa/PwaCoordinator.js?v=20260826_offline_bible_trusted_login';
+import { initializePwa } from './pwa/PwaCoordinator.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import { IndexedDbClient } from './pwa/IndexedDbClient.js';
 import { OfflineBibleRepository } from './pwa/OfflineBibleRepository.js';
 import { initOfflineBibleControls } from './pwa/OfflineBibleControls.js';
@@ -41,7 +41,7 @@ if (!/^\d{14}$/.test(buildVersion)) {
 }
 buildVersion += "_clean_demo_mode_v20_quiz_manual_retry_v1_member_hub_name_sync_v1_quiz_load_error_v1_group_filter_reset_fix_v1_quiz_publish_flow_redesign_v1_row_cap_pagination_fix_v1_quiz_entry_reading_gate_v1_quiz_feature_reopen_restore_v1_admin_mobile_layout_v1_reader_audio_resume_fix_v1_joined_plan_collapse_v1_admin_tabs_lead_v1";
 const moduleCache = {};
-const RELEASE_ONBOARDING_MODULE_PATH = './modules/onboarding-helper.js?v=20260826_offline_bible_trusted_login';
+const RELEASE_ONBOARDING_MODULE_PATH = './modules/onboarding-helper.js?v=20260826_quiz_remove_duplicate_scope_filter';
 const RELEASE_ONBOARDING_STORAGE_KEY = "bible_onboarding_seen_version";
 const ISSUE_REPORT_UI_MODULE_PATH = './modules/issue-report-ui.bundle.js?v=' + buildVersion;
 let releaseOnboardingModulePromise = null;
