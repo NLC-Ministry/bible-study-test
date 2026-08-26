@@ -1474,8 +1474,13 @@ function getManagementPlans() {
       }
     }
     const status = getManagementPlanStatus(plan);
-    if ((status === 'ongoing' || status === 'completed')
-      && !(typeof isPlanHidden === 'function' && isPlanHidden(plan) && !canManageHiddenPlans())) {
+    const hidden = typeof isPlanHidden === 'function' && isPlanHidden(plan);
+    // A future fixed plan can accept enrollments before its official start date.
+    // Once it is released (not hidden), leaders must be able to inspect its join
+    // status too. Keep unreleased future stages out of this people-facing report.
+    const isOpenEarlyEnrollment = status === 'upcoming' && !hidden;
+    if ((status === 'ongoing' || status === 'completed' || isOpenEarlyEnrollment)
+      && !(hidden && !canManageHiddenPlans())) {
       result.push({ ...plan, managementStatus: status });
     }
     return result;
@@ -2241,7 +2246,10 @@ export async function renderAdminPlanManagement() {
         select.disabled = true;
       } else {
         select.disabled = false;
-        plans.forEach(plan => select.options.add(new Option(plan.name || '未命名計畫', String(plan.globalPlanId || plan.id || plan.presetKey || plan.name))));
+        plans.forEach(plan => {
+          const statusLabel = plan.managementStatus === 'upcoming' ? '（提前報名）' : '';
+          select.options.add(new Option(`${plan.name || '未命名計畫'}${statusLabel}`, String(plan.globalPlanId || plan.id || plan.presetKey || plan.name)));
+        });
         const activeKeys = state.activePlan ? [state.activePlan.globalPlanId, state.activePlan.id, state.activePlan.presetKey, state.activePlan.name].filter(Boolean).map(String) : [];
         const matchingOption = Array.from(select.options).find(option => activeKeys.includes(option.value));
         const ongoingPlan = plans.find(plan => plan.managementStatus === 'ongoing');

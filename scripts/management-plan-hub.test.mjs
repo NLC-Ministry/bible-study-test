@@ -51,7 +51,7 @@ describe("management plan hub", () => {
     expect(edge).toContain('return ["admin", "pastor", "great_zone_leader", "zone_leader", "group_leader"].includes(getProfileRoleCode(profile));');
   });
 
-  it("defaults to whichever plan is currently ongoing and lists only current or completed plans with current plans first", () => {
+  it("defaults to the ongoing plan and also lists released plans open for early enrollment", () => {
     // Superseded the earlier "always default to stage one" design (see
     // scripts/admin-ongoing-plan-selection.test.mjs) once the campaign moved
     // past stage one — defaulting to the plan actually running now is more
@@ -60,7 +60,9 @@ describe("management plan hub", () => {
     expect(admin).not.toContain("const stageOnePlan =");
     expect(admin).not.toContain("const isStageOneBootstrap =");
     expect(admin).toContain("!managementPlanSelectionInitialized");
-    expect(admin).toContain("status === 'ongoing' || status === 'completed'");
+    expect(admin).toContain("const isOpenEarlyEnrollment = status === 'upcoming' && !hidden");
+    expect(admin).toContain("status === 'ongoing' || status === 'completed' || isOpenEarlyEnrollment");
+    expect(admin).toContain("plan.managementStatus === 'upcoming' ? '（提前報名）' : ''");
     expect(admin).toContain("const statusPriority = { ongoing: 0, upcoming: 1, completed: 2 }");
     expect(admin).toContain("sourcePlan.planKind === 'church_campaign'");
   });
