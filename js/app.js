@@ -457,35 +457,76 @@ async function refreshCurrentAppView() {
 // user-completion predicate and only explains fail-closed reasons.
 // Every remediation path points to the church Member Hub.
 let planEligibilityHubReturnBound = false;
+let planEligibilityAutoRetryPending = false;
+
+// member_context_unavailable almost always means the background Member Hub
+// sync job just hasn't caught up yet, not that the user's data is actually
+// incomplete — retry once quietly so people aren't stuck reading "go set up
+// your identity" for information that's already correct.
+function retryPlanEligibilityQuietly() {
+  if (planEligibilityAutoRetryPending) return;
+  if (typeof db === "undefined" || typeof db.syncNlcSessionWithSupabase !== "function") return;
+  planEligibilityAutoRetryPending = true;
+  const hubLink = document.getElementById("plan-eligibility-gate-hub-link");
+  const isRetryButton = hubLink && hubLink.dataset.gateMode === "retry";
+  if (isRetryButton) {
+    hubLink.setAttribute("aria-busy", "true");
+    hubLink.textContent = "重新確認中…";
+  }
+  db.syncNlcSessionWithSupabase(true)
+    .then(() => {
+      if (window.appRouter && window.appRouter.currentTab === "plan-view") {
+        window.appRouter.switchTab("plan-view", { keepPlanDetail: true });
+      }
+    })
+    .catch(err => console.warn("[PlanEligibilityGate] Retry sync failed:", err))
+    .finally(() => {
+      planEligibilityAutoRetryPending = false;
+      if (isRetryButton && hubLink.dataset.gateMode === "retry") {
+        hubLink.removeAttribute("aria-busy");
+        hubLink.textContent = "重新嘗試同步";
+      }
+    });
+}
 
 function getPlanEligibilityGateCopy(block) {
   if (block.reason === "member_context_unavailable") {
     return {
       title: "登入已完成，正在重新確認會員資料",
-      desc: "會員中心目前暫時無法同步會籍與小組歸屬。請稍後按下方按鈕重試；不需要重新註冊帳號。支援代碼：MEMBER_CONTEXT_UNAVAILABLE"
+      desc: "會員中心目前暫時無法同步會籍與小組歸屬，系統已在背景自動重試。若這裡卡住沒有自動消失，可以按下方按鈕手動重試一次；不需要前往會員中心，也不需要重新註冊帳號。支援代碼：MEMBER_CONTEXT_UNAVAILABLE",
+      button: "重新嘗試同步",
+      mode: "retry"
     };
   }
   if (block.reason === "inactive_membership") {
     return {
       title: "目前無法使用會員讀經計畫",
-      desc: "您的會籍目前不是可使用狀態。請前往會員中心查看狀態，或聯繫教會同工協助。"
+      desc: "您的會籍目前不是可使用狀態。請前往會員中心查看狀態，或聯繫教會同工協助。",
+      button: "前往會員中心",
+      mode: "hub"
     };
   }
   if (block.reason === "unknown_member_hub_action" || block.reason === "unknown_member_hub_state") {
     return {
       title: "需要在會員中心完成新的確認步驟",
-      desc: "此版本尚未識別會員中心回傳的新狀態。為保護您的會籍資料，請使用下方按鈕由會員中心安全地繼續。"
+      desc: "此版本尚未識別會員中心回傳的新狀態。為保護您的會籍資料，請使用下方按鈕由會員中心安全地繼續。",
+      button: "前往會員中心",
+      mode: "hub"
     };
   }
   if (block.reason === "membership_record_inconsistent") {
     return {
       title: "需要在會員中心確認會員資料",
-      desc: "會員中心回傳的會籍紀錄需要確認。請使用下方按鈕前往會員中心繼續。"
+      desc: "會員中心回傳的會籍紀錄需要確認。請使用下方按鈕前往會員中心繼續。",
+      button: "前往會員中心",
+      mode: "hub"
     };
   }
   return {
     title: "需要在會員中心繼續",
-    desc: "請由會員中心安全地繼續。不要重複註冊帳號。"
+    desc: "請由會員中心安全地繼續。不要重複註冊帳號。",
+    button: "前往會員中心",
+    mode: "hub"
   };
 }
 
@@ -501,16 +542,11 @@ function resetPlanNavigationForEligibilityGate() {
 }
 
 function resyncPlanEligibilityAfterHubReturn() {
-  if (typeof db === "undefined" || typeof db.syncNlcSessionWithSupabase !== "function") return;
   const gate = document.getElementById("plan-eligibility-gate");
   const gated = gate && !gate.classList.contains("hidden");
   const onPlan = window.appRouter && window.appRouter.currentTab === "plan-view";
   if (!gated && !onPlan) return;
-  db.syncNlcSessionWithSupabase(true).then(() => {
-    if (window.appRouter && (window.appRouter.currentTab === "plan-view" || gated)) {
-      window.appRouter.switchTab("plan-view", { keepPlanDetail: true });
-    }
-  }).catch(err => console.warn("[PlanEligibilityGate] Profile sync after Hub return failed:", err));
+  retryPlanEligibilityQuietly();
 }
 
 function bindPlanEligibilityHubReturnSync() {
@@ -528,6 +564,13 @@ function bindPlanEligibilityHubReturnSync() {
     hubLink.dataset.hubContinueBound = "1";
     hubLink.addEventListener("click", (event) => {
       event.preventDefault();
+      // member_context_unavailable is a "please wait" state, not a "go fix
+      // something" state — the button retries in place instead of sending
+      // people who already did everything right off to the Member Hub.
+      if (hubLink.dataset.gateMode === "retry") {
+        retryPlanEligibilityQuietly();
+        return;
+      }
       launchMemberHubContinue(typeof auth !== "undefined" ? auth : null);
     });
   }
@@ -548,6 +591,9 @@ function renderPlanEligibilityGate(block) {
   if (titleEl) titleEl.textContent = copy.title;
   if (descEl) descEl.textContent = copy.desc;
   if (hubLink) {
+    hubLink.dataset.gateMode = copy.mode;
+    hubLink.textContent = copy.button;
+    hubLink.removeAttribute("aria-busy");
     const fallback = hubContinueHref(typeof auth !== "undefined" ? auth : null);
     try {
       const fallbackUrl = new URL(fallback);
@@ -567,6 +613,10 @@ function renderPlanEligibilityGate(block) {
 
   if (typeof hydrateIcons === "function") hydrateIcons(gate);
   bindPlanEligibilityHubReturnSync();
+
+  if (block.reason === "member_context_unavailable") {
+    retryPlanEligibilityQuietly();
+  }
 }
 
 function guardPlanEligibility() {
