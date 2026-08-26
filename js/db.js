@@ -770,13 +770,18 @@ const db = {
         ? getDisplayName(state.currentUser)
         : String(state.currentUser.name || "").trim()) ||
       "";
-    state.currentUser.great_region = profile.great_region || "";
-    state.currentUser.pastoral_zone = profile.pastoral_zone || "";
-    state.currentUser.small_group = profile.small_group || "";
+    // Same reasoning as `name` above: a partial/incomplete sync response
+    // (more likely now that resyncs happen automatically and more often —
+    // see refreshCurrentAppView / retryPlanEligibilityQuietly) must never
+    // silently blank out org placement the user already had. Only replace
+    // it when the fresh payload actually supplies a value.
+    state.currentUser.great_region = profile.great_region || state.currentUser.great_region || "";
+    state.currentUser.pastoral_zone = profile.pastoral_zone || state.currentUser.pastoral_zone || "";
+    state.currentUser.small_group = profile.small_group || state.currentUser.small_group || "";
     const roleCode = profile.role_definition?.code || (typeof getRoleDefinition === "function" ? getRoleDefinition(profile.role_id)?.code : "") || "";
-    state.currentUser.managed_regions = profile.managed_regions || (roleCode === "great_zone_leader" ? (profile.great_region || "") : "");
-    state.currentUser.managed_zones = profile.managed_zones || (roleCode === "zone_leader" ? (profile.pastoral_zone || "") : "");
-    state.currentUser.managed_groups = profile.managed_groups || (roleCode === "group_leader" ? (profile.small_group || "") : "");
+    state.currentUser.managed_regions = profile.managed_regions || (roleCode === "great_zone_leader" ? (profile.great_region || "") : "") || state.currentUser.managed_regions || "";
+    state.currentUser.managed_zones = profile.managed_zones || (roleCode === "zone_leader" ? (profile.pastoral_zone || "") : "") || state.currentUser.managed_zones || "";
+    state.currentUser.managed_groups = profile.managed_groups || (roleCode === "group_leader" ? (profile.small_group || "") : "") || state.currentUser.managed_groups || "";
     state.currentUser.role_id = profile.role_id || "10000000-0000-4000-8000-000000000001";
     state.currentUser.role_definition = profile.role_definition || getRoleDefinition(state.currentUser.role_id);
     if (profile.email) state.currentUser.email = profile.email;
@@ -829,7 +834,18 @@ const db = {
       return { edge_session: true, profile: cachedProfile ? JSON.parse(cachedProfile) : null, locked_fields: cachedLockedFields };
     }
 
-    const accessToken = await auth.getValidAccessToken(force);
+    // `force` here only means "skip the local edge-session cache and hit
+    // nlc-session for fresh member_context" — it must NOT also force a
+    // Logto token refresh. getValidAccessToken(true) always attempts a
+    // refresh even when the current token is still valid, and treats a
+    // failed attempt (e.g. a flaky network dropping the refresh call) as a
+    // real auth failure, wiping stored tokens. Automated background/quiet
+    // retries (member-context staleness, plan-tab refocus) now call this
+    // with force=true far more often than the old user-initiated-only
+    // retry button did, so that coupling turned transient network hiccups
+    // into full silent logouts. Let auth decide on its own whether the
+    // token actually needs refreshing.
+    const accessToken = await auth.getValidAccessToken(false);
     const idToken = localStorage.getItem(auth.keys.idToken);
 
     const cfg = state.supabaseConfig || {};

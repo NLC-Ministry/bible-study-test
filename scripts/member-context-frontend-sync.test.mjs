@@ -87,8 +87,16 @@ describe("member context frontend sync metadata", () => {
     expect(dbSource).toMatch(/localStorage\.setItem\("nlc_supabase_profile",\s*JSON\.stringify\(payload\.profile\)\)/);
   });
 
-  it("forces a fresh Logto token and Edge session for manual refresh", () => {
-    expect(dbSource).toContain("auth.getValidAccessToken(force)");
+  it("forces a fresh Edge session on manual refresh without also forcing a Logto token refresh", () => {
+    // `force` bypasses the local edge-session cache so a fresh member_context
+    // comes back from nlc-session; it must NOT also force auth to refresh an
+    // already-valid Logto token. That coupling used to mean any forced
+    // resync — including now-automatic background retries, not just this
+    // manual refresh — could turn a single flaky-network hiccup into a full
+    // silent logout. See getValidAccessToken's own force_refresh_without_
+    // refresh_token fallback for the related token-layer safety net.
+    expect(dbSource).toContain("auth.getValidAccessToken(false)");
+    expect(dbSource).not.toContain("auth.getValidAccessToken(force)");
     expect(profileSource).toContain("await db.syncNlcSessionWithSupabase(true)");
     expect(dbSource).toContain("if (!force && cachedExpiresAt > Date.now() + 60000)");
   });
