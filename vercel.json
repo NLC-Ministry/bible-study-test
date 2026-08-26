@@ -8,7 +8,7 @@
     "rewrites":  [
                      {
                          "source":  "/",
-                         "destination":  "/index.html"
+                         "destination":  "/index"
                      },
                      {
                          "source":  "/app.:hash.js",
