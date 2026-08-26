@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260815_admin_plan_feature_menu" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260826_offline_bible_trusted_login" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -1644,6 +1644,48 @@
 
               <!-- Tab Content 2: Preferences -->
               <div id="profile-tab-content-preferences" class="profile-tab-content hidden">
+                <div class="app-settings-group offline-login-settings">
+                  <label class="offline-login-option" for="offline-reading-enabled">
+                    <span class="app-settings-item__meta">
+                      <span class="app-settings-item__title">保持登入並允許離線閱讀</span>
+                      <span class="app-settings-item__subtitle">此裝置離線時，可使用最近 30 天內驗證過的身分進入受限閱讀模式</span>
+                    </span>
+                    <input type="checkbox" id="offline-reading-enabled" checked>
+                  </label>
+                </div>
+                <div class="app-settings-group offline-bible-settings" id="offline-bible-settings">
+                  <div class="app-settings-group__header">
+                    <span class="app-settings-group__header-icon">
+                      <span class="nlc-icon nlc-icon--sm" data-icon="download" aria-hidden="true"></span>
+                    </span>
+                    <div class="app-settings-group__header-text">
+                      <h3 class="text-sm font-medium m-0">離線聖經</h3>
+                      <p class="text-xs text-secondary m-0">下載後，即使沒有網路也能閱讀完整聖經；連線閱讀仍預設 CUNP。</p>
+                    </div>
+                  </div>
+                  <div class="app-settings-list">
+                    <div class="offline-bible-item">
+                      <div class="app-settings-item__meta">
+                        <span class="app-settings-item__title">當代譯本開放資源（繁體）</span>
+                        <span class="app-settings-item__subtitle" data-offline-bible-status="OCCB">CC BY-SA 4.0・檢查中</span>
+                      </div>
+                      <button type="button" class="offline-bible-action" data-offline-bible-action="OCCB">下載</button>
+                    </div>
+                    <div class="offline-bible-item">
+                      <div class="app-settings-item__meta">
+                        <span class="app-settings-item__title">World English Bible</span>
+                        <span class="app-settings-item__subtitle" data-offline-bible-status="WEB">Public Domain・檢查中</span>
+                      </div>
+                      <button type="button" class="offline-bible-action" data-offline-bible-action="WEB">下載</button>
+                    </div>
+                  </div>
+                  <p class="offline-bible-license-note">下載內容只包含經文文字。版本名稱、來源及授權聲明會保存在離線資料中。</p>
+                  <details class="offline-bible-license-details">
+                    <summary>授權與來源</summary>
+                    <p>Biblica® 聖經，當代譯本™開放資源，版權所有 © 1979, 2005, 2007, 2012, 2023 Biblica, Inc.，依 CC BY-SA 4.0 提供。<a href="https://ebible.org/bible/details.php?id=cmncbt" target="_blank" rel="noopener noreferrer">查看來源</a></p>
+                    <p>World English Bible 經文屬 Public Domain；World English Bible 為 eBible.org 商標。<a href="https://ebible.org/bible/details.php?id=engwebp" target="_blank" rel="noopener noreferrer">查看來源</a></p>
+                  </details>
+                </div>
                 <div class="app-settings-group profile-preferences-group">
                   <div class="app-settings-group__header">
                     <span class="app-settings-group__header-icon">
@@ -2434,6 +2476,10 @@
           <span class="v-name">CUV (官話和合本)</span>
           <span class="v-check nlc-icon" data-icon="check"></span>
         </button>
+        <button type="button" class="version-option-btn" data-version="OCCB">
+          <span class="v-name">當代譯本（繁體・可離線下載）</span>
+          <span class="v-check nlc-icon" data-icon="check"></span>
+        </button>
 
         <div class="version-section-label" style="margin-top: 1.25rem;">英文譯本 (English)</div>
         <button type="button" class="version-option-btn" data-version="ESV">
@@ -2446,6 +2492,10 @@
         </button>
         <button type="button" class="version-option-btn" data-version="NLT">
           <span class="v-name">NLT (New Living Translation)</span>
+          <span class="v-check nlc-icon" data-icon="check"></span>
+        </button>
+        <button type="button" class="version-option-btn" data-version="WEB">
+          <span class="v-name">WEB (Public Domain・可離線下載)</span>
           <span class="v-check nlc-icon" data-icon="check"></span>
         </button>
       </div>
@@ -2503,7 +2553,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260816_reader_audio_chapter_scroll"></script>
+  <script type="module" src="js/app.js?v=20260826_merged_users_pagination_fix"></script>
 </body>
 
 </html>

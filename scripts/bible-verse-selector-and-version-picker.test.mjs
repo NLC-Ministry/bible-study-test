@@ -65,7 +65,7 @@ describe("mobile Bible version picker access", () => {
 
 describe("English Bible chapter selector labels", () => {
   it("uses English book, chapter, verse, testament, and navigation labels for English translations", () => {
-    expect(bible).toContain('const ENGLISH_BIBLE_VERSIONS = new Set(["ESV", "NIV", "NLT"])');
+    expect(bible).toContain('const ENGLISH_BIBLE_VERSIONS = new Set(["ESV", "NIV", "NLT", "WEB"])');
     expect(bible).toContain('english ? "Select Book" : "選擇書卷"');
     expect(bible).toMatch(/english\s*\?\s*\{ book: "Book", chapter: "Chapter", verse: "Verse" \}/);
     expect(bible).toContain('usesEnglishReaderLabels() ? "Old Testament" : "舊約聖經"');

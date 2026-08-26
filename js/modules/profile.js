@@ -553,9 +553,9 @@ export function updateAdminNavVisibility() {
   const managementRoles = ['admin', 'pastor', 'great_zone_leader', 'zone_leader', 'group_leader'];
   const currentRole = (state.currentUser && getUserRoleCode(state.currentUser)) || 'member';
 
-  const canManagePlans = managementRoles.includes(currentRole);
+  const canManagePlans = !state.offlineMode && managementRoles.includes(currentRole);
 
-  const isSystemAdmin = currentRole === 'admin';
+  const isSystemAdmin = !state.offlineMode && currentRole === 'admin';
 
 
   document.querySelectorAll('.admin-only-nav').forEach(btn => {
@@ -713,6 +713,21 @@ export function init() {
   });
   syncPreferenceThemeState();
   window.addEventListener("app:themeChanged", syncPreferenceThemeState);
+  const offlineReadingToggle = document.getElementById("offline-reading-enabled");
+  if (offlineReadingToggle && offlineReadingToggle.dataset.bound !== "true") {
+    offlineReadingToggle.dataset.bound = "true";
+    offlineReadingToggle.checked = localStorage.getItem("offline_reading_enabled") !== "false";
+    offlineReadingToggle.addEventListener("change", () => {
+      localStorage.setItem("offline_reading_enabled", String(offlineReadingToggle.checked));
+      if (offlineReadingToggle.checked) {
+        window.db?.storeOfflineIdentity?.();
+        window.showToast?.("已允許此裝置離線閱讀");
+      } else {
+        localStorage.removeItem("offline_trusted_identity");
+        window.showToast?.("已關閉此裝置的離線登入");
+      }
+    });
+  }
   initSpeechPreferencesControls();
 
   const btnProfileLogout = document.getElementById("btn-profile-logout");

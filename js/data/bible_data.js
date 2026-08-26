@@ -226,17 +226,36 @@ async function fetchBibleChapter(bookEngName, chapter, requestedVersion = null) 
   }
 
   const requestPromise = (async () => {
+  const offlineRepository = window.offlineBibleRepository;
+  if (offlineRepository && typeof offlineRepository.getChapter === "function") {
+    try {
+      const offlineChapter = await offlineRepository.getChapter(preferredVersion, bookEngName, chapter);
+      if (offlineChapter) {
+        window._bibleChapterCache[cacheKey] = offlineChapter;
+        return offlineChapter;
+      }
+    } catch (error) {
+      console.warn("離線經文讀取失敗，改用線上來源。", error);
+    }
+  }
+
   // Bolls.life requires the numeric book ID (1-66)
   const bollsBookId = getBollsBookId(bookEngName);
-  const isEnglishVersion = ["ESV", "NIV", "NLT"].includes(preferredVersion);
+  const isEnglishVersion = ["ESV", "NIV", "NLT", "WEB"].includes(preferredVersion);
   const sources = [];
 
-  if (bollsBookId) {
+  if (preferredVersion === "OCCB" && offlineRepository && typeof offlineRepository.getRemoteChapter === "function") {
+    sources.push(async () => {
+      const result = await offlineRepository.getRemoteChapter(preferredVersion, bookEngName, chapter);
+      if (!result) throw new Error("OCCB 資料包沒有這個章節");
+      return result;
+    });
+  } else if (bollsBookId) {
     sources.push(() => fetchFromBolls(bookEngName, chapter, preferredVersion, bollsBookId));
   }
   // bible-api is only an exact-version fallback where that version is known
   // by the same identifier. Never silently substitute a different translation.
-  if (["CUV", "ESV", "NIV", "NLT"].includes(preferredVersion)) {
+  if (["CUV", "ESV", "NIV", "NLT", "WEB"].includes(preferredVersion)) {
     sources.push(() => fetchFromBibleApi(bookEngName, chapter, preferredVersion.toLowerCase()));
   }
 

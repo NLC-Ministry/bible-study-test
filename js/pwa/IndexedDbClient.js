@@ -1,5 +1,5 @@
 export class IndexedDbClient {
-  constructor({ name = "newlife-bible", version = 2 } = {}) {
+  constructor({ name = "newlife-bible", version = 3 } = {}) {
     this.name = name;
     this.version = version;
     this.connectionPromise = null;
@@ -29,6 +29,15 @@ export class IndexedDbClient {
       cacheStore.createIndex("table", "table", { unique: false });
       cacheStore.createIndex("updatedAt", "updatedAt", { unique: false });
     }
+    if (!db.objectStoreNames.contains("bible_chapters")) {
+      const chapterStore = db.createObjectStore("bible_chapters", { keyPath: "key" });
+      chapterStore.createIndex("translation", "translation", { unique: false });
+      chapterStore.createIndex("book", "book", { unique: false });
+    }
+    if (!db.objectStoreNames.contains("bible_packs")) {
+      const packStore = db.createObjectStore("bible_packs", { keyPath: "translation" });
+      packStore.createIndex("downloadedAt", "downloadedAt", { unique: false });
+    }
   }
 
   async run(storeName, mode, executor) {
@@ -49,4 +58,40 @@ export class IndexedDbClient {
   delete(storeName, key) { return this.run(storeName, "readwrite", store => store.delete(key)); }
   getAll(storeName) { return this.run(storeName, "readonly", store => store.getAll()); }
   clear(storeName) { return this.run(storeName, "readwrite", store => store.clear()); }
+
+  async putMany(storeName, values) {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(storeName, "readwrite");
+      const store = transaction.objectStore(storeName);
+      try {
+        values.forEach(value => store.put(value));
+      } catch (error) {
+        transaction.abort();
+        reject(error);
+        return;
+      }
+      transaction.oncomplete = () => resolve(values.length);
+      transaction.onerror = () => reject(transaction.error || new Error("IndexedDB bulk write failed"));
+      transaction.onabort = () => reject(transaction.error || new Error("IndexedDB bulk write aborted"));
+    });
+  }
+
+  async deleteByIndex(storeName, indexName, value) {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(storeName, "readwrite");
+      const store = transaction.objectStore(storeName);
+      const request = store.index(indexName).openKeyCursor(IDBKeyRange.only(value));
+      request.onsuccess = event => {
+        const cursor = event.target.result;
+        if (!cursor) return;
+        store.delete(cursor.primaryKey);
+        cursor.continue();
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || request.error);
+      transaction.onabort = () => reject(transaction.error || new Error("IndexedDB indexed delete aborted"));
+    });
+  }
 }

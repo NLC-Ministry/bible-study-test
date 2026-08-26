@@ -78,6 +78,7 @@ try {
 const state = {
   theme: "light",
   isSupabaseMode: false,
+  offlineMode: false,
   supabase: null,
 
   roleDefinitions: [], // Supabase role definitions, keyed by immutable UUID

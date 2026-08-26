@@ -98,7 +98,7 @@ let selectionBottomBarCleanup = null;
 let selectionBottomBarBindTimer = null;
 let multiSelectState = null; // { anchor, end, bookName, chapter, chapterId, verses } | null
 const MULTI_SELECT_LONG_PRESS_MS = 480;
-const ENGLISH_BIBLE_VERSIONS = new Set(["ESV", "NIV", "NLT"]);
+const ENGLISH_BIBLE_VERSIONS = new Set(["ESV", "NIV", "NLT", "WEB"]);
 
 function usesEnglishReaderLabels(version = state.readerState?.version) {
   return ENGLISH_BIBLE_VERSIONS.has(String(version || "").toUpperCase());
@@ -1831,6 +1831,8 @@ window.selectBibleVersion = function(newVersion) {
     CUNP: "新標點和合本",
     RCUVTS: "和合本修訂版",
     CUV: "官話和合本",
+    OCCB: "當代譯本開放資源（繁體）",
+    WEB: "World English Bible",
     ESV: "ESV (English Standard Version)",
     NIV: "NIV (New International Version)",
     NLT: "NLT (New Living Translation)"
@@ -1845,9 +1847,11 @@ window.toggleBibleVersionNext = function() {
   let next = "CUNP";
   if (current === "CUNP") next = "RCUVTS";
   else if (current === "RCUVTS") next = "CUV";
-  else if (current === "CUV") next = "ESV";
+  else if (current === "CUV") next = "OCCB";
+  else if (current === "OCCB") next = "ESV";
   else if (current === "ESV") next = "NIV";
   else if (current === "NIV") next = "NLT";
+  else if (current === "NLT") next = "WEB";
   else next = "CUNP";
   window.selectBibleVersion(next);
 };
@@ -2068,7 +2072,7 @@ function speakNextVerseInQueue(sessionId) {
   }
 
   const currentVersion = state.readerState?.version || "CUNP";
-  const isEnglish = ["ESV", "NIV", "NLT"].includes(currentVersion);
+  const isEnglish = ["ESV", "NIV", "NLT", "WEB"].includes(currentVersion);
   const fallbackLang = isEnglish ? "en-US" : "zh-TW";
   const settings = state.speechSettings || {};
 
@@ -2180,7 +2184,7 @@ window.toggleReaderAudio = async function(startVerseNum = null) {
   currentSpeakingVerseIndex = startIndex;
   updateReaderAudioButton(true);
   const currentVersion = state.readerState?.version || "CUNP";
-  const isEnglish = ["ESV", "NIV", "NLT"].includes(currentVersion);
+  const isEnglish = ["ESV", "NIV", "NLT", "WEB"].includes(currentVersion);
   const targetLang = isEnglish ? "en-US" : "zh-TW";
   const immediateVoices = window.speechSynthesis.getVoices?.() || [];
   preferredReaderVoice = selectPreferredVoice(immediateVoices, targetLang) || preferredReaderVoice;

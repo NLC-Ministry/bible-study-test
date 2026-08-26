@@ -2,20 +2,20 @@
 
 // Import support and core files needed before first paint.
 import '../config.js';
-import './data/bible_data.js?v=20260816_reader_audio_chapter_scroll';
+import './data/bible_data.js?v=20260826_offline_bible_trusted_login';
 import './data/bible_verse_counts.js';
-import './copy/zh-Hant.js?v=20260816_reader_audio_chapter_scroll';
-import './data/church_campaign.js?v=20260816_reader_audio_chapter_scroll';
+import './copy/zh-Hant.js?v=20260826_offline_bible_trusted_login';
+import './data/church_campaign.js?v=20260826_offline_bible_trusted_login';
 import './design/design-tokens.js';
-import './design/design-system-helpers.js?v=20260816_reader_audio_chapter_scroll';
-import './design/icon-registry.js?v=20260816_reader_audio_chapter_scroll';
+import './design/design-system-helpers.js?v=20260826_offline_bible_trusted_login';
+import './design/icon-registry.js?v=20260826_offline_bible_trusted_login';
 import './design/icons.js';
-import './state.js?v=20260816_reader_audio_chapter_scroll';
-import './auth.js?v=20260816_reader_audio_chapter_scroll';
+import './state.js?v=20260826_offline_bible_trusted_login';
+import './auth.js?v=20260826_offline_bible_trusted_login';
 import './auth-launch.mjs';
-import './db.js?v=20260816_reader_audio_chapter_scroll';
-import './utils.js?v=20260816_reader_audio_chapter_scroll';
-import './gamification.js?v=20260816_reader_audio_chapter_scroll';
+import './db.js?v=20260826_merged_users_pagination_fix';
+import './utils.js?v=20260826_offline_bible_trusted_login';
+import './gamification.js?v=20260826_offline_bible_trusted_login';
 import { initModalManager } from './modules/modal-manager.mjs';
 
 import {
@@ -25,8 +25,10 @@ import {
   launchMemberHubContinue
 } from './login-onboarding-gate.mjs';
 import { cleanupProductionStorage } from './production-cleanup.mjs';
-import { initializePwa } from './pwa/PwaCoordinator.js?v=20260816_reader_audio_chapter_scroll';
+import { initializePwa } from './pwa/PwaCoordinator.js?v=20260826_offline_bible_trusted_login';
 import { IndexedDbClient } from './pwa/IndexedDbClient.js';
+import { OfflineBibleRepository } from './pwa/OfflineBibleRepository.js';
+import { initOfflineBibleControls } from './pwa/OfflineBibleControls.js';
 import { SupabaseRepository } from './pwa/SupabaseRepository.js';
 import { clearBadge, requestNotificationPermission } from '../lib/services/badge-service.ts';
 
@@ -39,7 +41,7 @@ if (!/^\d{14}$/.test(buildVersion)) {
 }
 buildVersion += "_clean_demo_mode_v20_quiz_manual_retry_v1_member_hub_name_sync_v1_quiz_load_error_v1_group_filter_reset_fix_v1_quiz_publish_flow_redesign_v1_row_cap_pagination_fix_v1_quiz_entry_reading_gate_v1_quiz_feature_reopen_restore_v1_admin_mobile_layout_v1_reader_audio_resume_fix_v1_joined_plan_collapse_v1_admin_tabs_lead_v1";
 const moduleCache = {};
-const RELEASE_ONBOARDING_MODULE_PATH = './modules/onboarding-helper.js?v=20260816_reader_audio_chapter_scroll';
+const RELEASE_ONBOARDING_MODULE_PATH = './modules/onboarding-helper.js?v=20260826_offline_bible_trusted_login';
 const RELEASE_ONBOARDING_STORAGE_KEY = "bible_onboarding_seen_version";
 const ISSUE_REPORT_UI_MODULE_PATH = './modules/issue-report-ui.bundle.js?v=' + buildVersion;
 let releaseOnboardingModulePromise = null;
@@ -590,7 +592,7 @@ function paintReaderTopBarFromState() {
   if (!book) return;
 
   const refLabel = document.getElementById("reader-nav-ref-label");
-  const isEnglishVersion = ["ESV", "NIV", "NLT"].includes(String(state.readerState.version || "").toUpperCase());
+  const isEnglishVersion = ["ESV", "NIV", "NLT", "WEB"].includes(String(state.readerState.version || "").toUpperCase());
   if (refLabel) refLabel.textContent = `${isEnglishVersion ? book.eng : book.name} ${state.readerState.chapter}`;
 
   const version = state.readerState.version || "CUNP";
@@ -861,6 +863,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   // One authoritative path for reading-log snapshots and mutations.
   const repositoryCache = "indexedDB" in window ? new IndexedDbClient() : null;
   window.pwaDataStore = repositoryCache;
+  window.offlineBibleRepository = new OfflineBibleRepository({ dbClient: repositoryCache });
+  initOfflineBibleControls(window.offlineBibleRepository).catch(error => {
+    console.warn("[PWA] Offline Bible controls failed to initialize.", error);
+  });
+  if (state.offlineMode) {
+    try {
+      const installedPacks = await window.offlineBibleRepository.listInstalledPacks();
+      const installedVersions = new Set(installedPacks.map(pack => pack.translation));
+      const currentVersion = String(state.readerState.version || "CUNP").toUpperCase();
+      if (!installedVersions.has(currentVersion)) {
+        const offlineVersion = installedVersions.has("OCCB") ? "OCCB" : (installedVersions.has("WEB") ? "WEB" : null);
+        if (offlineVersion) {
+          state.readerState.onlinePreferredVersion = currentVersion;
+          state.readerState.version = offlineVersion;
+          document.documentElement.dataset.offlineBibleFallback = offlineVersion;
+        }
+      }
+    } catch (error) {
+      console.warn("[PWA] Could not select an installed offline Bible.", error);
+    }
+  }
   window.readingLogRepository = new SupabaseRepository({
     table: "reading_logs",
     clientProvider: () => window.state?.supabase,
@@ -950,6 +973,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   window.addEventListener("pwa:update-ready", () => {
     if (typeof showToast === "function") {
       showToast("已更新至最新版本");
+    }
+  });
+
+  window.addEventListener("offline", () => {
+    if (window.db?.tryRestoreOfflineSession?.()) {
+      window.showToast?.("已切換為離線閱讀模式");
+    }
+  });
+
+  window.addEventListener("online", async () => {
+    if (!state.offlineMode || typeof auth === "undefined" || !auth.isLoggedIn()) return;
+    try {
+      await window.db.syncNlcSessionWithSupabase(true);
+      await db.loadUserData(true);
+      const preferredVersion = state.readerState.onlinePreferredVersion;
+      if (preferredVersion) {
+        state.readerState.version = preferredVersion;
+        delete state.readerState.onlinePreferredVersion;
+      }
+      window.showToast?.("已恢復連線並同步登入狀態");
+      if (appRouter.currentTab) await appRouter.switchTab(appRouter.currentTab);
+    } catch (error) {
+      console.warn("Online session revalidation failed", error);
     }
   });
 

@@ -9,6 +9,8 @@ The app uses a deliberately limited offline model:
 - Never cache authentication, Supabase/NLC, rankings, member status, reminders, or admin responses.
 - Queue reading-log mutations only when the browser is explicitly offline or a request fails at the network layer.
 - Keep NLC and Supabase credentials outside IndexedDB and Cache Storage.
+- Permit a previously verified user to enter a restricted offline-reading session for up to 30 days. This local identity is not accepted as server authentication.
+- Store explicitly downloaded, public/open-licensed Bible packs in dedicated IndexedDB stores, separate from runtime HTTP caches.
 
 ## Modules
 
@@ -19,6 +21,24 @@ The app uses a deliberately limited offline model:
 - `js/pwa/OfflineSyncManager.js`: retry, backoff, and status events.
 - `js/pwa/ServiceWorkerRegistrar.js`: browser registration and SW messaging.
 - `js/pwa/PwaCoordinator.js`: application integration for authenticated reading logs.
+- `js/pwa/OfflineBibleRepository.js`: validates, installs, reads, and removes complete 1,189-chapter Bible packs.
+- `js/pwa/OfflineBibleControls.js`: download progress and storage controls in profile preferences.
+
+## Trusted offline reading
+
+- A successful online NLC session stores a minimal `offline_trusted_identity` snapshot when the device preference is enabled.
+- The snapshot expires 30 days after the last successful server verification.
+- Offline mode restores cached plans and reading logs, hides management navigation, and never treats the local snapshot as an access token.
+- Explicit logout or an authentication rejection removes the trusted identity. A transient network failure does not remove refresh credentials.
+- Returning online revalidates the NLC session before restoring server-backed features and syncing queued reading logs.
+
+## Offline Bible packs
+
+- Online reading defaults to CUNP and continues to use the existing exact-version API path.
+- Downloadable packs are currently OCCB Traditional (`CC BY-SA 4.0`) and WEB (`Public Domain`). Their source and attribution metadata travel with each pack.
+- A pack is marked installed only after all 1,189 chapters have been parsed and committed to IndexedDB.
+- Reader resolution order is installed IndexedDB chapter, exact online source, then the existing visible load-failure fallback.
+- Bible packs contain public scripture text only and remain separate from private account caches.
 
 ## Data flow
 

@@ -655,15 +655,23 @@ const auth = {
 
         if (!response.ok) {
           const errorText = await response.text().catch(() => "");
-          throw new Error(`OIDC refresh failed: ${response.status}${errorText ? " - " + errorText : ""}`);
+          const refreshError = new Error(`OIDC refresh failed: ${response.status}${errorText ? " - " + errorText : ""}`);
+          refreshError.authRejected = [400, 401, 403].includes(response.status);
+          throw refreshError;
         }
 
         this._saveTokens(await response.json());
         return true;
       } catch (err) {
         console.error("Logto token refresh error:", err);
-        this._clearStoredTokens();
-        return false;
+        if (err?.authRejected) {
+          this._clearStoredTokens();
+          localStorage.removeItem("offline_trusted_identity");
+          return false;
+        }
+        // Discovery/network failures do not mean the account was rejected.
+        // Keep the refresh token so the trusted device can resume when online.
+        return null;
       }
     })();
 
@@ -694,6 +702,11 @@ const auth = {
 
     if (shouldRefresh) {
       const refreshed = await this.refreshTokens();
+      if (refreshed === null) {
+        const offlineError = new Error("目前無法連線驗證登入狀態。");
+        offlineError.code = "OFFLINE_AUTH_UNAVAILABLE";
+        throw offlineError;
+      }
       if (!refreshed) {
         this._clearStoredTokens();
         this._resetAppAuthState();
@@ -738,6 +751,7 @@ const auth = {
     localStorage.removeItem("active_reading_plans");
     localStorage.removeItem("reading_logs");
     localStorage.removeItem("selected_plan_key");
+    localStorage.removeItem("offline_trusted_identity");
 
     if (typeof state !== "undefined" && state.supabase && state.supabase.auth && typeof state.supabase.auth.signOut === "function") {
       try {

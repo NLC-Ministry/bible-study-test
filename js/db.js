@@ -272,6 +272,66 @@ const db = {
   _orgStructureSnapshotKey: "",
   _orgStructureRequestId: 0,
 
+  storeOfflineIdentity(profile = null) {
+    if (localStorage.getItem("offline_reading_enabled") === "false") return;
+    const sourceProfile = profile || (() => {
+      try { return JSON.parse(localStorage.getItem("nlc_supabase_profile") || "null"); } catch { return null; }
+    })();
+    if (!sourceProfile?.id) return;
+    localStorage.setItem("offline_trusted_identity", JSON.stringify({
+      schemaVersion: 1,
+      verifiedAt: new Date().toISOString(),
+      profile: sourceProfile,
+      lockedFields: (() => {
+        try { return JSON.parse(localStorage.getItem("nlc_profile_locked_fields") || "[]"); } catch { return []; }
+      })()
+    }));
+  },
+
+  tryRestoreOfflineSession() {
+    if (localStorage.getItem("offline_reading_enabled") === "false") return false;
+    let identity = null;
+    try { identity = JSON.parse(localStorage.getItem("offline_trusted_identity") || "null"); } catch { return false; }
+    const verifiedAt = Date.parse(identity?.verifiedAt || "");
+    const maxAgeMs = 30 * 24 * 60 * 60 * 1000;
+    if (!identity?.profile?.id || !Number.isFinite(verifiedAt) || Date.now() - verifiedAt > maxAgeMs) return false;
+
+    state.offlineMode = true;
+    state.supabase = this.createNlcDataClient();
+    this.applyNlcProfile(identity.profile, identity.lockedFields || []);
+    document.documentElement.dataset.appConnection = "offline-reader";
+    const statusBadge = document.getElementById("connection-status");
+    if (statusBadge) {
+      statusBadge.className = "status-badge offline";
+      const label = statusBadge.querySelector(".status-text");
+      if (label) label.textContent = "離線閱讀";
+    }
+    this.updateAuthUI({ user: { id: identity.profile.id, offline: true } });
+    this.refreshRoleDependentUI();
+    return true;
+  },
+
+  loadOfflineSnapshot() {
+    let identity = null;
+    try { identity = JSON.parse(localStorage.getItem("offline_trusted_identity") || "null"); } catch { identity = null; }
+    if (identity?.profile) this.applyNlcProfile(identity.profile, identity.lockedFields || []);
+    try {
+      const plans = JSON.parse(localStorage.getItem("active_reading_plans") || "[]");
+      const logs = JSON.parse(localStorage.getItem("reading_logs") || "[]");
+      state.activePlans = Array.isArray(plans) ? plans : [];
+      state.readingLogs = Array.isArray(logs) ? logs : [];
+      state.activePlan = selectMostRecentActivePlan(state.activePlans);
+      if (typeof calculateAllPlansProgress === "function") calculateAllPlansProgress();
+      this["calculateStreak"]();
+    } catch (error) {
+      console.warn("Offline reading snapshot could not be restored", error);
+      state.activePlans = [];
+      state.readingLogs = [];
+      state.activePlan = null;
+    }
+    return true;
+  },
+
   // Initialize Supabase Connection
   async init() {
     const urlParams = new URLSearchParams(window.location.search);
@@ -384,6 +444,10 @@ const db = {
         statusBadge.querySelector(".status-text").textContent = "線上模式";
         if (placeholder) placeholder.classList.add("hidden");
 
+        if (navigator.onLine === false && this.tryRestoreOfflineSession()) {
+          return true;
+        }
+
         const hasOAuthCallback = urlParams.has("code") || urlParams.has("state") || urlParams.has("error") || urlParams.has("error_description");
         if (!hasOAuthCallback && typeof authLaunch !== "undefined" && typeof authLaunch.maybeResumeInteractiveAuthFromBridge === "function") {
           const resumed = await authLaunch.maybeResumeInteractiveAuthFromBridge();
@@ -401,11 +465,15 @@ const db = {
 
           // Sync Logto login through the Edge Function so Supabase RLS can resolve profiles.
           if (auth.isLoggedIn()) {
+            if (navigator.onLine === false && this.tryRestoreOfflineSession()) {
+              return true;
+            }
             let sessionSync = null;
             try {
               sessionSync = await this.syncNlcSessionWithSupabase(true);
             } catch (syncErr) {
               console.warn("⚠️ NLC session sync warning:", syncErr);
+              if (this.tryRestoreOfflineSession()) return true;
             }
             const block = getUserOnboardingBlock(state.currentUser);
             const copy = getLoginGateCopy(block, { hasTokens: true });
@@ -462,6 +530,7 @@ const db = {
         return false;
       } catch (e) {
         console.error("Supabase connection failed:", e);
+        if (this.tryRestoreOfflineSession()) return true;
         const message = "\u767b\u5165\u540c\u6b65\u5931\u6557\uFF08" + (e.message || e) + "\uFF09\uFF0C\u8acb\u91cd\u65b0\u767b\u5165\u3002";
         this.showConnectionError(message);
         return false;
@@ -804,7 +873,10 @@ const db = {
     localStorage.setItem("nlc_profile_locked_fields", JSON.stringify(payload.locked_fields || []));
 
     state.supabase = this.createNlcDataClient();
+    state.offlineMode = false;
+    document.documentElement.dataset.appConnection = "online";
     this.applyNlcProfile(payload.profile, payload.locked_fields || []);
+    this.storeOfflineIdentity(payload.profile);
     return payload;
   },
 
@@ -964,6 +1036,9 @@ const db = {
     }
     this._userDataPromise = (async () => {
       try {
+        if (state.offlineMode) {
+          return this.loadOfflineSnapshot();
+        }
         if (state.isSupabaseMode && state.supabase) {
       if (state.currentUser) {
         state.currentUser.is_demo = false;
@@ -2205,24 +2280,30 @@ const db = {
 
     if (state.isSupabaseMode && state.supabase) {
       try {
-        const { data: usersProfiles, error: profilesError } = await state.supabase.from("profiles").select("id, name, email, great_region, pastoral_zone, small_group, role_id, role_definition:role_definitions!profiles_role_definition_fkey(id, code, label), managed_regions, managed_zones, managed_groups").eq("is_demo", false);
+        const { data: usersProfiles, error: profilesError } = await fetchAllRows(() => state.supabase
+          .from("profiles")
+          .select("id, name, email, great_region, pastoral_zone, small_group, role_id, role_definition:role_definitions!profiles_role_definition_fkey(id, code, label), managed_regions, managed_zones, managed_groups")
+          .eq("is_demo", false));
         if (profilesError) throw profilesError;
 
-        let plansQuery = state.supabase.from("reading_plans").select("id, user_id, name, preset_key, global_plan_id, target_books, current_round, level, upgrade_prompt_handled");
-        if (filterPresetKey) {
-          const textConditions = planFilterAliases.flatMap(alias => [
-            `preset_key.eq.${quotePostgrestValue(alias)}`,
-            `name.eq.${quotePostgrestValue(alias)}`
-          ]);
-          const uuidConditions = planFilterAliases
-            .filter(isUuid)
-            .flatMap(alias => [
-              `global_plan_id.eq.${quotePostgrestValue(alias)}`,
-              `id.eq.${quotePostgrestValue(alias)}`
+        const buildPlansQuery = () => {
+          let q = state.supabase.from("reading_plans").select("id, user_id, name, preset_key, global_plan_id, target_books, current_round, level, upgrade_prompt_handled");
+          if (filterPresetKey) {
+            const textConditions = planFilterAliases.flatMap(alias => [
+              `preset_key.eq.${quotePostgrestValue(alias)}`,
+              `name.eq.${quotePostgrestValue(alias)}`
             ]);
-          plansQuery = plansQuery.or([...textConditions, ...uuidConditions].join(","));
-        }
-        const { data: allPlans, error: plansError } = await plansQuery;
+            const uuidConditions = planFilterAliases
+              .filter(isUuid)
+              .flatMap(alias => [
+                `global_plan_id.eq.${quotePostgrestValue(alias)}`,
+                `id.eq.${quotePostgrestValue(alias)}`
+              ]);
+            q = q.or([...textConditions, ...uuidConditions].join(","));
+          }
+          return q;
+        };
+        const { data: allPlans, error: plansError } = await fetchAllRows(buildPlansQuery);
         if (plansError) throw plansError;
 
         const planIds = (allPlans || []).map(plan => plan.id).filter(Boolean);
