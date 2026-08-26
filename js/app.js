@@ -646,11 +646,10 @@ window.renderPlanEligibilityGate = renderPlanEligibilityGate;
 window.hidePlanEligibilityGate = hidePlanEligibilityGate;
 window.guardPlanEligibility = guardPlanEligibility;
 
-// Paints the reader top bar (book/chapter/version pills) straight from already-loaded
-// global state, so it's correct the instant #reader-view fades in — it must not wait on
-// the lazy-loaded bible.js module, or the label flashes stale->correct once that module
-// (and its own updatePillLabels() call) finally resolves.
-function paintReaderTopBarFromState() {
+// Paints the visible reader chrome straight from already-loaded global state, so the
+// reference is correct the instant #reader-view fades in. It must not wait on the
+// lazy-loaded bible.js module, or a stale placeholder flashes before the real chapter.
+function paintReaderChromeFromState() {
   const books = window.BIBLE_BOOKS;
   if (!Array.isArray(books) || !state.readerState) return;
   const book = books.find(b => Number(b.id) === Number(state.readerState.bookId));
@@ -659,6 +658,12 @@ function paintReaderTopBarFromState() {
   const refLabel = document.getElementById("reader-nav-ref-label");
   const isEnglishVersion = ["ESV", "NIV", "NLT", "WEB"].includes(String(state.readerState.version || "").toUpperCase());
   if (refLabel) refLabel.textContent = `${isEnglishVersion ? book.eng : book.name} ${state.readerState.chapter}`;
+  const heading = document.getElementById("bible-title");
+  if (heading) {
+    heading.textContent = isEnglishVersion
+      ? `${book.eng} Chapter ${state.readerState.chapter}`
+      : `${book.name} ${state.readerState.chapter}章`;
+  }
 
   const version = state.readerState.version || "CUNP";
   const versionLabel = version === "RCUVTS" ? "RCUV" : version;
@@ -735,7 +740,7 @@ appRouter.switchTab = async function (tabId, options = {}) {
     // ── 3b. Paint reader top bar immediately so it's never stale while the
     // lazy bible.js module loads (avoids the fadeIn-then-label-swap flash) ──
     if (tabId === "reader-view") {
-      paintReaderTopBarFromState();
+      paintReaderChromeFromState();
     }
 
     // ── 4. Pre-render state mutations (sync, before any await) ──
