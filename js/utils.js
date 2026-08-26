@@ -1538,7 +1538,8 @@ async function persistPlanLevelState(plan) {
       current_round: plan.currentRound || getPlanLevelOrder(plan.level),
       was_downgraded: !!plan.wasDowngraded,
       downgrade_locked_until: plan.downgradeLockedUntil || null,
-      upgrade_prompt_handled: !!plan.upgradePromptHandled
+      upgrade_prompt_handled: !!plan.upgradePromptHandled,
+      current_round_started_at: plan.currentRoundStartedAt || null
     };
     const { error } = await state.supabase.from("reading_plans").update(payload).eq("id", plan.id);
     if (error) {
@@ -1619,7 +1620,8 @@ function rebuildPlanScheduleForLevel(plan, level) {
       readingDaysPerWeek: plan.readingDaysPerWeek || plan.reading_days_per_week,
       restWeekdays: plan.restWeekdays || plan.rest_weekdays,
       planId: plan.id,
-      presetKey: plan.presetKey
+      presetKey: plan.presetKey,
+      currentRoundStartedAt: plan.currentRoundStartedAt || plan.current_round_started_at || null
     }
   );
   Object.assign(plan, {
@@ -1687,6 +1689,26 @@ function generateChurchCampaignPlanObject(definition, presetKey, scheduleSetting
     if (planPresetKey && logPresetKey) return String(logPresetKey) === String(planPresetKey);
     return !logPlanId && !logPresetKey;
   });
+  const nowForCampaignRounds = new Date();
+  const todayLocalStrForCampaignRounds = nowForCampaignRounds.getFullYear() + '-'
+    + String(nowForCampaignRounds.getMonth() + 1).padStart(2, '0') + '-'
+    + String(nowForCampaignRounds.getDate()).padStart(2, '0');
+  const todayOffsetForCampaignRounds = Math.max(0, Math.min(
+    lastOffset,
+    Math.floor((new Date(todayLocalStrForCampaignRounds + "T00:00:00") - startDate) / 86400000)
+  ));
+
+  // 目前正在進行中的那次「確認進入下一輪」，優先用使用者點選當下記錄的
+  // current_round_started_at，而不是下一輪第一次打卡的日期或今天——只有
+  // 舊資料還沒有這個欄位時才退回舊邏輯。
+  const confirmedRoundEntryAtCampaign = scheduleSettings && scheduleSettings.currentRoundStartedAt
+    ? new Date(String(scheduleSettings.currentRoundStartedAt).slice(0, 10) + "T00:00:00")
+    : null;
+  const hasConfirmedRoundEntryCampaign = confirmedRoundEntryAtCampaign && !Number.isNaN(confirmedRoundEntryAtCampaign.getTime());
+  const confirmedRoundEntryOffsetCampaign = hasConfirmedRoundEntryCampaign
+    ? Math.max(0, Math.min(lastOffset, Math.floor((confirmedRoundEntryAtCampaign - startDate) / 86400000)))
+    : null;
+
   const completedChapterOffsets = [];
   const roundEndOffsets = [];
   for (let round = 1; round <= completedRoundCount; round += 1) {
@@ -1698,9 +1720,29 @@ function generateChurchCampaignPlanObject(definition, presetKey, scheduleSetting
       offsets.set(`${log.book}_${log.chapter}`, offset);
     });
     completedChapterOffsets.push(offsets);
-    const actualOffsets = Array.from(offsets.values());
-    const fallbackOffset = roundEndOffsets.length > 0 ? roundEndOffsets[roundEndOffsets.length - 1] + 1 : 0;
-    roundEndOffsets.push(actualOffsets.length > 0 ? Math.max(...actualOffsets) : fallbackOffset);
+
+    // 這一輪的結束界線：目前這次的下一輪(round+1 === roundCount)優先用
+    // 確認進入下一輪的時間點；再往前的歷史交界，仍用下一輪第一次打卡
+    // 那天決定，而不是這一輪自己最後一次打卡的隔天。
+    const prevBoundary = roundEndOffsets.length > 0 ? roundEndOffsets[roundEndOffsets.length - 1] : -1;
+    const isCurrentActiveTransitionCampaign = (round + 1) === roundCount;
+    let boundary;
+    if (isCurrentActiveTransitionCampaign && hasConfirmedRoundEntryCampaign) {
+      boundary = confirmedRoundEntryOffsetCampaign - 1;
+    } else {
+      const nextRoundOffsets = matchingLogs
+        .filter(log => Number(log.round || 1) === round + 1)
+        .map(log => {
+          const readDate = new Date(String(log.read_at || log.readAt || "").slice(0, 10) + "T00:00:00");
+          if (Number.isNaN(readDate.getTime())) return null;
+          return Math.max(0, Math.min(lastOffset, Math.floor((readDate - startDate) / 86400000)));
+        })
+        .filter(offset => offset !== null);
+      boundary = nextRoundOffsets.length > 0
+        ? Math.min(...nextRoundOffsets) - 1
+        : todayOffsetForCampaignRounds - 1;
+    }
+    roundEndOffsets.push(Math.max(prevBoundary + 1, boundary));
   }
   const days = segmentScheduleDaysForRoundCount(
     baseDays,
@@ -1911,22 +1953,40 @@ function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey =
   const maxRounds = getPlanLevelRounds(level);
   const roundCompletionDays = []; // index 0 for round 1, index 1 for round 2, etc. (up to maxRounds-1)
 
+  // 下一遍的排程起點，優先用「使用者點選確認進入下一遍」當下記錄的
+  // current_round_started_at 時間點——不是讀完上一遍的隔天，也不是下一遍
+  // 第一次打卡的日期，避免確認進入前的空檔被當成落後。舊資料還沒有這個
+  // 欄位時，才退回「今天」當起點（同樣不會把等待期算成落後），確保這段
+  // 邏輯對還沒跑過遷移的既有計畫也不會壞掉。
+  start.setHours(0, 0, 0, 0);
+  const todayZeroForRounds = new Date();
+  todayZeroForRounds.setHours(0, 0, 0, 0);
+  const todayOffsetForRounds = Math.max(1, Math.floor((todayZeroForRounds - start) / (1000 * 60 * 60 * 24)) + 1);
+  const confirmedRoundEntryAt = scheduleSettings && scheduleSettings.currentRoundStartedAt
+    ? new Date(String(scheduleSettings.currentRoundStartedAt).slice(0, 10) + "T00:00:00")
+    : null;
+  const hasConfirmedRoundEntry = confirmedRoundEntryAt && !Number.isNaN(confirmedRoundEntryAt.getTime());
+
   for (let r = 1; r < maxRounds; r++) {
-    const roundLogs = (state.readingLogs || []).filter(l => (l.round || 1) === r);
+    const isCurrentActiveTransition = (r + 1) === maxRounds;
+    const prevD = r > 1 ? roundCompletionDays[r - 2] : 0;
     let d_r = null;
-    if (roundLogs.length > 0) {
-      const maxDateStr = roundLogs.reduce((max, log) => log.read_at > max ? log.read_at : max, roundLogs[0].read_at);
-      const maxDate = new Date(maxDateStr.substring(0, 10));
-      maxDate.setHours(0, 0, 0, 0);
-      start.setHours(0, 0, 0, 0);
-      d_r = Math.max(1, Math.floor((maxDate - start) / (1000 * 60 * 60 * 24)) + 1);
-      const prevD = r > 1 ? roundCompletionDays[r - 2] : 0;
+    if (isCurrentActiveTransition && hasConfirmedRoundEntry) {
+      d_r = Math.max(1, Math.floor((confirmedRoundEntryAt - start) / (1000 * 60 * 60 * 24)) + 1);
       d_r = Math.max(d_r, prevD + 1);
-      d_r = Math.min(d_r, totalDays - (maxRounds - r));
     } else {
-      const prevD = r > 1 ? roundCompletionDays[r - 2] : 0;
-      d_r = Math.floor(prevD + (totalDays - prevD) / (maxRounds - r + 1));
+      const nextRoundLogs = (state.readingLogs || []).filter(l => (l.round || 1) === r + 1);
+      if (nextRoundLogs.length > 0) {
+        const minDateStr = nextRoundLogs.reduce((min, log) => log.read_at < min ? log.read_at : min, nextRoundLogs[0].read_at);
+        const minDate = new Date(minDateStr.substring(0, 10));
+        minDate.setHours(0, 0, 0, 0);
+        d_r = Math.max(1, Math.floor((minDate - start) / (1000 * 60 * 60 * 24)) + 1);
+        d_r = Math.max(d_r, prevD + 1);
+      } else {
+        d_r = Math.max(todayOffsetForRounds, prevD + 1);
+      }
     }
+    d_r = Math.min(d_r, totalDays - (maxRounds - r));
     roundCompletionDays.push(d_r);
   }
 

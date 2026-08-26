@@ -1095,7 +1095,7 @@ const db = {
               onData: (rows, meta) => this.applyReadingLogsSnapshot(rows, { notify: true, source: meta.source })
             })
             : state.supabase.from("reading_logs").select("book, chapter, read_at, plan_id, round").eq("user_id", user.id),
-          state.supabase.from("reading_plans").select("id, user_id, global_plan_id, name, start_date, end_date, target_books, preset_key, level, current_round, was_downgraded, downgrade_locked_until, upgrade_prompt_handled, is_fixed, reading_days_per_week, rest_weekdays, created_at").eq("user_id", user.id).order("created_at", { ascending: false })
+          state.supabase.from("reading_plans").select("id, user_id, global_plan_id, name, start_date, end_date, target_books, preset_key, level, current_round, was_downgraded, downgrade_locked_until, upgrade_prompt_handled, current_round_started_at, is_fixed, reading_days_per_week, rest_weekdays, created_at").eq("user_id", user.id).order("created_at", { ascending: false })
         ]);
 
         if (globalPlansResult.error) console.error("❌ global_plans load failed:", globalPlansResult.error);
@@ -1214,9 +1214,11 @@ const db = {
                 readingDaysPerWeek: dbPlan.reading_days_per_week,
                 restWeekdays: dbPlan.rest_weekdays,
                 planId: dbPlan.id,
-                presetKey: key
+                presetKey: key,
+                currentRoundStartedAt: dbPlan.current_round_started_at || null
               });
               planObj.id = dbPlan.id;
+              planObj.currentRoundStartedAt = dbPlan.current_round_started_at || null;
               planObj.globalPlanId = globalPlanId;  // ⚠️ UUID 關聯
               planObj.isFixed = isFixed;
               planObj.is_fixed = isFixed;
