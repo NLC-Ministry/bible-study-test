@@ -11,9 +11,9 @@ import './design/design-system-helpers.js?v=20260826_quiz_remove_duplicate_scope
 import './design/icon-registry.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './design/icons.js';
 import './state.js?v=20260826_quiz_remove_duplicate_scope_filter';
-import './auth.js?v=20260826_quiz_remove_duplicate_scope_filter';
+import './auth.js?v=20260827_proactive_token_refresh';
 import './auth-launch.mjs';
-import './db.js?v=20260827_round_schedule_start_on_actual_entry';
+import './db.js?v=20260827_offline_readonly_synced_at';
 import './utils.js?v=20260827_round_schedule_start_on_actual_entry';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import { initModalManager } from './modules/modal-manager.mjs';
@@ -680,6 +680,20 @@ function paintReaderChromeFromState() {
 let isSwitching = false;
 
 appRouter.switchTab = async function (tabId, options = {}) {
+  // ── Offline reading mode: only the Bible reader tab is reachable. Other
+  // tabs would just show empty/stale data since offline mode only ever has
+  // the small cached snapshot, not a live connection. Redirect (rather than
+  // just refusing) so the initial boot navigation still lands somewhere. ──
+  if (state.offlineMode && tabId !== "reader-view") {
+    if (typeof showToast === "function") {
+      showToast("離線閱讀模式僅能使用「讀經」，其他功能請連線後再試");
+    }
+    if (this.currentTab !== "reader-view") {
+      return this.switchTab("reader-view", options);
+    }
+    return;
+  }
+
   // ── State Lock: block double-tap / rapid navigation ──
   if (isSwitching) {
     console.warn(`[Router] switchTab('${tabId}') blocked — previous transition still in progress.`);
@@ -970,6 +984,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error('Failed to initialize database connection & auth:', err);
   }
 
+  // Arm the proactive refresh timer even when db.init() reused an
+  // already-valid cached session and never touched the tokens itself — that
+  // fast path (see syncNlcSessionWithSupabase) never calls _saveTokens.
+  if (typeof auth !== "undefined" && typeof auth.scheduleProactiveRefresh === "function") {
+    auth.scheduleProactiveRefresh();
+  }
+
   // One authoritative path for reading-log snapshots and mutations.
   const repositoryCache = "indexedDB" in window ? new IndexedDbClient() : null;
   window.pwaDataStore = repositoryCache;
@@ -1075,6 +1096,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   window.addEventListener("offline", () => {
     if (window.db?.tryRestoreOfflineSession?.()) {
       window.showToast?.("已切換為離線閱讀模式");
+      if (appRouter.currentTab !== "reader-view") {
+        appRouter.switchTab("reader-view");
+      }
     }
     applyOfflineBibleVersionFallback({ notifyToast: true });
   });

@@ -3620,6 +3620,14 @@ window.toggleYouVersionChapter = function (checkboxEl, book, chapter, taskRound 
     return;
   }
 
+  if (state.offlineMode) {
+    showToast("離線閱讀模式無法記錄進度，恢復連線後再試");
+    if (checkboxEl) {
+      checkboxEl.checked = isCurrentlyRead;
+    }
+    return;
+  }
+
   if (checkboxEl) {
     checkboxEl.setAttribute("aria-pressed", String(willBeChecked));
     checkboxEl.setAttribute("aria-label", `${book} ${chapter}章，${willBeChecked ? "取消已讀" : "標記已讀"}`);
@@ -4422,6 +4430,9 @@ async function autoMarkInlineReaderTaskRead(expectedTargetKey) {
   if (isInlineReaderTaskRead(task)) return true;
   if (state.inlineReader.autoMarked || state.inlineReader.autoMarkInFlight) return false;
   if (isPlanExpired(task.plan) || task.round < Number(task.plan.currentRound || 1)) return false;
+  // Offline reading mode is read-only for progress — skip silently, matching
+  // this auto-mark flow's existing "no intrusive toast" design.
+  if (state.offlineMode) return false;
 
   const readKey = `isReadR${task.round}`;
   const previousRoundRead = Boolean(task.chapter[readKey]);

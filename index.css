@@ -1565,6 +1565,36 @@ body {
   box-shadow: var(--shadow-none);
 }
 
+/* Offline reading mode banner + nav lock (see js/db.js tryRestoreOfflineSession
+   / setOfflineNavLock). Only the reader tab stays reachable while offline. */
+#offline-mode-banner {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  font-size: 0.875rem;
+  font-weight: var(--type-weight-strong);
+  color: var(--color-warning);
+  background: var(--color-warning-subtle);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 24%, transparent);
+}
+
+body.offline-mode #offline-mode-banner {
+  display: flex;
+}
+
+#offline-mode-banner-synced-at {
+  display: block;
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+body.offline-mode .mobile-nav-btn:not([data-target="reader-view"]),
+body.offline-mode .tab-btn:not([data-target="reader-view"]) {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 /* Theme Toggle Button */
 .icon-btn {
   background: var(--bg-input);

@@ -46,6 +46,25 @@ export function safeStorageSet(key, value, debounceMs = 0) {
 if (typeof window !== "undefined") {
   window.safeStorageSet = safeStorageSet;
 }
+
+// Relative-time label for the offline-mode banner — tells the user how
+// stale the cached plan/reading-log snapshot they're looking at actually is.
+export function formatOfflineSnapshotSyncedAt(isoString) {
+  if (!isoString) return "（尚未有可用的離線快照）";
+  const syncedAtMs = Date.parse(isoString);
+  if (!Number.isFinite(syncedAtMs)) return "（尚未有可用的離線快照）";
+  const diffMs = Date.now() - syncedAtMs;
+  if (diffMs < 60000) return "（資料同步於剛剛）";
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes < 60) return `（資料同步於 ${diffMinutes} 分鐘前）`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `（資料同步於 ${diffHours} 小時前）`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `（資料同步於 ${diffDays} 天前）`;
+}
+if (typeof window !== "undefined") {
+  window.formatOfflineSnapshotSyncedAt = formatOfflineSnapshotSyncedAt;
+}
 /**
  * 依計畫名稱查找目前階段定義的 key。
  * @param {string} name
@@ -288,6 +307,48 @@ const db = {
     }));
   },
 
+  // Distinguishes "the network genuinely could not be reached" from any other
+  // failure (rejected/expired session, malformed response, server-side error).
+  // Only the former justifies falling back to the cached offline snapshot —
+  // everything else has a real answer (login gate, retry, error banner) and
+  // must not be silently disguised as "offline reading mode".
+  isNetworkUnreachableError(err) {
+    if (!err) return false;
+    // auth.getValidAccessToken() sets this specifically when Logto's token
+    // endpoint could not be reached at all (see auth.js refreshTokens()) —
+    // as opposed to a reachable endpoint that rejected the refresh token.
+    if (err.code === "OFFLINE_AUTH_UNAVAILABLE") return true;
+    // A bare fetch() throws TypeError when the request never reaches a
+    // server (DNS failure, no connection, blocked preflight) — unlike an
+    // HTTP error response (401/409/500/…), which proves the network path
+    // works and the failure is coming from the server itself.
+    if (err instanceof TypeError) return true;
+    return false;
+  },
+
+  // Locks every tab except the Bible reader while state.offlineMode is true —
+  // offline data is only ever the small cached snapshot, so plans/stats/admin
+  // views would otherwise show confusingly empty or stale content. Only the
+  // reader is safe to leave open, since it already serves whatever chapters
+  // were actually downloaded for offline use.
+  setOfflineNavLock(locked) {
+    document.body.classList.toggle("offline-mode", !!locked);
+    document.querySelectorAll(".mobile-nav-btn, .tab-btn").forEach(btn => {
+      const isReaderTab = btn.getAttribute("data-target") === "reader-view";
+      if (locked && !isReaderTab) {
+        btn.setAttribute("aria-disabled", "true");
+      } else {
+        btn.removeAttribute("aria-disabled");
+      }
+    });
+    if (locked) {
+      const syncedAtEl = document.getElementById("offline-mode-banner-synced-at");
+      if (syncedAtEl) {
+        syncedAtEl.textContent = formatOfflineSnapshotSyncedAt(localStorage.getItem("offline_snapshot_synced_at"));
+      }
+    }
+  },
+
   tryRestoreOfflineSession() {
     if (localStorage.getItem("offline_reading_enabled") === "false") return false;
     let identity = null;
@@ -308,6 +369,7 @@ const db = {
     }
     this.updateAuthUI({ user: { id: identity.profile.id, offline: true } });
     this.refreshRoleDependentUI();
+    this.setOfflineNavLock(true);
     return true;
   },
 
@@ -473,10 +535,16 @@ const db = {
               sessionSync = await this.syncNlcSessionWithSupabase(true);
             } catch (syncErr) {
               console.warn("⚠️ NLC session sync warning:", syncErr);
-              if (this.tryRestoreOfflineSession()) return true;
+              // Only a genuine connectivity failure falls back to the cached
+              // offline snapshot. A rejected/expired session (auth.js already
+              // cleared the stored tokens in that case) or a server-side
+              // error must fall through to the real login gate below instead
+              // of being silently disguised as "offline reading mode".
+              if (this.isNetworkUnreachableError(syncErr) && this.tryRestoreOfflineSession()) return true;
             }
             const block = getUserOnboardingBlock(state.currentUser);
-            const copy = getLoginGateCopy(block, { hasTokens: true });
+            const hasValidTokens = auth.isLoggedIn();
+            const copy = getLoginGateCopy(block, { hasTokens: hasValidTokens });
             const loginGate = document.getElementById("login-gate");
             const appLayout = document.querySelector(".app-layout");
             const titleEl = loginGate && loginGate.querySelector(".login-title");
@@ -490,7 +558,7 @@ const db = {
             }
             applyLoginGateView({
               block,
-              hasTokens: true,
+              hasTokens: hasValidTokens,
               loginGate,
               appLayout,
               titleEl,
@@ -530,7 +598,9 @@ const db = {
         return false;
       } catch (e) {
         console.error("Supabase connection failed:", e);
-        if (this.tryRestoreOfflineSession()) return true;
+        // Same rule as above: only fall back to offline mode when the network
+        // itself is actually unreachable, not for a server-side/config error.
+        if (this.isNetworkUnreachableError(e) && this.tryRestoreOfflineSession()) return true;
         const message = "\u767b\u5165\u540c\u6b65\u5931\u6557\uFF08" + (e.message || e) + "\uFF09\uFF0C\u8acb\u91cd\u65b0\u767b\u5165\u3002";
         this.showConnectionError(message);
         return false;
@@ -903,6 +973,7 @@ const db = {
     }
     this.applyNlcProfile(payload.profile, payload.locked_fields || []);
     this.storeOfflineIdentity(payload.profile);
+    this.setOfflineNavLock(false);
     return payload;
   },
 
@@ -1110,10 +1181,12 @@ const db = {
         ].some(result => result.error);
 
         // 處理 global_plans
-        if (globalPlansResult.data) {
-          state.globalPlans = globalPlansResult.data.map(mapGlobalPlanRecord);
-        } else {
-          state.globalPlans = [];
+        // ⚠️ 只有在這次查詢真的成功時才覆蓋既有資料。閒置一段時間後 session
+        // 過期、edge function 暫時降級等暫時性失敗，都不該把畫面砍成空白
+        // 「未選擇計畫」——寧可暫時顯示上一次成功載入的舊資料，也不要用一次
+        // 失敗的查詢結果洗掉使用者原本看得到的內容。
+        if (!globalPlansResult.error) {
+          state.globalPlans = globalPlansResult.data ? globalPlansResult.data.map(mapGlobalPlanRecord) : [];
         }
 
         // 1. Load / sync profile
@@ -1169,79 +1242,98 @@ const db = {
         }
 
         // 2. Load Reading Logs
+        // ⚠️ 查詢失敗時保留既有的 state.readingLogs，不要用空陣列洗掉打卡紀錄。
         const rawLogs = logsResult.data || [];
-        this.applyReadingLogsSnapshot(rawLogs);
-
-        // 3. Load Active Reading Plans
-        const plans = plansResult.data || [];
-        state.activePlans = [];
-        if (plans && plans.length > 0) {
-          const visibleGlobalPlanKeys = new Set((state.globalPlans || []).flatMap(plan =>
-            [plan.id, plan.globalPlanId, plan.presetKey].filter(Boolean).map(String)
-          ));
-          const canViewHiddenStages = typeof canManageHiddenPlans === "function" && canManageHiddenPlans();
-
-          plans.forEach(dbPlan => {
-            try {
-              const globalPlanId = dbPlan.global_plan_id || null;
-              const key = dbPlan.preset_key
-                || (globalPlanId ? globalPlanId : null)
-                || getPresetKeyByName(dbPlan.name);
-              const presetStageMatch = String(dbPlan.preset_key || "").match(/^church_stage_(\d{2})$/);
-              const idStageMatch = String(globalPlanId || "").match(/^00000000-0000-0000-c026-(\d{12})$/);
-              const campaignStageNo = Number(presetStageMatch && presetStageMatch[1]
-                || idStageMatch && idStageMatch[1]
-                || 0);
-              const enrollmentKeys = [globalPlanId, dbPlan.preset_key].filter(Boolean).map(String);
-              const hasVisibleStageDefinition = enrollmentKeys.some(item => visibleGlobalPlanKeys.has(item));
-              if (!canViewHiddenStages
-                && campaignStageNo >= 2
-                && campaignStageNo <= 10
-                && !hasVisibleStageDefinition) {
-                return;
-              }
-
-              const isFixed = dbPlan.is_fixed !== false;
-              const storedRound = Number(dbPlan.current_round || 1);
-              const planLogs = rawLogs.filter(log => log.plan_id === dbPlan.id);
-              const confirmedRound = getConfirmedReadingRound({
-                currentRound: storedRound,
-                upgradePromptHandled: dbPlan.upgrade_prompt_handled,
-                logs: planLogs
-              });
-              const effectiveLevel = confirmedRound === storedRound ? (dbPlan.level || 'normal') : 'normal';
-              const planObj = generatePlanObject(dbPlan.name, dbPlan.start_date, dbPlan.end_date, dbPlan.target_books, key, effectiveLevel, isFixed, {
-                readingDaysPerWeek: dbPlan.reading_days_per_week,
-                restWeekdays: dbPlan.rest_weekdays,
-                planId: dbPlan.id,
-                presetKey: key,
-                currentRoundStartedAt: dbPlan.current_round_started_at || null
-              });
-              planObj.id = dbPlan.id;
-              planObj.currentRoundStartedAt = dbPlan.current_round_started_at || null;
-              planObj.globalPlanId = globalPlanId;  // ⚠️ UUID 關聯
-              planObj.isFixed = isFixed;
-              planObj.is_fixed = isFixed;
-              const linkedGlobalPlan = (state.globalPlans || []).find(p => p.id === globalPlanId || p.presetKey === key || p.name === dbPlan.name);
-              planObj.isHidden = Boolean(linkedGlobalPlan && (linkedGlobalPlan.isHidden || linkedGlobalPlan.is_hidden));
-              planObj.level = effectiveLevel;
-              planObj.currentRound = confirmedRound;
-              planObj.wasDowngraded = dbPlan.was_downgraded || false;
-              planObj.downgradeLockedUntil = dbPlan.downgrade_locked_until || getLocalPlanDowngradeLock(planObj);
-              planObj.upgradePromptHandled = !!dbPlan.upgrade_prompt_handled;
-              state.activePlans.push(planObj);
-            } catch (err) {
-              console.error("Failed to parse dbPlan:", dbPlan, err);
-            }
-          });
-
-          state.activePlan = selectMostRecentActivePlan(state.activePlans);
-          calculateAllPlansProgress();
-        } else {
-          state.activePlan = null;
-          state.activePlans = [];
+        if (!logsResult.error) {
+          this.applyReadingLogsSnapshot(rawLogs);
         }
 
+        // 3. Load Active Reading Plans
+        // ⚠️ 同理：查詢失敗（例如背景 session 過期）時保留既有的
+        // state.activePlans / state.activePlan，避免畫面短暫變成「未選擇計畫」，
+        // 誤導使用者以為計畫真的不見了。只有真的拿到新資料時才重建整個列表。
+        if (!plansResult.error) {
+          const plans = plansResult.data || [];
+          state.activePlans = [];
+          if (plans && plans.length > 0) {
+            const visibleGlobalPlanKeys = new Set((state.globalPlans || []).flatMap(plan =>
+              [plan.id, plan.globalPlanId, plan.presetKey].filter(Boolean).map(String)
+            ));
+            const canViewHiddenStages = typeof canManageHiddenPlans === "function" && canManageHiddenPlans();
+
+            plans.forEach(dbPlan => {
+              try {
+                const globalPlanId = dbPlan.global_plan_id || null;
+                const key = dbPlan.preset_key
+                  || (globalPlanId ? globalPlanId : null)
+                  || getPresetKeyByName(dbPlan.name);
+                const presetStageMatch = String(dbPlan.preset_key || "").match(/^church_stage_(\d{2})$/);
+                const idStageMatch = String(globalPlanId || "").match(/^00000000-0000-0000-c026-(\d{12})$/);
+                const campaignStageNo = Number(presetStageMatch && presetStageMatch[1]
+                  || idStageMatch && idStageMatch[1]
+                  || 0);
+                const enrollmentKeys = [globalPlanId, dbPlan.preset_key].filter(Boolean).map(String);
+                const hasVisibleStageDefinition = enrollmentKeys.some(item => visibleGlobalPlanKeys.has(item));
+                if (!canViewHiddenStages
+                  && campaignStageNo >= 2
+                  && campaignStageNo <= 10
+                  && !hasVisibleStageDefinition) {
+                  return;
+                }
+
+                const isFixed = dbPlan.is_fixed !== false;
+                const storedRound = Number(dbPlan.current_round || 1);
+                const planLogs = rawLogs.filter(log => log.plan_id === dbPlan.id);
+                const confirmedRound = getConfirmedReadingRound({
+                  currentRound: storedRound,
+                  upgradePromptHandled: dbPlan.upgrade_prompt_handled,
+                  logs: planLogs
+                });
+                const effectiveLevel = confirmedRound === storedRound ? (dbPlan.level || 'normal') : 'normal';
+                const planObj = generatePlanObject(dbPlan.name, dbPlan.start_date, dbPlan.end_date, dbPlan.target_books, key, effectiveLevel, isFixed, {
+                  readingDaysPerWeek: dbPlan.reading_days_per_week,
+                  restWeekdays: dbPlan.rest_weekdays,
+                  planId: dbPlan.id,
+                  presetKey: key,
+                  currentRoundStartedAt: dbPlan.current_round_started_at || null
+                });
+                planObj.id = dbPlan.id;
+                planObj.currentRoundStartedAt = dbPlan.current_round_started_at || null;
+                planObj.globalPlanId = globalPlanId;  // ⚠️ UUID 關聯
+                planObj.isFixed = isFixed;
+                planObj.is_fixed = isFixed;
+                const linkedGlobalPlan = (state.globalPlans || []).find(p => p.id === globalPlanId || p.presetKey === key || p.name === dbPlan.name);
+                planObj.isHidden = Boolean(linkedGlobalPlan && (linkedGlobalPlan.isHidden || linkedGlobalPlan.is_hidden));
+                planObj.level = effectiveLevel;
+                planObj.currentRound = confirmedRound;
+                planObj.wasDowngraded = dbPlan.was_downgraded || false;
+                planObj.downgradeLockedUntil = dbPlan.downgrade_locked_until || getLocalPlanDowngradeLock(planObj);
+                planObj.upgradePromptHandled = !!dbPlan.upgrade_prompt_handled;
+                state.activePlans.push(planObj);
+              } catch (err) {
+                console.error("Failed to parse dbPlan:", dbPlan, err);
+              }
+            });
+
+            state.activePlan = selectMostRecentActivePlan(state.activePlans);
+            calculateAllPlansProgress();
+          } else {
+            state.activePlan = null;
+            state.activePlans = [];
+          }
+        }
+
+        // Keep a small offline-reading snapshot in sync on every fully
+        // successful load. tryRestoreOfflineSession()/loadOfflineSnapshot()
+        // fall back to exactly these keys when the network is genuinely
+        // unreachable — without writing them here, that fallback used to
+        // always show empty plans for real NLC/Supabase-mode users, since
+        // nothing in this success path ever touched them.
+        if (!plansResult.error && !logsResult.error) {
+          safeStorageSet("active_reading_plans", state.activePlans, 300);
+          safeStorageSet("reading_logs", state.readingLogs, 300);
+          localStorage.setItem("offline_snapshot_synced_at", new Date().toISOString());
+        }
 
         this.calculateStreak();
         if (typeof checkAchievements !== 'undefined') {
@@ -1656,6 +1748,16 @@ const db = {
 
   // Save log to DB/LocalStorage
   async logChapterRead(book, chapter, isChecked, roundOverride = null, planOverride = null) {
+    // Offline reading mode only ever has the cached 30-day-old snapshot —
+    // there is no live session to write through, and nothing queues these
+    // writes for later (unlike the authenticated-online IndexedDB queue).
+    // Fail fast and clearly instead of attempting (and always losing) a
+    // network round-trip.
+    if (state.offlineMode) {
+      const offlineError = new Error("離線閱讀模式無法記錄進度，恢復連線後再試");
+      offlineError.code = "OFFLINE_READ_ONLY";
+      throw offlineError;
+    }
     console.log('🏗️ [系統審計] 進入資料讀寫，當前操作類型：資料庫寫入進度', '資料版本:', state.dataVersion);
     const todayISO = new Date().toISOString();
     const targetPlan = planOverride || state.activePlan;

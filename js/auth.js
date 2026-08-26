@@ -620,6 +620,40 @@ const auth = {
     if (tokenResponse.expires_in) {
       localStorage.setItem(this.keys.expiresAt, String(Date.now() + tokenResponse.expires_in * 1000));
     }
+    this.scheduleProactiveRefresh();
+  },
+
+  _proactiveRefreshTimer: null,
+
+  // Keeps the access token refreshed slightly ahead of its real expiry so an
+  // app left open — but idle, with nothing triggering the usual
+  // reactive refresh-on-401 path — never silently drifts into an expired
+  // token. Only fires while the tab is visible; background tabs can have
+  // their timers throttled or fully suspended by the browser, so a
+  // visibilitychange listener (registered once, at the bottom of this file)
+  // re-arms this every time the tab is foregrounded again, which also covers
+  // the case where the scheduled moment was missed entirely while hidden.
+  scheduleProactiveRefresh() {
+    if (typeof window === "undefined") return;
+    if (this._proactiveRefreshTimer) {
+      clearTimeout(this._proactiveRefreshTimer);
+      this._proactiveRefreshTimer = null;
+    }
+    const refreshToken = localStorage.getItem(this.keys.refreshToken);
+    const expiresAt = parseInt(localStorage.getItem(this.keys.expiresAt) || "0", 10);
+    if (!refreshToken || !expiresAt) return;
+
+    const REFRESH_BUFFER_MS = 5 * 60 * 1000;
+    const delay = Math.max(0, expiresAt - Date.now() - REFRESH_BUFFER_MS);
+
+    this._proactiveRefreshTimer = setTimeout(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        // Backgrounded — let the visibilitychange listener re-arm this on
+        // return instead of refreshing while nothing is watching.
+        return;
+      }
+      this.refreshTokens().finally(() => this.scheduleProactiveRefresh());
+    }, delay);
   },
 
   _refreshPromise: null,
@@ -775,3 +809,12 @@ const auth = {
 };
 
 window.auth = auth;
+
+if (typeof document !== "undefined") {
+  // Re-arm the proactive refresh timer whenever the tab regains focus —
+  // background tabs can have setTimeout throttled or fully suspended, so the
+  // originally scheduled firing may never actually happen while hidden.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") auth.scheduleProactiveRefresh();
+  });
+}

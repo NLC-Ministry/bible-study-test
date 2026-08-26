@@ -162,6 +162,10 @@ async function autoMarkCurrentPlanReaderTaskRead(expectedTargetKey) {
   if (state.readerState.autoMarked || state.readerState.autoMarkInFlight) return false;
   if (taskContext.plan && isPlanExpired(taskContext.plan)) return false;
   if (taskContext.round < Number(taskContext.plan.currentRound || 1)) return false;
+  // Offline reading mode is read-only for progress — skip silently rather
+  // than showing a toast, matching this auto-mark flow's existing "never
+  // interrupt with an intrusive subtitle/toast" design.
+  if (state.offlineMode) return false;
 
   const planDayChKey = `${taskContext.book.name}_${state.readerState.chapter}`;
   const readKey = `isReadR${taskContext.round}`;
@@ -578,6 +582,11 @@ export function initReaderControls() {
 
       if (state.activePlan && isPlanExpired(state.activePlan)) {
         showToast("此計畫已過期，無法再修改打卡紀錄。");
+        return;
+      }
+
+      if (state.offlineMode) {
+        showToast("離線閱讀模式無法記錄進度，恢復連線後再試");
         return;
       }
 
