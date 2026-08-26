@@ -1298,6 +1298,17 @@ const db = {
           }
         }
 
+        // Keep a small offline-reading snapshot in sync on every fully
+        // successful load. tryRestoreOfflineSession()/loadOfflineSnapshot()
+        // fall back to exactly these keys when the network is genuinely
+        // unreachable — without writing them here, that fallback used to
+        // always show empty plans for real NLC/Supabase-mode users, since
+        // nothing in this success path ever touched them.
+        if (!plansResult.error && !logsResult.error) {
+          safeStorageSet("active_reading_plans", state.activePlans, 300);
+          safeStorageSet("reading_logs", state.readingLogs, 300);
+          localStorage.setItem("offline_snapshot_synced_at", new Date().toISOString());
+        }
 
         this.calculateStreak();
         if (typeof checkAchievements !== 'undefined') {
