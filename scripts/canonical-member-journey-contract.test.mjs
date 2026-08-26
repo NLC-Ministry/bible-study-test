@@ -145,12 +145,21 @@ describe('canonical Bible user-onboarding door', () => {
     }, { now })).toMatchObject({ reason: 'membership_record_inconsistent' });
   });
 
-  it('fails closed after the projection is older than 15 minutes', () => {
+  it('tolerates a projection up to 60 minutes old', () => {
     expect(getUserOnboardingBlock({
       ...base,
       member_context_membership_lifecycle_state: 'approved',
       member_context_required_action: 'none',
       member_context_synced_at: '2026-08-14T11:40:00.000Z',
+    }, { now })).toBeNull();
+  });
+
+  it('fails closed after the projection is older than 60 minutes', () => {
+    expect(getUserOnboardingBlock({
+      ...base,
+      member_context_membership_lifecycle_state: 'approved',
+      member_context_required_action: 'none',
+      member_context_synced_at: '2026-08-14T10:40:00.000Z',
     }, { now })).toMatchObject({ reason: 'member_context_unavailable' });
   });
 });

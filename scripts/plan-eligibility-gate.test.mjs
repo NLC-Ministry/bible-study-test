@@ -53,8 +53,11 @@ describe("profile name heuristic (js/utils.js)", () => {
     const fn = fnMatch[0];
     expect(fn).toMatch(/getUserOnboardingBlock\(u\)|getCanonicalMemberPrerequisiteBlock\(u\)/);
     expect(fn).not.toContain('!String(u.pastoral_zone || "").trim()');
-    // Hub-complete (null user-completion block) wins over local name flags.
-    expect(fn).toMatch(/if \(!canonicalBlock\) return null|return getUserOnboardingBlock\(u\);/);
+    // Hub-complete (null canonical block) wins over local name flags, and is
+    // remembered so a later stale-timestamp block doesn't re-interrupt an
+    // already-verified session.
+    expect(fn).toMatch(/if \(!canonicalBlock\) \{[\s\S]*?return null;[\s\S]*?\}/);
+    expect(fn).toContain("planEligibilityVerifiedThisSession");
     expect(fn).not.toContain("getProfileNameFlags");
     expect(utils).toContain("window.getPlanEligibilityBlock = getPlanEligibilityBlock");
     // Demo accounts must not be locked out of a feature they use for local/dev testing.

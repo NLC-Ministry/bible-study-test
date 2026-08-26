@@ -10,7 +10,7 @@ const KNOWN_REQUIRED_ACTIONS = new Set([
 
 const KNOWN_MEMBERSHIP_STATES = new Set(['none', 'pending', 'approved', 'inactive']);
 const KNOWN_PLACEMENT_STATES = new Set(['missing', 'active', 'invalid']);
-const DEFAULT_MAX_PROJECTION_AGE_MS = 15 * 60 * 1000;
+const DEFAULT_MAX_PROJECTION_AGE_MS = 60 * 60 * 1000;
 
 const USER_COMPLETE_ACTIONS = new Set([
   'await_membership_review',

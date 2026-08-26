@@ -274,10 +274,26 @@ window.isProfileNameValid = isProfileNameValid;
  * @param {object|null} [user]
  * @returns {{reason: string, flags?: string[], requiredAction?: string, requiredActionUrl?: string|null}|null}
  */
+// Once the Hub context has been confirmed fine at least once in this
+// session, a later member_context_unavailable (the background sync
+// timestamp merely looking stale) shouldn't interrupt the user again —
+// only a genuine data issue (missing profile, unsubmitted membership,
+// inactive membership, etc.) should. Resets naturally on logout/reload
+// since auth.logout() does a full page navigation.
+let planEligibilityVerifiedThisSession = false;
+
 function getPlanEligibilityBlock(user) {
   const u = user || (typeof state !== "undefined" ? state.currentUser : null) || {};
   if (!u || u.is_demo) return null;
-  return getUserOnboardingBlock(u);
+  const canonicalBlock = getUserOnboardingBlock(u);
+  if (!canonicalBlock) {
+    planEligibilityVerifiedThisSession = true;
+    return null;
+  }
+  if (canonicalBlock.reason === "member_context_unavailable" && planEligibilityVerifiedThisSession) {
+    return null;
+  }
+  return canonicalBlock;
 }
 window.getPlanEligibilityBlock = getPlanEligibilityBlock;
 
