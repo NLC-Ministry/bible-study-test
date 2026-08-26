@@ -6217,7 +6217,6 @@ body.dark-theme .pastoral-race-progress {
 }
 .plan-tasks-list {
   gap: 0.38rem !important;
-  max-height: min(34vh, 300px) !important;
   padding-right: 0.1rem !important;
 }
 
@@ -6745,6 +6744,19 @@ body.admin-quiz-editor-open {
   margin-top: 0.75rem;
 }
 
+.admin-quiz-custom-copy-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.admin-quiz-custom-copy-label {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
 .admin-quiz-custom-question legend {
   display: flex;
   align-items: center;
@@ -6921,10 +6933,6 @@ body.admin-quiz-editor-open {
     flex-basis: 52px;
     height: 56px;
   }
-  .plan-tasks-list {
-    max-height: calc(100dvh - 500px) !important;
-    min-height: 180px;
-  }
   .plan-detail-compact .plan-task-item {
     min-height: 48px;
     padding: 0.55rem 0.72rem;
@@ -6946,10 +6954,6 @@ body.admin-quiz-editor-open {
   }
   .plan-detail-compact .date-card .date-lbl {
     font-size: 0.875rem;
-  }
-  .plan-tasks-list {
-    max-height: calc(100dvh - 410px) !important;
-    min-height: 170px;
   }
 }
 /* Group sub-navigation visibility is owned exclusively by PlanPageController. */
