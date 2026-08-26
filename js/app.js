@@ -11,7 +11,7 @@ import './design/design-system-helpers.js?v=20260826_quiz_remove_duplicate_scope
 import './design/icon-registry.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './design/icons.js';
 import './state.js?v=20260826_quiz_remove_duplicate_scope_filter';
-import './auth.js?v=20260826_quiz_remove_duplicate_scope_filter';
+import './auth.js?v=20260827_proactive_token_refresh';
 import './auth-launch.mjs';
 import './db.js?v=20260827_offline_trigger_network_only';
 import './utils.js?v=20260827_round_schedule_start_on_actual_entry';
@@ -982,6 +982,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     initialSessionSyncSucceeded = await db.init() === true;
   } catch (err) {
     console.error('Failed to initialize database connection & auth:', err);
+  }
+
+  // Arm the proactive refresh timer even when db.init() reused an
+  // already-valid cached session and never touched the tokens itself — that
+  // fast path (see syncNlcSessionWithSupabase) never calls _saveTokens.
+  if (typeof auth !== "undefined" && typeof auth.scheduleProactiveRefresh === "function") {
+    auth.scheduleProactiveRefresh();
   }
 
   // One authoritative path for reading-log snapshots and mutations.
