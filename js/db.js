@@ -891,6 +891,16 @@ const db = {
     state.supabase = this.createNlcDataClient();
     state.offlineMode = false;
     document.documentElement.dataset.appConnection = "online";
+    // tryRestoreOfflineSession() flips this badge to "離線閱讀" styling; any
+    // successful sync (reconnect, manual retry, focus refresh) must flip it
+    // back, or the app can be fully back online — correct data, correct
+    // permissions — while the badge still visually claims offline.
+    const statusBadge = document.getElementById("connection-status");
+    if (statusBadge) {
+      statusBadge.className = "status-badge online";
+      const label = statusBadge.querySelector(".status-text");
+      if (label) label.textContent = "線上模式";
+    }
     this.applyNlcProfile(payload.profile, payload.locked_fields || []);
     this.storeOfflineIdentity(payload.profile);
     return payload;

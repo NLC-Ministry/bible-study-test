@@ -1104,6 +1104,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (appRouter.currentTab) await appRouter.switchTab(appRouter.currentTab);
     } catch (error) {
       console.warn("Online session revalidation failed", error);
+      // Only send the user back to the login gate once auth itself has
+      // actually given up — auth.isLoggedIn() only goes false after a
+      // confirmed rejection (refreshTokens' authRejected path clears stored
+      // tokens). A transient failure right as connectivity returns (spotty
+      // signal, the reconnect event firing before the network is truly
+      // usable) leaves tokens intact, so isLoggedIn() stays true and this
+      // does nothing — the next natural retry (focus, tab switch) picks it
+      // back up instead of yanking the user out of what they were doing.
+      if (typeof auth.isLoggedIn === "function" && !auth.isLoggedIn() && typeof window.db.showConnectionError === "function") {
+        window.db.showConnectionError("重新連線後登入狀態已失效，請重新登入。");
+      }
     }
   });
 
