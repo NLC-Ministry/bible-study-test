@@ -3878,6 +3878,9 @@ window.triggerPlanUpgradeFlow = async function() {
     plan.downgradeLockedUntil = null;
     plan.lastUpgradedRound = currentRound;
     plan.upgradePromptHandled = true;
+    // 下一遍的排程從「現在點選確認」這一刻算起，不是讀完上一遍的隔天，
+    // 也不是之後第一次打卡下一遍的日期。
+    plan.currentRoundStartedAt = new Date().toISOString();
 
     rebuildPlanScheduleForLevel(plan, nextLevel);
     await persistPlanLevelState(plan);

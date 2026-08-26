@@ -13,8 +13,8 @@ import './design/icons.js';
 import './state.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './auth.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './auth-launch.mjs';
-import './db.js?v=20260826_quiz_remove_duplicate_scope_filter';
-import './utils.js?v=20260826_quiz_remove_duplicate_scope_filter';
+import './db.js?v=20260827_round_schedule_start_on_actual_entry';
+import './utils.js?v=20260827_round_schedule_start_on_actual_entry';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import { initModalManager } from './modules/modal-manager.mjs';
 
