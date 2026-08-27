@@ -999,6 +999,8 @@ class ExamRunner {
       return ra - rb || (a.position || 0) - (b.position || 0);
     });
 
+    const wrongCount = answers.filter((a) => a.section !== "shortanswer" && a.autoCorrect === false).length;
+
     this.el.innerHTML = `
       <div class="glass-card" style="padding:1.4rem 1.5rem;">
         <h3 style="margin:0 0 .5rem;">${esc(this.paper.title)}</h3>
@@ -1006,25 +1008,84 @@ class ExamRunner {
           測驗已送出，記錄以第一次為準、不可重作。<br>
           自動計分（一～五大題）：<strong>${auto}</strong> 分
           ${graded ? `　｜　簡答題：<strong>${d.manualScore ?? "—"}</strong> 分　｜　總分：<strong>${total ?? "—"}</strong> 分`
-                   : "<br>簡答題（第六大題）待管理員人工評分，完成後會通知你。"}
+                   : "<br>簡答題（第六大題）待管理員人工評分，成績公布後即可在此查看完整解答與正解。"}
         </div>
-        ${answers.length ? `
+        ${!answers.length ? "" : graded ? `
+          <p class="exam-result__hint">成績已公布。一～五大題答錯 ${wrongCount} 題，點開可看題目、你的作答與正解。</p>
           <details open>
-            <summary class="exam-result__summary">逐題結果（依大題順序）</summary>
-            <div class="exam-result__list">
-              ${answers.map((a) => `<div class="exam-result__row">
-                ${esc(SECTION_TITLE[a.section] || a.section)}　第 ${a.position} 題：
-                ${a.section === "shortanswer"
-                  ? `${a.awardedPoints != null ? `<strong>${a.awardedPoints} 分</strong>` : "待批改"}${
-                      a.graderComment ? `<br>評語：${esc(a.graderComment)}` : ""}`
-                  : (a.autoCorrect ? '<span class="exam-ok">✓ 答對</span>' : '<span class="exam-bad">✗ 答錯</span>')}
-              </div>`).join("")}
-            </div>
-          </details>` : ""}
+            <summary class="exam-result__summary">逐題檢討（依大題順序）</summary>
+            <div class="exam-result__list">${answers.map((a) => examResultRow(a, true)).join("")}</div>
+          </details>` : `
+          <details>
+            <summary class="exam-result__summary">先看一～五大題對錯</summary>
+            <div class="exam-result__list">${answers.map((a) => examResultRow(a, false)).join("")}</div>
+          </details>`}
         <button type="button" class="secondary-btn" id="exam-result-close" style="margin-top:1rem;">關閉</button>
       </div>`;
     this.el.querySelector("#exam-result-close")?.addEventListener("click", () => this.destroy());
   }
+}
+
+// ── 成績檢討：把 canonical 作答 / 正解翻成看得懂的文字 ──
+function describeExamValue(section, payload, value) {
+  const p = payload || {};
+  if (value === undefined || value === null) return "（未作答）";
+  if (section === "truefalse") return value === true ? "O（對）" : value === false ? "X（錯）" : "（未作答）";
+  if (section === "single") {
+    const t = (p.options || [])[value];
+    return t == null ? "（未作答）" : esc(t);
+  }
+  if (section === "multiple") {
+    const arr = Array.isArray(value) ? value : [];
+    if (!arr.length) return "（未作答）";
+    return arr.map((i) => esc((p.options || [])[i] ?? i)).join("、");
+  }
+  if (section === "matching") {
+    const lt = Object.fromEntries((p.left || []).map((x) => [x.id, x.text]));
+    const rt = Object.fromEntries((p.right || []).map((x) => [x.id, x.text]));
+    const ent = Object.entries(value || {});
+    if (!ent.length) return "（未作答）";
+    return ent.map(([l, r]) => `${esc(lt[l] ?? l)} → ${esc(rt[r] ?? r)}`).join("；");
+  }
+  if (section === "ordering") {
+    const it = Object.fromEntries((p.items || []).map((x) => [x.id, x.text]));
+    const arr = Array.isArray(value) ? value : [];
+    if (!arr.length) return "（未作答）";
+    return arr.map((id) => esc(it[id] ?? id)).join(" → ");
+  }
+  return esc(String(value)); // shortanswer：作答全文
+}
+
+function examResultRow(a, graded) {
+  const head = `${esc(SECTION_TITLE[a.section] || a.section)}　第 ${a.position} 題`;
+
+  if (a.section === "shortanswer") {
+    const scored = a.awardedPoints != null;
+    const ref = graded && a.payload && a.payload.referenceAnswer
+      ? `<p class="exam-result__ln"><span class="exam-result__k">參考答案：</span>${esc(a.payload.referenceAnswer)}</p>` : "";
+    const rubric = graded && a.payload && (a.payload.rubric || []).length
+      ? `<p class="exam-result__ln"><span class="exam-result__k">評分要點：</span>${(a.payload.rubric).map(esc).join("／")}</p>` : "";
+    return `<div class="exam-result__row">
+      <p class="exam-result__q">${head}（${a.points} 分）</p>
+      <p class="exam-result__ln"><span class="exam-result__k">你的作答：</span>${esc(a.response || "（未作答）")}</p>
+      <p class="exam-result__ln"><span class="exam-result__k">得分：</span>${scored ? `<strong>${a.awardedPoints} / ${a.points}</strong>` : "待批改"}</p>
+      ${a.graderComment ? `<p class="exam-result__ln"><span class="exam-result__k">評語：</span>${esc(a.graderComment)}</p>` : ""}
+      ${ref}${rubric}
+    </div>`;
+  }
+
+  const ok = a.autoCorrect === true;
+  if (!graded || ok) {
+    return `<div class="exam-result__row"><span class="exam-result__q-inline">${head}：</span>${
+      ok ? '<span class="exam-ok">✓ 答對</span>' : '<span class="exam-bad">✗ 答錯</span>'}</div>`;
+  }
+  // graded 且答錯 → 展開題目、你的作答、正解
+  return `<div class="exam-result__row exam-result__row--wrong">
+    <p class="exam-result__q">${head}　<span class="exam-bad">✗ 答錯</span></p>
+    ${a.payload && a.payload.stem ? `<p class="exam-result__ln">${esc(a.payload.stem)}</p>` : ""}
+    <p class="exam-result__ln"><span class="exam-result__k">你的作答：</span>${describeExamValue(a.section, a.payload, a.response)}</p>
+    <p class="exam-result__ln exam-ok"><span class="exam-result__k">正　　解：</span>${describeExamValue(a.section, a.payload, a.answerKey)}</p>
+  </div>`;
 }
 
 export default { renderExamPanel, mountExamRunner };

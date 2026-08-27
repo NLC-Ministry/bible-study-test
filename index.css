@@ -14818,8 +14818,14 @@ textarea::placeholder {
 
 .exam-result__banner { border: 1px solid var(--color-brand); background: color-mix(in srgb, var(--color-brand) 8%, transparent); border-radius: 12px; padding: 0.85rem 1rem; font-size: 0.9375rem; line-height: 1.7; color: var(--text-primary); }
 .exam-result__list { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
-.exam-result__row { font-size: 0.875rem; border: 1px solid var(--border-card); border-radius: 8px; padding: 0.5rem 0.65rem; color: var(--text-primary); line-height: 1.6; }
+.exam-result__row { font-size: 0.9375rem; border: 1px solid var(--border-card); border-radius: 8px; padding: 0.5rem 0.7rem; color: var(--text-primary); line-height: 1.7; }
+.exam-result__row--wrong { border-color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 6%, transparent); }
 .exam-result__summary { cursor: pointer; font-size: 0.9375rem; margin-top: 1rem; }
+.exam-result__hint { font-size: 0.9375rem; color: var(--text-secondary); margin: 0.75rem 0 0.25rem; line-height: 1.6; }
+.exam-result__q { margin: 0 0 0.3rem; font-weight: var(--type-weight-strong, 600); }
+.exam-result__q-inline { color: var(--text-secondary); }
+.exam-result__ln { margin: 0.15rem 0; }
+.exam-result__k { color: var(--text-muted); }
 .exam-ok { color: var(--color-success-foreground); }
 .exam-bad { color: var(--color-danger-foreground); }
 .exam-closed-card { padding: 1.25rem; }
