@@ -42,7 +42,12 @@ function shouldBypassCache(request) {
 
   const isRepairPage = url.pathname === "/repair" || url.pathname === "/repair.html";
 
-  return isRepairPage || isSupabaseApiRequest(request) || hostname.includes("logto") || hostname.includes("sso.newlife.org.tw") ||
+  // 速讀「大測驗」是完全獨立的一頁：永遠走網路、絕不讓 Service Worker 用
+  // networkFirst 的 "/" fallback 把它換成 SPA 外殼 (index.html)。
+  const isExamPage = url.origin === self.location.origin
+    && (url.pathname === "/exam" || url.pathname === "/exam.html" || url.pathname === "/exam/");
+
+  return isRepairPage || isExamPage || isSupabaseApiRequest(request) || hostname.includes("logto") || hostname.includes("sso.newlife.org.tw") ||
     hasAuthBridgeSignal || hasOauthCallbackSignal || url.pathname.includes("/auth/") || url.pathname.includes("/functions/v1/nlc-");
 }
 
