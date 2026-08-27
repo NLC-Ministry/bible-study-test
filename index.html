@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260827_big_exam_p2e" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260828_login_gate_refresh_latest" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -2229,6 +2229,15 @@
         使用 NLC 身份登入 (SSO)
       </button>
 
+      <div class="login-gate-refresh-actions hidden" id="login-gate-refresh-actions">
+        <a class="secondary-btn login-gate-refresh-button" id="login-gate-refresh-latest"
+          href="/repair?source=login-gate" role="button">
+          <span class="nlc-icon nlc-icon--sm" data-icon="refresh" aria-hidden="true"></span>
+          <span>重新整理最新版</span>
+        </a>
+        <p>只會更新網站資源，不會刪除登入資料或讀經進度。</p>
+      </div>
+
 
 
 
@@ -2635,7 +2644,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260827_big_exam_p2e"></script>
+  <script type="module" src="js/app.js?v=20260828_login_gate_refresh_latest"></script>
 </body>
 
 </html>

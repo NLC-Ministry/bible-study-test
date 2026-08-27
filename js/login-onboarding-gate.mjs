@@ -62,7 +62,7 @@ export function getLoginGateCopy(block, { hasTokens } = {}) {
     return {
       enterApp: false,
       title: "目前無法使用聖經速讀",
-      subtitle: "您的會籍目前不是可使用狀態。請到會員中心查看，或聯繫教會同工。",
+      subtitle: "如果會員中心已有正確資料，可能是目前畫面尚未更新，可先重新整理最新版；若仍顯示此訊息，請到會員中心查看或聯繫教會同工。",
       button: "前往會員中心",
       mode: "hub-continue",
     };
@@ -104,11 +104,13 @@ export function applyLoginGateView({
   titleEl,
   subtitleEl,
   buttonEl,
+  refreshActionsEl,
 } = {}) {
   const copy = getLoginGateCopy(block, { hasTokens });
   if (copy.enterApp) {
     if (loginGate) loginGate.classList.add("hidden");
     if (appLayout) appLayout.classList.remove("hidden");
+    if (refreshActionsEl) refreshActionsEl.classList.add("hidden");
     return copy;
   }
   if (loginGate) loginGate.classList.remove("hidden");
@@ -118,6 +120,10 @@ export function applyLoginGateView({
   if (buttonEl) {
     buttonEl.textContent = copy.button;
     buttonEl.dataset.loginGateMode = copy.mode;
+  }
+  if (refreshActionsEl) {
+    if (hasTokens && block) refreshActionsEl.classList.remove("hidden");
+    else refreshActionsEl.classList.add("hidden");
   }
   return copy;
 }

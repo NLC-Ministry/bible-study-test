@@ -79,6 +79,7 @@ describe("login gate view", () => {
     const titleEl = makeEl();
     const subtitleEl = makeEl();
     const buttonEl = makeEl();
+    const refreshActionsEl = makeEl("hidden");
 
     const copy = applyLoginGateView({
       block: { reason: "member_profile_required" },
@@ -88,6 +89,7 @@ describe("login gate view", () => {
       titleEl,
       subtitleEl,
       buttonEl,
+      refreshActionsEl,
     });
 
     expect(copy.enterApp).toBe(false);
@@ -96,6 +98,7 @@ describe("login gate view", () => {
     expect(subtitleEl.textContent).toContain("姓名");
     expect(buttonEl.textContent).toContain("會員中心");
     expect(buttonEl.dataset.loginGateMode).toBe("hub-continue");
+    expect(refreshActionsEl.classList.contains("hidden")).toBe(false);
   });
 
   it("hides the card only when Hub says user work is done", () => {
@@ -110,6 +113,7 @@ describe("login gate view", () => {
       titleEl: makeEl(),
       subtitleEl: makeEl(),
       buttonEl: makeEl(),
+      refreshActionsEl: makeEl(),
     });
 
     expect(loginGate.classList.contains("hidden")).toBe(true);
@@ -136,6 +140,9 @@ describe("login gate wiring", () => {
   it("gives the login-card subtitle an id so JS can replace it", () => {
     expect(html).toContain('id="login-gate-subtitle"');
     expect(html).toContain('id="btn-gate-nlc-login"');
+    expect(html).toContain('id="login-gate-refresh-latest"');
+    expect(html).toContain('href="/repair?source=login-gate"');
+    expect(html).toContain("重新整理最新版");
   });
 
   it("calls getUserOnboardingBlock or getLoginGateCopy before updateAuthUI hides the gate", () => {

@@ -34,6 +34,8 @@ describe("PWA shell recovery", () => {
     expect(html).toContain("stableFallbackAttempted");
     expect(html).toContain('stylesheet.href = "/index.css?version=" + Date.now()');
     expect(html).toContain('id="app-style-recovery-button"');
+    expect(html).toContain('id="login-gate-refresh-latest"');
+    expect(html).toContain('href="/repair?source=login-gate"');
     expect(html).toContain('window.location.replace("/repair?version=" + Date.now())');
     expect(html).not.toContain("continueWithoutStyleRecovery");
     expect(repair).toContain('registration.unregister()');

@@ -3377,6 +3377,29 @@ body:not(.dark-theme) .settings-row-btn:hover {
   line-height: 1.6;
 }
 
+.login-gate-refresh-actions {
+  width: 100%;
+  margin-top: 0.15rem;
+}
+
+.login-gate-refresh-button {
+  width: 100%;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.login-gate-refresh-actions p {
+  margin: 0.65rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .auth-environment-dialog {
   position: fixed;
   inset: 0;

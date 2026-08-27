@@ -13,7 +13,7 @@ import './design/icons.js';
 import './state.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './auth.js?v=20260827_proactive_token_refresh';
 import './auth-launch.mjs';
-import './db.js?v=20260827_big_exam_p2e';
+import './db.js?v=20260828_login_gate_refresh_latest';
 import './utils.js?v=20260827_round_schedule_start_on_actual_entry';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import { initModalManager } from './modules/modal-manager.mjs';
@@ -23,7 +23,7 @@ import {
   consumeBibleHubResume,
   hubContinueHref,
   launchMemberHubContinue
-} from './login-onboarding-gate.mjs';
+} from './login-onboarding-gate.mjs?v=20260828_login_gate_refresh_latest';
 import { cleanupProductionStorage } from './production-cleanup.mjs';
 import { initializePwa } from './pwa/PwaCoordinator.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import { IndexedDbClient } from './pwa/IndexedDbClient.js';

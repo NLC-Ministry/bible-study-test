@@ -7,7 +7,7 @@ import {
   applyLoginGateView,
   getLoginGateCopy,
   launchMemberHubContinue
-} from './login-onboarding-gate.mjs';
+} from './login-onboarding-gate.mjs?v=20260828_login_gate_refresh_latest';
 
 window.__nlcNetworkMetrics = Object.freeze({
   snapshot: () => networkMetrics.snapshot(),
@@ -564,7 +564,8 @@ const db = {
               appLayout,
               titleEl,
               subtitleEl,
-              buttonEl
+              buttonEl,
+              refreshActionsEl: document.getElementById("login-gate-refresh-actions")
             });
             if (buttonEl) buttonEl.dataset.loginGateMode = copy.mode;
             return false;
@@ -1065,7 +1066,8 @@ const db = {
       appLayout,
       titleEl,
       subtitleEl,
-      buttonEl
+      buttonEl,
+      refreshActionsEl: document.getElementById("login-gate-refresh-actions")
     });
     if (buttonEl) buttonEl.dataset.loginGateMode = copy.mode;
     return copy;
@@ -1111,7 +1113,8 @@ const db = {
           appLayout,
           titleEl: loginGate && loginGate.querySelector(".login-title"),
           subtitleEl: document.getElementById("login-gate-subtitle"),
-          buttonEl: document.getElementById("btn-gate-nlc-login")
+          buttonEl: document.getElementById("btn-gate-nlc-login"),
+          refreshActionsEl: document.getElementById("login-gate-refresh-actions")
         });
       } else {
         // Demo mode: Ensure login gate is hidden and app is visible
