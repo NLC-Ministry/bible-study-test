@@ -31,6 +31,20 @@ const toast = (m) => (typeof window.showToast === "function" ? window.showToast(
 const cssAttr = (v) => String(v).replace(/["\\]/g, "\\$&");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// 「目前有一份作答中的大測驗」的旗標 —— 讓 app 重整 / iOS 背景回收後能自動重開滿版頁
+const ACTIVE_KEY = "exam_active_paper";
+const setActiveExam = (id) => { try { localStorage.setItem(ACTIVE_KEY, String(id)); } catch (_) {} };
+const clearActiveExam = () => { try { localStorage.removeItem(ACTIVE_KEY); } catch (_) {} };
+const getActiveExam = () => { try { return localStorage.getItem(ACTIVE_KEY); } catch (_) { return null; } };
+
+// app 啟動 / 前景喚醒時呼叫：若有作答中的測驗且滿版頁不在，就自動重開
+export async function maybeResumeExam() {
+  if (document.getElementById("exam-fullscreen")) return null;
+  const paperId = getActiveExam();
+  if (!paperId) return null;
+  return mountExamRunner({ paperId });
+}
+
 // ────────────────────────────────────────────────────────────── 後台面板（P1 精簡）
 export async function renderExamPanel(root) {
   if (!root) return;
@@ -87,17 +101,14 @@ export async function renderExamPanel(root) {
           ・限時 ${paper.duration_minutes} 分・滿分 ${paper.total_points}・作答 ${paperRes.data.attemptCount} 人</p>
         <p class="exam-admin__meta">題數：${SECTION_ORDER.map((s) => `${SECTION_TITLE[s].slice(2)} ${counts[s] || 0}`).join("　")}</p>
         <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.5rem;">
-          <button type="button" class="primary-btn" id="exam-preview-run">以我的帳號預覽作答（滿版）</button>
+          <a class="primary-btn" id="exam-preview-run" href="exam.html?paper=${encodeURIComponent(paper.id)}" target="_blank" rel="noopener">以我的帳號預覽作答（獨立頁）</a>
         </div>
       </div>` : `
       <div class="admin-user-directory__empty">目前沒有試卷。P2 會加入題庫編輯器；現在可先用 SQL 建立一份 <code>mode='test'</code> 的試卷。</div>`}`;
-
-  const runBtn = body.querySelector("#exam-preview-run");
-  if (runBtn) runBtn.addEventListener("click", () => mountExamRunner({ paperId: paper.id }));
 }
 
 // ────────────────────────────────────────────────────────────── 滿版作答頁
-export function mountExamRunner({ paperId = null } = {}) {
+export function mountExamRunner({ paperId = null, standalone = false } = {}) {
   document.getElementById("exam-fullscreen")?.remove();
   const host = document.createElement("div");
   host.id = "exam-fullscreen";
@@ -114,15 +125,16 @@ export function mountExamRunner({ paperId = null } = {}) {
   document.body.appendChild(host);
   try { document.body.dataset.examOpen = "1"; document.body.style.overflow = "hidden"; } catch (_) {}
 
-  const runner = new ExamRunner(host, paperId);
+  const runner = new ExamRunner(host, paperId, standalone);
   host.querySelector("#exam-back").addEventListener("click", () => runner.requestExit());
   runner.boot();
   return runner;
 }
 
 class ExamRunner {
-  constructor(host, paperId) {
+  constructor(host, paperId, standalone = false) {
     this.host = host;
+    this.standalone = standalone;
     this.el = host.querySelector("#exam-fs-inner");
     this.titleEl = host.querySelector("#exam-fs-title");
     this.timerEl = host.querySelector("#exam-timer");
@@ -144,7 +156,7 @@ class ExamRunner {
       if (document.visibilityState === "hidden") { this.persistLocal(); this.flushSave(); }
       else this.resync();
     };
-    this._onPageShow = () => this.resync();
+    this._onPageShow = (e) => { if (!e || e.persisted || e.type !== "pageshow") this.resync(); };
     this._onBeforeUnload = (e) => {
       if (this.attempt && this.attempt.status === "in_progress" && !this.submitting) {
         e.preventDefault(); e.returnValue = ""; return "";
@@ -155,9 +167,15 @@ class ExamRunner {
   async boot() {
     this.el.innerHTML = '<div class="admin-user-directory__empty">載入測驗…</div>';
     const res = await db.getExamForAttempt(this.paperId);
-    if (!res.success) { this.el.innerHTML = `<div class="admin-user-directory__empty">${esc(res.message)}</div>`; return; }
+    if (!res.success) {
+      // 網路 / 功能未開等錯誤：不清 active 旗標，保留稍後自動重試的機會
+      this.el.innerHTML = `<div class="admin-user-directory__empty">${esc(res.message)}
+        <br><button type="button" class="secondary-btn" id="exam-retry" style="margin-top:.6rem;">重試</button></div>`;
+      this.el.querySelector("#exam-retry")?.addEventListener("click", () => this.boot());
+      return;
+    }
     const d = res.data || {};
-    if (d.state === "no_paper") { this.el.innerHTML = '<div class="admin-user-directory__empty">目前沒有可作答的試卷。</div>'; return; }
+    if (d.state === "no_paper") { clearActiveExam(); this.el.innerHTML = '<div class="admin-user-directory__empty">目前沒有可作答的試卷。</div>'; return; }
     this.paper = d.paper;
     this.openState = d.state;
     if (this.titleEl && this.paper) this.titleEl.textContent = this.paper.title;
@@ -169,17 +187,19 @@ class ExamRunner {
       this.hydrateFromAttempt();
       this.mergeLocal();
       if (this.attempt.status === "in_progress") {
+        setActiveExam(this.paper.id);       // 作答中 → 記住，app 重整後自動重開
         this.attachLifecycle();
         this.renderRunner();
         this.persistLocal();
-        void this.flushSave();     // 把 localStorage-only 的答案推上去
+        void this.flushSave();              // 把 localStorage-only 的答案推上去
       } else {
+        clearActiveExam();                  // 已送出 / 已批改 → 不再自動重開
         await this.renderResult();
       }
       return;
     }
-    if (this.openState === "not_open") { this.el.innerHTML = this.closedCard("測驗尚未開放作答。"); return; }
-    if (this.openState === "closed") { this.el.innerHTML = this.closedCard("測驗已結束。"); return; }
+    if (this.openState === "not_open") { clearActiveExam(); this.el.innerHTML = this.closedCard("測驗尚未開放作答。"); return; }
+    if (this.openState === "closed") { clearActiveExam(); this.el.innerHTML = this.closedCard("測驗已結束。"); return; }
     this.renderPledge();
   }
 
@@ -187,7 +207,6 @@ class ExamRunner {
   attachLifecycle() {
     document.addEventListener("visibilitychange", this._onVis);
     window.addEventListener("pageshow", this._onPageShow);
-    window.addEventListener("focus", this._onPageShow);
     window.addEventListener("beforeunload", this._onBeforeUnload);
     if (!this.saveTimer) this.saveTimer = setInterval(() => this.flushSave(), 15000);
     if (!this.persistTimer) this.persistTimer = setInterval(() => this.persistLocal(), 3000);
@@ -195,7 +214,6 @@ class ExamRunner {
   detachLifecycle() {
     document.removeEventListener("visibilitychange", this._onVis);
     window.removeEventListener("pageshow", this._onPageShow);
-    window.removeEventListener("focus", this._onPageShow);
     window.removeEventListener("beforeunload", this._onBeforeUnload);
     if (this._matchResize) { window.removeEventListener("resize", this._matchResize); this._matchResize = null; }
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
@@ -207,6 +225,7 @@ class ExamRunner {
     this.detachLifecycle();
     try { delete document.body.dataset.examOpen; document.body.style.overflow = ""; } catch (_) {}
     this.host?.remove();
+    if (this.standalone) { try { location.href = "/"; } catch (_) {} }
   }
 
   requestExit() {
@@ -228,6 +247,7 @@ class ExamRunner {
       if (!a) return;
       if (a.status !== "in_progress") {           // 已在別處送出 / 被自動收卷
         this.attempt.status = a.status;
+        clearActiveExam();
         this.detachLifecycle();
         await this.renderResult();
         return;
@@ -601,6 +621,11 @@ class ExamRunner {
   }
   stopTimer() { if (this.timerId) clearInterval(this.timerId); this.timerId = null; }
   tickTimer() {
+    // 防線：若 app 重繪把滿版頁從 DOM 拔掉，作答中就把它接回去
+    if (this.host && !this.host.isConnected && this.attempt && this.attempt.status === "in_progress") {
+      document.body.appendChild(this.host);
+      try { document.body.dataset.examOpen = "1"; document.body.style.overflow = "hidden"; } catch (_) {}
+    }
     const left = Math.max(0, Math.round((this.deadlineTs - Date.now()) / 1000));
     if (this.timerEl) {
       const mm = String(Math.floor(left / 60)).padStart(2, "0");
@@ -658,6 +683,7 @@ class ExamRunner {
       return;
     }
     this.clearLocal();
+    clearActiveExam();
     this.attempt.status = res.data?.status || "submitted";
     this.detachLifecycle();
     await this.renderResult(res.data);

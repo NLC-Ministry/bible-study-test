@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>速讀測驗</title>
+  <meta name="theme-color" content="#04A9D2">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="icon" href="assets/bible-reading-icon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet">
+  <style>
+    .hidden, [hidden] { display: none !important; }
+    html, body { margin: 0; padding: 0; height: 100%; background: var(--bg-page, #101214); }
+    #exam-boot { display: flex; align-items: center; justify-content: center; min-height: 100vh; min-height: 100dvh;
+      color: var(--text-secondary, #9aa0a6); font-family: "Noto Sans TC", system-ui, sans-serif; font-size: 0.95rem; }
+  </style>
+  <!-- 只載入測驗需要的核心：Supabase client + 專案 CSS。不載 app 的 Tailwind / Chart / html2canvas。 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="index.css?v=20260827_big_exam_p1b">
+</head>
+
+<body class="light-theme">
+  <div id="exam-boot">載入測驗中…</div>
+  <div id="exam-root"></div>
+  <script type="module" src="js/exam-entry.js?v=20260827_big_exam_p1b"></script>
+</body>
+
+</html>

@@ -215,6 +215,35 @@ export function emitBundle({ root, outDir }) {
       }
     );
   }
+
+  // ── 速讀測驗獨立頁：exam.html + esbuild(js/exam-entry.js) 打包成單一 bundle ──
+  const examHtmlPath = join(root, "exam.html");
+  const examEntryPath = join(root, "js", "exam-entry.js");
+  if (existsSync(examHtmlPath) && existsSync(examEntryPath)) {
+    console.log("DEBUG: Bundling exam.html entry...");
+    const examTmpDir = mkdtempSync(join(tmpdir(), "bible-exam-"));
+    const examTmpFile = join(examTmpDir, "exam.bundle.js");
+    let examJs;
+    try {
+      execSync(
+        `${esbuildCmd} "${examEntryPath}" --bundle --minify --target=es2020 --format=esm --alias:@=. --outfile="${examTmpFile}"`,
+        { encoding: "utf8", cwd: root, stdio: ["ignore", "pipe", "pipe"] }
+      );
+      examJs = readFileSync(examTmpFile, "utf8").replace(/__BUILD_VERSION__/g, buildVer);
+    } catch (err) {
+      console.error("esbuild(exam) failed stderr:", err.stderr || err.message);
+      throw new Error(`esbuild exam entry failed: ${err.message}`);
+    } finally {
+      rmDirRecursive(examTmpDir);
+    }
+    const examJsFile = `exam.${contentHash(examJs)}.js`;
+    writeFileSync(join(outDir, examJsFile), examJs, "utf8");
+    const outExamHtml = readFileSync(examHtmlPath, "utf8")
+      .replace(SCRIPT_RE, `<script type="module" src="/${examJsFile}"></script>`)
+      .replace(CSS_RE, `<link rel="stylesheet" href="/${cssFile}">`);
+    writeFileSync(join(outDir, "exam.html"), outExamHtml, "utf8");
+    console.log("DEBUG: exam.html + " + examJsFile + " written!");
+  }
   console.log("DEBUG: emitBundle complete!");
 
   return { jsFile, cssFile };
