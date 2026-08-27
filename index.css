@@ -10889,6 +10889,25 @@ body.dark-theme .plan-calendar .plan-day-cell.active .day-number, body.dark-them
   border-color: color-mix(in srgb, var(--color-brand) 45%, var(--border-card));
 }
 
+/* 8/30 測驗預告置頂公告：純色外框 + 極淡底色凸顯重要性（Alert/Callout 元件的
+   標準做法），不用漸層、不用品牌色光暈陰影，字重也不動——外框色沿用
+   .stat-badge--warning 同一套 --color-warning token，維持同一套強調語言。
+   蓋掉 .bento-card:hover 的品牌藍位移/光暈，避免暖色外框跟品牌藍光暈同時出現。
+   用 #id + !important：.dark-theme .bento-card（line 10277）跟
+   body.warm-theme .glass-card（line 7377，本身就用 !important）兩條既有的
+   主題覆蓋規則，都會贏過單純的 class 選擇器，讓外框在暗色/暖色主題下
+   悄悄變回預設灰框、完全看不出來——這裡必須用同等武器（!important）加上
+   ID 選擇器的更高優先度，才能在三個主題下都確實顯示。 */
+#quiz-announcement-banner {
+  border: 1.5px solid var(--color-warning) !important;
+  background-color: color-mix(in srgb, var(--color-warning) 6%, var(--bg-card)) !important;
+}
+#quiz-announcement-banner:hover {
+  transform: none;
+  box-shadow: var(--shadow-sm);
+  border-color: var(--color-warning) !important;
+}
+
 /* 3. Border Beam Glow Animation */
 .bento-card::before {
   content: "";

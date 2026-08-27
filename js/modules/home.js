@@ -2667,8 +2667,45 @@ window.changeVerseCardBackground = function () {
   showToast("已成功更換背景");
 };
 
+// 8/30 速讀測驗宣示彈窗。測驗入口本身尚未開放（等 8/30 才會接上真正的測驗
+// 流程），目前點擊只會顯示規則，姓名代入第6條空格，讓每個人看到的是自己
+// 要簽署的版本，不需要手動輸入。
+function openQuizPledgeModal() {
+  const nameEl = document.getElementById("quiz-pledge-name");
+  if (nameEl) {
+    const name = (typeof getDisplayName === "function" ? getDisplayName(state.currentUser) : null)
+      || state.currentUser?.name
+      || "（您的姓名）";
+    nameEl.textContent = name;
+  }
+  const modal = document.getElementById("quiz-pledge-modal");
+  if (!modal) return;
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  if (typeof hydrateIcons === "function") hydrateIcons(modal);
+}
+
+function closeQuizPledgeModal() {
+  const modal = document.getElementById("quiz-pledge-modal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function bindQuizPledgeBanner() {
+  const btn = document.getElementById("btn-open-quiz-pledge");
+  if (btn && !btn.dataset.bound) {
+    btn.dataset.bound = "true";
+    btn.addEventListener("click", openQuizPledgeModal);
+  }
+}
+
+window.openQuizPledgeModal = openQuizPledgeModal;
+window.closeQuizPledgeModal = closeQuizPledgeModal;
+
 export function init() {
   initDevotionalControls();
+  bindQuizPledgeBanner();
 
   // ── Subscribe to unified theme change event ──
   window.addEventListener("app:themeChanged", () => {

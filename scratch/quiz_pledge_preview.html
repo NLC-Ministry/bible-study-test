@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../index.css">
+<style>body{padding:1.5rem;max-width:900px;margin:0 auto;}</style>
+</head>
+<body>
+<div style="display:flex; gap:0.5rem; margin-bottom:1rem;">
+  <button onclick="document.body.className='light-theme'">Light</button>
+  <button onclick="document.body.className='dark-theme'">Dark</button>
+  <button onclick="document.body.className='warm-theme'">Warm</button>
+</div>
+<div class="grid-layout">
+  <div class="glass-card card-col span-12 bento-card quiz-announcement-banner" id="quiz-announcement-banner">
+    <div style="display:flex; align-items:center; gap:0.85rem; flex-wrap:wrap;">
+      <span class="nlc-icon nlc-icon--hero" data-icon="megaphone" aria-hidden="true" style="color: var(--color-brand); flex-shrink:0;">📣</span>
+      <div style="flex:1; min-width:200px;">
+        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.2rem;">
+          <h3 class="card-title" style="margin:0;">8/30 速讀測驗即將登場</h3>
+          <span class="stat-badge stat-badge--warning">即將開放</span>
+        </div>
+        <p style="margin:0; font-size:0.875rem; color:var(--text-secondary); line-height:1.5;">8/30 00:00 起開放 24 小時，作答限時 75 分鐘。開始前請先詳閱測驗宣示規則。</p>
+      </div>
+      <button type="button" class="primary-btn" id="btn-open-quiz-pledge" style="white-space:nowrap;" onclick="document.getElementById('quiz-pledge-modal').classList.remove('hidden')">查看測驗規則</button>
+    </div>
+  </div>
+</div>
+
+<div id="quiz-pledge-modal" class="tts-guide-modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')" role="dialog" aria-modal="true" aria-labelledby="quiz-pledge-title">
+  <div class="modal-panel" style="max-width: 480px; width: 92%; max-height: 85vh; overflow-y: auto; padding: 1.5rem; border-radius: 20px; background: var(--bg-card); color: var(--text-primary); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35); border: 1px solid var(--border-card); position: relative;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-card); padding-bottom: 0.75rem;">
+      <h3 id="quiz-pledge-title" style="margin: 0; font-size: 1.05rem; font-weight: 700; display: flex; align-items: center; gap: 0.4rem; color: var(--text-primary);">
+        ✅ 速讀測驗宣示
+      </h3>
+      <button type="button" onclick="document.getElementById('quiz-pledge-modal').classList.add('hidden')" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-secondary); padding: 0.2rem 0.5rem; line-height: 1;">&times;</button>
+    </div>
+
+    <ol style="font-size: 0.875rem; color: var(--text-primary); padding-left: 1.2rem; margin: 0 0 1.1rem; line-height: 1.75;">
+      <li>可以 OPEN 紙本聖經──接受測驗的過程當中，除了紙本聖經，我不會借助其他工具來進行答題。</li>
+      <li>我清楚本次測驗開放時間為 <strong>8/30 零時起 24 小時內</strong>，本試卷作答時間為 <strong>75 分鐘</strong>。</li>
+      <li>我將不會重複作答，亦即當完成測驗送交答案之後，我不會以各樣的理由要求重新接受測驗（測驗記錄亦將以第一次為準）。</li>
+      <li>不管是個人或三人六人組隊，我都是獨立接受測驗，不會與其他人就測驗內容進行討論及溝通。</li>
+      <li>在測驗關閉前（<strong>8/30 晚上 23 時 59 分 59 秒前</strong>）我將不會以任何的方式將題目內容洩漏給其他人。</li>
+    </ol>
+
+    <div style="margin-bottom: 1.2rem; padding: 0.9rem 1rem; border-radius: 12px; border: 1px solid var(--border-card); background: var(--bg-input);">
+      <p style="margin: 0; font-size: 0.9rem; line-height: 1.7; font-weight: 500; color: var(--text-primary);">
+        <span style="color: var(--color-brand); font-weight: 700;">王小明</span> 清楚以上測驗規則，亦會遵守規則來完成本次測驗。
+      </p>
+    </div>
+
+    <p style="margin: 0 0 1rem; font-size: 0.8125rem; color: var(--text-muted); text-align: center;">測驗入口將於 8/30 00:00 開放，屆時可由此處直接進入測驗。</p>
+
+    <button type="button" onclick="document.getElementById('quiz-pledge-modal').classList.add('hidden')" class="btn btn--primary w-full" style="padding: 0.7rem; border-radius: 12px; font-weight: 600; font-size: 0.88rem; background: var(--color-brand); border: none; color: #ffffff; cursor: pointer; width: 100%;">
+      我知道了
+    </button>
+  </div>
+</div>
+</body>
+</html>

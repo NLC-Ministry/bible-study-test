@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../index.css">
+<style>
+  body { padding: 1.25rem; max-width: 860px; margin: 0 auto; background: var(--bg-page, #101010); }
+  .exam-toolbar { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center; }
+  .exam-toolbar .spacer { flex:1; }
+  .exam-section { margin: 1rem 0 1.5rem; }
+  .exam-section > h2 { font-size: 1rem; font-weight: var(--type-weight-strong); margin: 0 0 .35rem; color: var(--text-primary); display:flex; align-items:baseline; gap:.5rem; flex-wrap:wrap; }
+  .exam-section > h2 .pts { font-size:.8rem; color: var(--text-muted); font-weight:400; }
+  .q { border:1px solid var(--border-card); border-radius:12px; padding: .85rem .95rem; margin:.55rem 0; background: var(--bg-card); }
+  .q-stem { font-size:.9rem; line-height:1.7; color: var(--text-primary); margin:0 0 .5rem; }
+  .q-stem .n { color: var(--color-brand); font-weight: var(--type-weight-strong); margin-right:.35rem; }
+  .opt { display:flex; align-items:flex-start; gap:.5rem; font-size:.875rem; line-height:1.6; padding:.2rem 0; color: var(--text-primary); }
+  .opt input { margin-top:.25rem; }
+  .tf-row { display:flex; gap:1.25rem; }
+  .match-row { display:grid; grid-template-columns: 1fr auto minmax(150px, 200px); gap:.5rem; align-items:center; margin:.3rem 0; font-size:.875rem; color:var(--text-primary); }
+  .match-row select, .order-item select { padding:.35rem; border-radius:8px; border:1px solid var(--border-card); background:var(--bg-input); color:var(--text-primary); }
+  .order-item { display:flex; align-items:center; gap:.5rem; border:1px solid var(--border-card); border-radius:10px; padding:.45rem .6rem; margin:.3rem 0; background:var(--bg-input); font-size:.875rem; color:var(--text-primary); }
+  .order-item .grip { color:var(--text-muted); }
+  .order-item .ord-btns { margin-left:auto; display:flex; gap:.25rem; }
+  .order-item button { width:28px; height:28px; border-radius:8px; border:1px solid var(--border-card); background:var(--bg-card); color:var(--text-primary); cursor:pointer; }
+  textarea.form-control, input.form-control, select.form-control { width:100%; box-sizing:border-box; }
+  .edit-grid { display:grid; gap:.4rem; }
+  .edit-grid label { font-size:.78rem; color:var(--text-muted); display:block; }
+  .edit-opts { display:grid; grid-template-columns:1fr 1fr; gap:.4rem; }
+  .q .del { float:right; background:none; border:none; color:var(--color-danger,#e5484d); cursor:pointer; font-size:.8rem; }
+  .score-pill { font-weight:var(--type-weight-strong); }
+  .hint { font-size:.78rem; color:var(--text-muted); margin:.25rem 0 0; }
+  .result-line { font-size:.82rem; margin-top:.4rem; }
+  .ok { color: var(--color-success, #30a46c); }
+  .bad { color: var(--color-danger, #e5484d); }
+  pre.json-out { white-space:pre-wrap; word-break:break-all; font-size:.72rem; background:var(--bg-input); border:1px solid var(--border-card); border-radius:10px; padding:.75rem; color:var(--text-secondary); max-height:320px; overflow:auto; }
+</style>
+</head>
+<body class="dark-theme">
+
+<div class="exam-toolbar">
+  <strong style="color:var(--text-primary);">速讀測驗模板預覽</strong>
+  <span class="stat-badge stat-badge--warning">草稿模板</span>
+  <span class="spacer"></span>
+  <button class="secondary-btn" onclick="setMode('answer')">作答模式</button>
+  <button class="secondary-btn" onclick="setMode('edit')">編輯模式</button>
+  <button class="primary-btn" id="action-btn" onclick="primaryAction()">自動計分</button>
+</div>
+<p class="hint" id="mode-note"></p>
+
+<div id="exam-root"></div>
+
+<pre class="json-out" id="json-out" hidden></pre>
+
+<script>
+/* ============================================================================
+   題庫資料模型（EXAM）── 之後「填入題目」就是改這個物件，或改成從 Supabase 載入
+   ------------------------------------------------------------------------------
+   六大題都是 sections[]，每個 section 有 questions[]（每小題 1 筆）：
+
+   truefalse   是非題   → { stem, answer:true/false }                每題 1 分
+   single      單選題   → { stem, options[], answer:索引 }           每題 1 分
+   multiple    複選題   → { stem, options[], answers:[索引...] }      每題 1 分・全對才給分
+   matching    連連看   → { stem, left[], right[](可含干擾), answer:{左id:右id} }
+                          每「小題」為一組配對，整組全對才得 1 分（共 10 小題）
+   ordering    事件排序 → { stem, items[](=題目呈現順序), answer:[正確順序的 id] }
+                          每「小題」排 4～6 個事件，整題順序全對才得 1 分（共 10 小題）
+   shortanswer 簡答題   → { stem, referenceAnswer, rubric[], maxPoints:10 }
+                          人工評分，畫面只呈現作答框；管理員後台依 rubric 給 0～10 分
+   ============================================================================ */
+const EXAM = {
+  meta: {
+    title: "新生命聖經速讀測驗（範例）",
+    openAt: "2026-08-30T00:00:00+08:00",
+    durationMinutes: 75,
+    totalPoints: 120
+  },
+  sections: [
+    {
+      id: "tf", type: "truefalse", title: "一、是非題", pointsPer: 1, targetCount: 20,
+      instruction: "正確請選 O，錯誤請選 X。",
+      questions: [
+        { id: "tf1", stem: "（範例）挪亞方舟停在亞拉臘山上。", answer: true },
+        { id: "tf2", stem: "（範例）摩西帶領以色列人過的是地中海。", answer: false }
+      ]
+    },
+    {
+      id: "single", type: "single", title: "二、單選題", pointsPer: 1, targetCount: 20,
+      instruction: "每題僅一個最佳答案。",
+      questions: [
+        { id: "s1", stem: "（範例）大衛擊殺的非利士巨人名叫？",
+          options: ["歌利亞", "掃羅", "押沙龍", "尼布甲尼撒"], answer: 0 }
+      ]
+    },
+    {
+      id: "multi", type: "multiple", title: "三、複選題", pointsPer: 1, targetCount: 10, scoring: "exact",
+      instruction: "每題有兩個以上正確答案，全部選對才得分。",
+      questions: [
+        { id: "m1", stem: "（範例）以下哪些是舊約的「大先知書」？",
+          options: ["以賽亞書", "耶利米書", "阿摩司書", "以西結書"], answers: [0, 1, 3] }
+      ]
+    },
+    {
+      id: "match", type: "matching", title: "四、連連看", pointsPer: 1, targetCount: 10,
+      instruction: "共 10 小題，每小題將左欄與右欄配對，整組全對才得 1 分。右欄可放干擾項。",
+      questions: [
+        {
+          id: "mt1", stem: "（範例）人物與事蹟配對",
+          left: [
+            { id: "L1", text: "約瑟" },
+            { id: "L2", text: "但以理" },
+            { id: "L3", text: "以斯帖" },
+            { id: "L4", text: "尼希米" }
+          ],
+          right: [
+            { id: "甲", text: "在獅子坑中蒙保守" },
+            { id: "乙", text: "作埃及宰相" },
+            { id: "丙", text: "冒死見王拯救同胞" },
+            { id: "丁", text: "重建耶路撒冷城牆" },
+            { id: "戊", text: "（干擾）建造方舟" }
+          ],
+          answer: { L1: "乙", L2: "甲", L3: "丙", L4: "丁" }
+        }
+      ]
+    },
+    {
+      id: "order", type: "ordering", title: "五、事件排序題", pointsPer: 1, targetCount: 10,
+      instruction: "共 10 小題，每小題將事件依聖經記載的時間先後排列，整題順序全對才得 1 分。",
+      questions: [
+        {
+          id: "od1", stem: "（範例）救恩歷史事件排序",
+          items: [
+            { id: "E1", text: "出埃及" },
+            { id: "E2", text: "創造天地" },
+            { id: "E3", text: "挪亞洪水" },
+            { id: "E4", text: "巴別塔" },
+            { id: "E5", text: "亞伯拉罕蒙召" }
+          ],
+          answer: ["E2", "E3", "E4", "E5", "E1"]
+        }
+      ]
+    },
+    {
+      id: "short", type: "shortanswer", title: "六、簡答題", pointsPer: 10, targetCount: 3, grading: "manual",
+      instruction: "每題 10 分，請以完整句子作答；由管理員人工評分。",
+      questions: [
+        { id: "sa1",
+          stem: "（範例）請簡述「因信稱義」的意義，並舉一處經文佐證。",
+          referenceAnswer: "人不能靠行為在神面前被稱為義，乃是藉著信靠耶穌基督的救贖，白白得稱為義（羅3:23-24、弗2:8-9）。",
+          rubric: ["說明不靠行為／靠恩典（3分）", "說明藉信基督（4分）", "正確引用一處經文（3分）"],
+          maxPoints: 10 }
+      ]
+    }
+  ]
+};
+
+/* ------------------------------------------------------------------ 狀態 */
+let MODE = "answer";                 // answer | edit
+const RESP = {};                     // 學生作答：RESP[questionId] = 值
+let scored = null;                   // 最近一次自動計分結果
+
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* ------------------------------------------------------------------ 切換模式 */
+function setMode(m) {
+  MODE = m;
+  $("#action-btn").textContent = m === "edit" ? "匯出 JSON" : "自動計分";
+  $("#json-out").hidden = true;
+  $("#mode-note").textContent = m === "edit"
+    ? "編輯模式：所有欄位可直接修改，可新增／刪除題目。改完按「匯出 JSON」取得題庫資料。"
+    : "作答模式：模擬學生填答。按「自動計分」立即批改一～五大題；第六大題標示為待人工評分。";
+  render();
+}
+function primaryAction() {
+  if (MODE === "edit") { collectEdits(); const o = $("#json-out"); o.hidden = false; o.textContent = JSON.stringify(EXAM, null, 2); return; }
+  scored = scoreExam(); render();
+}
+
+/* ------------------------------------------------------------------ 渲染 */
+function render() {
+  const root = $("#exam-root");
+  root.innerHTML = "";
+  if (scored && MODE === "answer") {
+    const b = document.createElement("div");
+    b.className = "q";
+    b.innerHTML = `<span class="score-pill">自動計分：${scored.auto} / ${scored.autoMax} 分</span>
+      　簡答題 ${scored.manualMax} 分待人工評分　｜　自動部分明細見各題下方`;
+    root.appendChild(b);
+  }
+  EXAM.sections.forEach(sec => root.appendChild(renderSection(sec)));
+}
+
+function renderSection(sec) {
+  const wrap = document.createElement("section");
+  wrap.className = "exam-section";
+  wrap.innerHTML = `<h2>${esc(sec.title)}
+    <span class="pts">每題 ${sec.pointsPer} 分・目標 ${sec.targetCount} 題・目前 ${sec.questions.length} 題</span></h2>
+    <p class="hint">${esc(sec.instruction || "")}</p>`;
+  const body = document.createElement("div");
+  const fn = { truefalse: rTF, single: rSingle, multiple: rMulti, matching: rMatch, ordering: rOrder, shortanswer: rShort }[sec.type];
+  sec.questions.forEach((q, i) => body.appendChild(fn(sec, q, i)));
+  wrap.appendChild(body);
+  if (MODE === "edit") {
+    const add = document.createElement("button");
+    add.className = "secondary-btn"; add.textContent = "＋ 新增題目";
+    add.onclick = () => { collectEdits(); sec.questions.push(blankQuestion(sec.type)); render(); };
+    wrap.appendChild(add);
+  }
+  return wrap;
+}
+function editHead(sec, q, i) {
+  return `<button class="del" data-del>刪除</button><div class="edit-grid">
+    <label>題目 ${i + 1}</label>
+    <textarea class="form-control" rows="2" data-f="stem">${esc(q.stem)}</textarea>`;
+}
+function bindDel(el, sec, i) {
+  el.querySelector("[data-del]").onclick = () => { collectEdits(); sec.questions.splice(i, 1); render(); };
+}
+
+/* ---- 一、是非題 ---- */
+function rTF(sec, q, i) {
+  const el = div("q");
+  if (MODE === "edit") {
+    el.innerHTML = editHead(sec, q, i) + `
+      <label>正確答案</label>
+      <select class="form-control" data-f="answer">
+        <option value="true" ${q.answer ? "selected" : ""}>O（對）</option>
+        <option value="false" ${!q.answer ? "selected" : ""}>X（錯）</option>
+      </select></div>`;
+    bindDel(el, sec, i);
+  } else {
+    el.innerHTML = `<p class="q-stem"><span class="n">${i + 1}.</span>${esc(q.stem)}</p>
+      <div class="tf-row">
+        <label class="opt"><input type="radio" name="${q.id}" value="true" ${RESP[q.id] === "true" ? "checked" : ""}> O 對</label>
+        <label class="opt"><input type="radio" name="${q.id}" value="false" ${RESP[q.id] === "false" ? "checked" : ""}> X 錯</label>
+      </div>${resultLine(q.id)}`;
+    el.querySelectorAll("input").forEach(inp => inp.onchange = () => RESP[q.id] = inp.value);
+  }
+  return el;
+}
+
+/* ---- 二、單選題 ---- */
+function rSingle(sec, q, i) {
+  const el = div("q");
+  if (MODE === "edit") {
+    el.innerHTML = editHead(sec, q, i) + `
+      <label>選項</label>
+      <div class="edit-opts">${q.options.map((o, k) => `<input class="form-control" data-opt="${k}" value="${esc(o)}">`).join("")}</div>
+      <label>正解</label>
+      <select class="form-control" data-f="answer">
+        ${q.options.map((o, k) => `<option value="${k}" ${q.answer === k ? "selected" : ""}>${k + 1}. ${esc(o)}</option>`).join("")}
+      </select></div>`;
+    bindDel(el, sec, i);
+  } else {
+    el.innerHTML = `<p class="q-stem"><span class="n">${i + 1}.</span>${esc(q.stem)}</p>
+      ${q.options.map((o, k) => `<label class="opt"><input type="radio" name="${q.id}" value="${k}" ${String(RESP[q.id]) === String(k) ? "checked" : ""}><span>${"ABCD"[k] || k + 1}. ${esc(o)}</span></label>`).join("")}
+      ${resultLine(q.id)}`;
+    el.querySelectorAll("input").forEach(inp => inp.onchange = () => RESP[q.id] = Number(inp.value));
+  }
+  return el;
+}
+
+/* ---- 三、複選題 ---- */
+function rMulti(sec, q, i) {
+  const el = div("q");
+  if (MODE === "edit") {
+    el.innerHTML = editHead(sec, q, i) + `
+      <label>選項與正解（勾選＝正確答案）</label>
+      ${q.options.map((o, k) => `<div class="opt"><input type="checkbox" data-ans="${k}" ${q.answers.includes(k) ? "checked" : ""}><input class="form-control" data-opt="${k}" value="${esc(o)}"></div>`).join("")}
+      </div>`;
+    bindDel(el, sec, i);
+  } else {
+    const cur = RESP[q.id] || [];
+    el.innerHTML = `<p class="q-stem"><span class="n">${i + 1}.</span>${esc(q.stem)} <span class="hint">（複選・全對才給分）</span></p>
+      ${q.options.map((o, k) => `<label class="opt"><input type="checkbox" name="${q.id}" value="${k}" ${cur.includes(k) ? "checked" : ""}><span>${esc(o)}</span></label>`).join("")}
+      ${resultLine(q.id)}`;
+    el.querySelectorAll("input").forEach(inp => inp.onchange = () => {
+      const set = new Set(RESP[q.id] || []);
+      inp.checked ? set.add(Number(inp.value)) : set.delete(Number(inp.value));
+      RESP[q.id] = [...set].sort((a, b) => a - b);
+    });
+  }
+  return el;
+}
+
+/* ---- 四、連連看（每小題一組配對，整組全對得 1 分）---- */
+function rMatch(sec, q, i) {
+  const el = div("q");
+  if (MODE === "edit") {
+    el.innerHTML = editHead(sec, q, i) + `
+      <label>左欄（每列 id|文字，4～10 列）</label>
+      <textarea class="form-control" rows="4" data-mf="left">${q.left.map(x => x.id + "|" + x.text).join("\n")}</textarea>
+      <label>右欄（每列 id|文字，可加干擾項）</label>
+      <textarea class="form-control" rows="5" data-mf="right">${q.right.map(x => x.id + "|" + x.text).join("\n")}</textarea>
+      <label>正解（每列 左id=右id）</label>
+      <textarea class="form-control" rows="4" data-mf="answer">${Object.entries(q.answer).map(([l, r]) => l + "=" + r).join("\n")}</textarea>
+      </div>`;
+    bindDel(el, sec, i);
+  } else {
+    const opts = q.right.map(r => `<option value="${esc(r.id)}">${esc(r.id)}. ${esc(r.text)}</option>`).join("");
+    const cur = RESP[q.id] || {};
+    el.innerHTML = `<p class="q-stem"><span class="n">${i + 1}.</span>${esc(q.stem)}</p>` +
+      q.left.map(l => `<div class="match-row">
+        <span>${esc(l.text)}</span><span>→</span>
+        <select data-l="${esc(l.id)}"><option value="">請選擇</option>${opts}</select>
+      </div>`).join("") + resultLine(q.id);
+    el.querySelectorAll("select").forEach(sel => {
+      if (cur[sel.dataset.l]) sel.value = cur[sel.dataset.l];
+      sel.onchange = () => { RESP[q.id] = RESP[q.id] || {}; RESP[q.id][sel.dataset.l] = sel.value; };
+    });
+  }
+  return el;
+}
+
+/* ---- 五、事件排序題（每小題排 4～6 事件，整題順序全對得 1 分）---- */
+function rOrder(sec, q, i) {
+  const el = div("q");
+  if (MODE === "edit") {
+    el.innerHTML = editHead(sec, q, i) + `
+      <label>事件（每列 id|文字＝呈現順序，4～6 列）</label>
+      <textarea class="form-control" rows="6" data-of="items">${q.items.map(x => x.id + "|" + x.text).join("\n")}</textarea>
+      <label>正確順序（id 以逗號分隔）</label>
+      <input class="form-control" data-of="answer" value="${esc(q.answer.join(","))}">
+      </div>`;
+    bindDel(el, sec, i);
+  } else {
+    const order = RESP[q.id] ? RESP[q.id].slice() : q.items.map(x => x.id);
+    RESP[q.id] = order;
+    const byId = Object.fromEntries(q.items.map(x => [x.id, x.text]));
+    el.innerHTML = `<p class="q-stem"><span class="n">${i + 1}.</span>${esc(q.stem)}</p>` +
+      order.map((id, k) => `<div class="order-item"><span class="grip">≡</span><span>${k + 1}. ${esc(byId[id])}</span>
+        <span class="ord-btns"><button data-up="${k}">↑</button><button data-down="${k}">↓</button></span></div>`).join("") +
+      resultLine(q.id);
+    el.querySelectorAll("[data-up]").forEach(b => b.onclick = () => move(q.id, +b.dataset.up, -1));
+    el.querySelectorAll("[data-down]").forEach(b => b.onclick = () => move(q.id, +b.dataset.down, 1));
+  }
+  return el;
+}
+function move(qid, idx, dir) {
+  const a = RESP[qid]; const j = idx + dir;
+  if (j < 0 || j >= a.length) return;
+  [a[idx], a[j]] = [a[j], a[idx]];
+  render();
+}
+
+/* ---- 六、簡答題 ---- */
+function rShort(sec, q, i) {
+  const el = div("q");
+  if (MODE === "edit") {
+    el.innerHTML = editHead(sec, q, i) + `
+      <label>參考答案（給評分者看）</label>
+      <textarea class="form-control" rows="3" data-f="referenceAnswer">${esc(q.referenceAnswer)}</textarea>
+      <label>評分要點（每列一項）</label>
+      <textarea class="form-control" rows="3" data-f="rubric">${esc((q.rubric || []).join("\n"))}</textarea>
+      <label>配分</label>
+      <input class="form-control" data-f="maxPoints" value="${q.maxPoints}">
+      </div>`;
+    bindDel(el, sec, i);
+  } else {
+    el.innerHTML = `<p class="q-stem"><span class="n">${i + 1}.</span>${esc(q.stem)} <span class="hint">（${q.maxPoints} 分・人工評分）</span></p>
+      <textarea class="form-control" rows="4" placeholder="請在此作答" data-sa="${q.id}">${esc(RESP[q.id] || "")}</textarea>
+      <p class="result-line hint">送出後由管理員依評分要點給 0～${q.maxPoints} 分。</p>`;
+    el.querySelector("textarea").oninput = e => RESP[q.id] = e.target.value;
+  }
+  return el;
+}
+
+/* ------------------------------------------------------------------ 批改（一～五自動，全對才給分） */
+function scoreExam() {
+  let auto = 0, autoMax = 0, manualMax = 0;
+  const detail = {};
+  EXAM.sections.forEach(sec => {
+    sec.questions.forEach(q => {
+      if (sec.type === "shortanswer") { manualMax += q.maxPoints; return; }
+      autoMax += sec.pointsPer;
+      let good = false;
+      if (sec.type === "truefalse") good = RESP[q.id] === String(q.answer);
+      else if (sec.type === "single") good = Number(RESP[q.id]) === q.answer;
+      else if (sec.type === "multiple") good = JSON.stringify(RESP[q.id] || []) === JSON.stringify(q.answers.slice().sort((a, b) => a - b));
+      else if (sec.type === "matching") {
+        const r = RESP[q.id] || {};
+        good = q.left.every(l => r[l.id] === q.answer[l.id]);
+      } else if (sec.type === "ordering") {
+        const got = RESP[q.id] || q.items.map(x => x.id);
+        good = got.join(",") === q.answer.join(",");
+      }
+      detail[q.id] = good;
+      if (good) auto += sec.pointsPer;
+    });
+  });
+  return { auto, autoMax, manualMax, detail };
+}
+function resultLine(id) {
+  if (!scored) return "";
+  const g = scored.detail[id];
+  if (g === undefined) return "";
+  return `<div class="result-line ${g ? "ok" : "bad"}">${g ? "✓ 答對" : "✗ 答錯（或未完成）"}</div>`;
+}
+
+/* ------------------------------------------------------------------ 編輯模式：收集回 EXAM */
+function collectEdits() {
+  if (MODE !== "edit") return;
+  document.querySelectorAll(".exam-section").forEach((secEl, si) => {
+    const sec = EXAM.sections[si];
+    secEl.querySelectorAll(".q").forEach((qe, qi) => {
+      const q = sec.questions[qi]; if (!q) return;
+      qe.querySelectorAll("[data-f]").forEach(f => {
+        const k = f.dataset.f, v = f.value;
+        if (k === "answer") q[k] = sec.type === "truefalse" ? (v === "true") : Number(v);
+        else if (k === "maxPoints") q[k] = Number(v);
+        else if (k === "rubric") q[k] = v.split("\n").map(s => s.trim()).filter(Boolean);
+        else q[k] = v;
+      });
+      qe.querySelectorAll("[data-opt]").forEach(o => q.options[+o.dataset.opt] = o.value);
+      if (sec.type === "multiple") {
+        q.answers = [...qe.querySelectorAll("[data-ans]")].filter(c => c.checked).map(c => +c.dataset.ans).sort((a, b) => a - b);
+      }
+      if (sec.type === "matching") {
+        const rows = k => (qe.querySelector(`[data-mf="${k}"]`).value.trim().split("\n").filter(Boolean));
+        q.left = rows("left").map(r => ({ id: r.split("|")[0].trim(), text: (r.split("|")[1] || "").trim() }));
+        q.right = rows("right").map(r => ({ id: r.split("|")[0].trim(), text: (r.split("|")[1] || "").trim() }));
+        q.answer = {}; rows("answer").forEach(r => { const [l, rr] = r.split("="); q.answer[l.trim()] = (rr || "").trim(); });
+      }
+      if (sec.type === "ordering") {
+        q.items = qe.querySelector('[data-of="items"]').value.trim().split("\n").filter(Boolean)
+          .map(r => ({ id: r.split("|")[0].trim(), text: (r.split("|")[1] || "").trim() }));
+        q.answer = qe.querySelector('[data-of="answer"]').value.split(",").map(s => s.trim()).filter(Boolean);
+      }
+    });
+  });
+}
+
+/* ------------------------------------------------------------------ 小工具 */
+function div(cls) { const d = document.createElement("div"); d.className = cls; return d; }
+function blankQuestion(type) {
+  const id = "q" + Math.random().toString(36).slice(2, 7);
+  if (type === "truefalse") return { id, stem: "", answer: true };
+  if (type === "single") return { id, stem: "", options: ["", "", "", ""], answer: 0 };
+  if (type === "multiple") return { id, stem: "", options: ["", "", "", ""], answers: [] };
+  if (type === "matching") return { id, stem: "", left: [{ id: "L1", text: "" }, { id: "L2", text: "" }, { id: "L3", text: "" }], right: [{ id: "甲", text: "" }, { id: "乙", text: "" }, { id: "丙", text: "" }], answer: {} };
+  if (type === "ordering") return { id, stem: "", items: [{ id: "E1", text: "" }, { id: "E2", text: "" }, { id: "E3", text: "" }, { id: "E4", text: "" }], answer: [] };
+  if (type === "shortanswer") return { id, stem: "", referenceAnswer: "", rubric: [], maxPoints: 10 };
+  return { id, stem: "" };
+}
+
+setMode("answer");
+</script>
+</body>
+</html>
