@@ -15,6 +15,7 @@ import {
   formatTaiwanDate,
   prependTaiwanExportTime
 } from "./export-time.mjs";
+import { renderExamPanel } from "./exam.js";
 
 function updatePastoralWallControl(enabled, options = {}) {
   const toggle = document.getElementById("admin-pastoral-wall-toggle");
@@ -47,6 +48,16 @@ function applyAdminDailyQuizFeatureVisibility(enabled) {
   if (!enabled && panel) panel.classList.add("hidden");
 }
 
+// 「大測驗」分頁：測試期只給系統管理員看得到（功能開關由分頁內部的 renderExamPanel 處理）。
+function applyAdminExamVisibility() {
+  const isAdmin = state.currentUser && getUserRoleCode(state.currentUser) === "admin";
+  const tab = document.querySelector('#admin-plan-subtabs [data-plan-subtab="exam"]');
+  const panel = document.getElementById("admin-plan-subtab-exam");
+  if (tab) { tab.classList.toggle("hidden", !isAdmin); tab.style.display = isAdmin ? "" : "none"; }
+  if (!isAdmin && activeAdminPlanSubtab === "exam") setAdminPlanSubtab("join-status");
+  if (!isAdmin && panel) panel.classList.add("hidden");
+}
+
 export async function renderAdminFeatureSettings() {
   const card = document.querySelector(".admin-feature-settings-card")?.closest(".card-col");
   const toggle = document.getElementById("admin-pastoral-wall-toggle");
@@ -57,6 +68,7 @@ export async function renderAdminFeatureSettings() {
 
   const isAdmin = state.currentUser && getUserRoleCode(state.currentUser) === "admin";
   card.classList.toggle("hidden", !isAdmin);
+  applyAdminExamVisibility();
   if (!isAdmin) {
     const quizResult = await db.getFeatureSetting("daily_quiz", false);
     const quizEnabled = !quizResult.error && quizResult.enabled === true;
@@ -1386,7 +1398,7 @@ function mountPlanManagementSections() {
   }
 }
 
-const ADMIN_PLAN_SUBTABS = ['join-status', 'members', 'teams', 'statistics', 'quizzes'];
+const ADMIN_PLAN_SUBTABS = ['join-status', 'members', 'teams', 'statistics', 'quizzes', 'exam'];
 let activeAdminPlanSubtab = ADMIN_PLAN_SUBTABS[0];
 const adminDailyQuizDashboardCache = new Map();
 
@@ -1412,7 +1424,7 @@ function setAdminPlanSubtab(subtab, loadData = true) {
   // 選擇器；隱藏共用查看範圍，避免畫面上下出現兩組相同篩選器。
   const sharedOrgFilter = document.querySelector('.admin-plan-filter-card--org');
   if (sharedOrgFilter) {
-    const hideSharedOrgFilter = requested === 'quizzes';
+    const hideSharedOrgFilter = requested === 'quizzes' || requested === 'exam';
     sharedOrgFilter.classList.toggle('hidden', hideSharedOrgFilter);
     sharedOrgFilter.style.display = hideSharedOrgFilter ? 'none' : 'flex';
   }
@@ -1435,6 +1447,7 @@ function initAdminPlanSubtabs() {
   // The selected plan is resolved immediately afterwards by
   // renderAdminPlanManagement(). Avoid starting a stale/duplicate request
   // against whatever plan happened to be active before opening Admin.
+  applyAdminExamVisibility();
   setAdminPlanSubtab(savedSubtab, false);
 }
 
@@ -2203,7 +2216,7 @@ async function loadActiveAdminPlanSubtab(forceRefresh = false) {
   // here unconditionally instead — it's a cheap, synchronous DOM operation
   // (reads already-loaded state.orgStructure/state.currentUser, no network
   // call) and is idempotent (its change-listener bindings are dataset-guarded).
-  if (activeAdminPlanSubtab !== 'quizzes' && typeof window.populateMembersSelector === 'function') {
+  if (activeAdminPlanSubtab !== 'quizzes' && activeAdminPlanSubtab !== 'exam' && typeof window.populateMembersSelector === 'function') {
     try { window.populateMembersSelector(); } catch (e) { console.warn('[Admin] populateMembersSelector error caught:', e); }
   }
 
@@ -2229,6 +2242,14 @@ async function loadActiveAdminPlanSubtab(forceRefresh = false) {
 
   if (activeAdminPlanSubtab === 'quizzes') {
     await renderAdminDailyQuizManagement(forceRefresh);
+    return;
+  }
+
+  if (activeAdminPlanSubtab === 'exam') {
+    const root = document.getElementById('admin-exam-root');
+    if (root) {
+      try { await renderExamPanel(root); } catch (e) { console.warn('[Admin] renderExamPanel error caught:', e); }
+    }
     return;
   }
 

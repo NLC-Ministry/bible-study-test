@@ -3208,6 +3208,107 @@ const db = {
     return { error: result.success ? null : (result.error || new Error(result.message)) };
   },
 
+  // ── 速讀「大測驗」(migration 0096 + nlc-data EXAM_RPC_FUNCTIONS) ──
+  _examErrorMessage(error) {
+    const raw = (error && (error.message || error.error_description || error.msg)) || String(error || "");
+    const messages = {
+      speed_reading_exam_feature_disabled: "大測驗功能目前未開放。",
+      forbidden_rpc: "沒有權限執行此操作。",
+      exam_admin_required: "只有系統管理員可以進行此操作。",
+      exam_paper_not_found: "找不到這份試卷。",
+      exam_paper_not_editable: "試卷已發佈，無法再編輯。",
+      exam_question_not_found: "找不到這一題。",
+      exam_question_not_deletable: "試卷已發佈，無法刪除題目。",
+      exam_already_published: "試卷已發佈。",
+      exam_window_invalid: "請先設定正確的開放起訖時間。",
+      exam_section_count_mismatch: "各大題題數與設定不符。",
+      exam_answer_key_incomplete: "還有題目未填答案。",
+      exam_not_open: "測驗目前未開放作答。",
+      exam_pledge_name_required: "請先確認測驗宣示並填入姓名。",
+      exam_attempt_not_found: "找不到作答紀錄。",
+      exam_attempt_locked: "測驗已送出，不可再修改。",
+      exam_time_up: "作答時間已結束。",
+      exam_answer_not_gradable: "這一題不是可人工評分的題目。",
+      exam_points_out_of_range: "分數超出配分範圍。"
+    };
+    const key = Object.keys(messages).find(code => raw.includes(code));
+    return key ? messages[key] : "目前無法載入大測驗資料，請稍後再試。";
+  },
+
+  async _callExamRpc(functionName, args = {}) {
+    if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) {
+      return { success: false, message: "大測驗功能需要登入正式帳號。" };
+    }
+    try {
+      const { data, error } = await state.supabase.rpc(functionName, args);
+      if (error) {
+        console.warn(`[Exam] ${functionName} failed: ${JSON.stringify(error)}`);
+        return { success: false, error, message: this._examErrorMessage(error) };
+      }
+      return { success: true, data };
+    } catch (error) {
+      console.warn(`[Exam] ${functionName} failed: ${String(error)}`);
+      return { success: false, error, message: this._examErrorMessage(error) };
+    }
+  },
+
+  // 出題 / 後台
+  async getExamPaperAdmin(paperId = null) {
+    return this._callExamRpc("exam_get_paper_admin", { p_paper_id: paperId || null });
+  },
+  async upsertExamPaper(payload) {
+    return this._callExamRpc("exam_upsert_paper", { p_payload: payload });
+  },
+  async upsertExamQuestion(payload) {
+    return this._callExamRpc("exam_upsert_question", { p_payload: payload });
+  },
+  async deleteExamQuestion(questionId) {
+    return this._callExamRpc("exam_delete_question", { p_question_id: questionId });
+  },
+  async publishExam(paperId) {
+    return this._callExamRpc("exam_publish", { p_paper_id: paperId });
+  },
+  async setExamStatus(paperId, status) {
+    return this._callExamRpc("exam_set_status", { p_paper_id: paperId, p_status: status });
+  },
+
+  // 作答
+  async getExamForAttempt(paperId = null) {
+    return this._callExamRpc("exam_get_for_attempt", { p_paper_id: paperId || null });
+  },
+  async startExamAttempt(paperId, pledgeName, readingTeamId = null) {
+    return this._callExamRpc("exam_start_attempt", {
+      p_paper_id: paperId,
+      p_pledge_name: pledgeName,
+      p_reading_team_id: readingTeamId || null
+    });
+  },
+  async saveExamProgress(attemptId, answers) {
+    return this._callExamRpc("exam_save_progress", { p_attempt_id: attemptId, p_answers: answers || {} });
+  },
+  async submitExamAttempt(attemptId, answers, reason = "manual") {
+    return this._callExamRpc("exam_submit_attempt", {
+      p_attempt_id: attemptId,
+      p_answers: answers || {},
+      p_reason: reason
+    });
+  },
+  async getMyExamResult(paperId) {
+    return this._callExamRpc("exam_get_my_result", { p_paper_id: paperId });
+  },
+
+  // 人工評分
+  async getExamGradingQueue(paperId, filter = "pending") {
+    return this._callExamRpc("exam_get_grading_queue", { p_paper_id: paperId, p_filter: filter });
+  },
+  async gradeExamAnswer(answerId, points, comment = "") {
+    return this._callExamRpc("exam_grade_answer", {
+      p_answer_id: answerId,
+      p_points: points,
+      p_comment: comment || ""
+    });
+  },
+
   async getMyReadingTeam(plan) {
     const planId = this._readingTeamPlanId(plan);
     if (!planId) return { success: false, message: "這個計畫目前未開放團隊報名。" };
@@ -4692,7 +4793,7 @@ const db = {
   },
 
   async getFeatureSetting(key, fallback = false) {
-    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz"]);
+    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz", "speed_reading_exam"]);
     if (!allowedKeys.has(key)) {
       return { enabled: Boolean(fallback), error: new Error("unknown_feature_setting") };
     }
@@ -4719,7 +4820,7 @@ const db = {
   },
 
   async updateFeatureSetting(key, enabled) {
-    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz"]);
+    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz", "speed_reading_exam"]);
     if (!allowedKeys.has(key)) return { error: new Error("unknown_feature_setting") };
     if (!state.currentUser || getUserRoleCode(state.currentUser) !== "admin") {
       return { error: new Error("admin_required") };

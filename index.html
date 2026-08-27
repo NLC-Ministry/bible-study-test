@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260827_offline_readonly_synced_at" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260827_big_exam_p1" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -2012,6 +2012,8 @@
                 aria-controls="admin-plan-subtab-statistics" data-plan-subtab="statistics"><span class="nlc-icon" data-icon="barChart" aria-hidden="true"></span><span>計畫統計</span></button>
               <button type="button" class="admin-plan-subtab hidden" role="tab" aria-selected="false"
                 aria-controls="admin-plan-subtab-quizzes" data-plan-subtab="quizzes"><span class="nlc-icon" data-icon="checkCircle" aria-hidden="true"></span><span>小測驗</span></button>
+              <button type="button" class="admin-plan-subtab hidden" role="tab" aria-selected="false"
+                aria-controls="admin-plan-subtab-exam" data-plan-subtab="exam"><span class="nlc-icon" data-icon="pencil" aria-hidden="true"></span><span>大測驗</span></button>
             </nav>
           </section>
 
@@ -2153,6 +2155,14 @@
             <section class="admin-management-section" aria-labelledby="admin-quizzes-title">
               <div id="admin-daily-quiz-root" aria-live="polite">
                 <div class="admin-user-directory__empty">切換到此分頁後載入今日小測驗。</div>
+              </div>
+            </section>
+          </div>
+          <div id="admin-plan-subtab-exam" class="admin-plan-subtab-panel hidden" role="tabpanel"
+            aria-labelledby="admin-exam-title">
+            <section class="admin-management-section" aria-labelledby="admin-exam-title">
+              <div id="admin-exam-root" aria-live="polite">
+                <div class="admin-user-directory__empty">切換到此分頁後載入大測驗設定。</div>
               </div>
             </section>
           </div>
@@ -2614,7 +2624,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260827_quiz_pledge_banner"></script>
+  <script type="module" src="js/app.js?v=20260827_big_exam_p1"></script>
 </body>
 
 </html>

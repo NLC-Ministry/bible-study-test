@@ -152,7 +152,9 @@ describe("daily church quiz", () => {
     expect(generator).toContain('eq("key", "daily_quiz")');
     expect(generator).toContain('status: "feature_disabled", requests: 0');
     expect(edge).toContain('error: "daily_quiz_feature_disabled"');
-    expect(db).toContain('["pastoral_sharing_wall", "daily_quiz"]');
+    // allowedKeys may carry additional feature keys (e.g. speed_reading_exam);
+    // only assert daily_quiz stays gated alongside pastoral_sharing_wall.
+    expect(db).toMatch(/\["pastoral_sharing_wall", "daily_quiz"[\],]/);
     expect(html).toContain('id="admin-daily-quiz-feature-toggle"');
     expect(admin).toContain('updateFeatureSetting("daily_quiz", nextEnabled)');
     expect(plan).toContain('isDailyQuizFeatureEnabled()');

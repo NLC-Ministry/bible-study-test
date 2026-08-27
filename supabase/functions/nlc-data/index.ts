@@ -79,6 +79,33 @@ const QUIZ_RPC_FUNCTIONS = new Set([
   "get_quiz_notifications",
   "mark_quiz_notifications_read"
 ]);
+// 速讀「大測驗」(migration 0096). Gated by the speed_reading_exam feature flag;
+// authoring/grading RPCs additionally require an admin/pastor profile.
+const EXAM_RPC_FUNCTIONS = new Set([
+  "exam_upsert_paper",
+  "exam_upsert_question",
+  "exam_delete_question",
+  "exam_get_paper_admin",
+  "exam_publish",
+  "exam_set_status",
+  "exam_get_for_attempt",
+  "exam_start_attempt",
+  "exam_save_progress",
+  "exam_submit_attempt",
+  "exam_get_my_result",
+  "exam_get_grading_queue",
+  "exam_grade_answer"
+]);
+const EXAM_ADMIN_RPC_FUNCTIONS = new Set([
+  "exam_upsert_paper",
+  "exam_upsert_question",
+  "exam_delete_question",
+  "exam_get_paper_admin",
+  "exam_publish",
+  "exam_set_status",
+  "exam_get_grading_queue",
+  "exam_grade_answer"
+]);
 const PROFILE_SELECT = "id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, name_review_approved, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_contract_version, member_context_membership_lifecycle_state, member_context_placement_state, member_context_placement_workflow_state, member_context_has_required_placement, member_context_required_action, member_context_required_action_url, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments, role_definition:role_definitions(id, code, label, sort_order, is_assignable, can_manage_plans, can_manage_permissions, scope_type)";
 // Same as PROFILE_SELECT minus name_review_approved (migration 0069) — used
 // as a retry target wherever a query against PROFILE_SELECT fails, so a
@@ -91,7 +118,8 @@ const RPC_FUNCTIONS = new Set([
   "get_user_rankings",
   ...TEAM_RPC_FUNCTIONS,
   ...ADMIN_RPC_FUNCTIONS,
-  ...QUIZ_RPC_FUNCTIONS
+  ...QUIZ_RPC_FUNCTIONS,
+  ...EXAM_RPC_FUNCTIONS
 ]);
 
 function jsonResponse(body: unknown, status = 200) {
@@ -496,6 +524,19 @@ Deno.serve(async (req: Request) => {
           return jsonResponse({ error: "daily_quiz_feature_disabled" }, 403);
         }
       }
+      if (EXAM_RPC_FUNCTIONS.has(functionName)) {
+        if (EXAM_ADMIN_RPC_FUNCTIONS.has(functionName) && !isAdmin(profile)) {
+          return jsonResponse({ error: "forbidden_rpc" }, 403);
+        }
+        const { data: examFeature, error: examFeatureError } = await supabaseAdmin
+          .from("app_feature_settings")
+          .select("enabled")
+          .eq("key", "speed_reading_exam")
+          .maybeSingle();
+        if (examFeatureError || examFeature?.enabled !== true) {
+          return jsonResponse({ error: "speed_reading_exam_feature_disabled" }, 403);
+        }
+      }
       const rpcName = functionName;
       // get_admin_member_team_placements(p_global_plan_id, p_actor_id) calls
       // resolve_reading_team_actor(p_actor_id) just like every other
@@ -506,6 +547,7 @@ Deno.serve(async (req: Request) => {
       const rpcArgs = (functionName === "publish_global_plan_rules"
         || TEAM_RPC_FUNCTIONS.has(functionName)
         || QUIZ_RPC_FUNCTIONS.has(functionName)
+        || EXAM_RPC_FUNCTIONS.has(functionName)
         || functionName === "get_admin_registration_statistics")
         ? { ...(body.args || {}), p_actor_id: profile.id }
         : (body.args || {});
