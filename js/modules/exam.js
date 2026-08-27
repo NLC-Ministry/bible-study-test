@@ -47,7 +47,7 @@ export async function maybeResumeExam() {
 
 // ══════════════════════════════════════════════════════════════ 後台面板（P2：題庫編輯 + 批改）
 const SECTION_TARGET_DEFAULT = { truefalse: 20, single: 20, multiple: 10, matching: 10, ordering: 10, shortanswer: 3 };
-let examAdminSubview = "bank";          // bank | meta | grade
+let examAdminSubview = "bank";          // notice | bank | meta | grade | stats
 let examAdminGradeFilter = "pending";   // pending | graded | all
 let examAdminPaperId = null;            // 目前選中的試卷（null = 最新那份）
 
@@ -136,25 +136,50 @@ export async function renderExamPanel(root) {
     return;
   }
 
-  const counts = {};
-  questions.forEach((q) => { counts[q.section] = (counts[q.section] || 0) + 1; });
-  const badge = paper.status === "published" ? "success" : paper.status === "closed" ? "neutral" : "warning";
+  const badge = paper.status === "published" ? "success"
+    : paper.status === "announced" ? "brand"
+    : paper.status === "closed" ? "neutral" : "neutral";
+  const statusLabel = { draft: "草稿", announced: "預告已發佈", published: "測驗進行中", closed: "已關閉" }[paper.status] || paper.status;
+  const noticeReady = !!((paper.announcement || {}).headline || "").trim() && !!((paper.announcement || {}).body || "").trim();
+  const isLive = paper.mode === "live";
+  const who = isLive ? "全體會友" : "僅系統管理員（測試模式）";
+
+  const actions = [
+    `<a class="secondary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}&preview=1" target="_blank" rel="noopener">預覽試卷</a>`
+  ];
+  let actionHint = "";
+  if (paper.status === "draft") {
+    // 預告文還沒填好前，不顯示發佈按鈕，只給指引
+    if (noticeReady) {
+      actions.push('<button type="button" class="primary-btn" data-exam-act="announce">發佈預告文</button>');
+      actionHint = `發佈後，${who}的首頁會出現這份測驗的預告區塊。`;
+    } else {
+      actionHint = "在「預告文」分頁填好標題與內容後，這裡才會出現「發佈預告文」按鈕。";
+    }
+  } else if (paper.status === "announced") {
+    actions.push(`<button type="button" class="primary-btn" data-exam-act="publish">${isLive ? "正式發佈測驗" : "開放測試作答"}</button>`);
+    actionHint = isLive
+      ? "發佈後，開放時間內全體會友即可進入作答（記錄以第一次為準）。"
+      : "測試模式：發佈後只有系統管理員能進入作答，會友端看不到。";
+  } else if (paper.status === "published") {
+    actions.push('<button type="button" class="secondary-btn" data-exam-act="close">關閉測驗</button>');
+    actionHint = isLive ? "測驗進行中，會友可於開放時間內作答。" : "測試模式進行中，僅系統管理員可作答。";
+  } else if (paper.status === "closed") {
+    actionHint = "測驗已關閉，不再接受作答。";
+  }
+  if (paper.status !== "draft") {
+    actions.push('<button type="button" class="secondary-btn" data-exam-act="reopen">改回草稿</button>');
+  }
 
   body.innerHTML = `
     ${pickerBar}
     <div class="exam-admin__paper">
-      <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${badge}">${esc(paper.status)}</span>　<span class="exam-admin__meta">${esc(paper.mode)}</span></p>
-      <p class="exam-admin__meta">開放：${paper.open_at ? esc(toLocalInput(paper.open_at).replace("T", " ")) : "未設定"} ～ ${paper.close_at ? esc(toLocalInput(paper.close_at).replace("T", " ")) : "未設定"}
-        ・限時 ${paper.duration_minutes} 分・滿分 ${paper.total_points}・作答 ${attemptCount} 人</p>
-      <p class="exam-admin__meta">題數：${SECTION_ORDER.filter((s) => examSectionCfg(paper)[s]).map((s) => `${SECTION_TITLE[s].slice(2)} ${counts[s] || 0}/${examSectionCfg(paper)[s].count}`).join("　") || "（尚未設定題型）"}</p>
-      <div class="exam-admin__actions">
-        <a class="secondary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}&preview=1" target="_blank" rel="noopener">預覽試卷</a>
-        ${paper.status === "draft" ? '<button type="button" class="primary-btn" data-exam-act="publish">發佈試卷</button>' : ""}
-        ${paper.status === "published" ? '<button type="button" class="secondary-btn" data-exam-act="close">關閉測驗</button>' : ""}
-        ${paper.status !== "draft" ? '<button type="button" class="secondary-btn" data-exam-act="reopen">改回草稿</button>' : ""}
-      </div>
+      <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${badge}">${esc(statusLabel)}</span>　<span class="exam-admin__meta">${esc(paper.mode === "live" ? "正式 live" : "測試 test")}</span></p>
+      <div class="exam-admin__actions">${actions.join("")}</div>
+      ${actionHint ? `<p class="exam-admin__meta">${esc(actionHint)}</p>` : ""}
     </div>
     <nav class="exam-admin__subnav">
+      <button type="button" data-exam-sub="notice" class="${examAdminSubview === "notice" ? "active" : ""}">預告文</button>
       <button type="button" data-exam-sub="bank" class="${examAdminSubview === "bank" ? "active" : ""}">題庫編輯</button>
       <button type="button" data-exam-sub="meta" class="${examAdminSubview === "meta" ? "active" : ""}">試卷設定</button>
       <button type="button" data-exam-sub="grade" class="${examAdminSubview === "grade" ? "active" : ""}">簡答批改</button>
@@ -168,22 +193,68 @@ export async function renderExamPanel(root) {
   }));
   body.querySelectorAll("[data-exam-act]").forEach((b) => b.addEventListener("click", async () => {
     const act = b.dataset.examAct;
+    const live = paper.mode === "live";
+    if (act === "announce" && live && !confirm("將把這份預告文發佈到全體會友的首頁。確定？")) return;
+    if (act === "publish" && live && !confirm("將正式開放全體會友作答（開放時間內）。確定？")) return;
+    if (act === "reopen" && !confirm("改回草稿後，會友首頁的預告 / 測驗入口會一併撤下。確定？")) return;
     b.disabled = true;
     let res;
-    if (act === "publish") res = await db.publishExam(paper.id);
+    if (act === "announce") res = await db.publishExamAnnouncement(paper.id);
+    else if (act === "publish") res = await db.publishExam(paper.id);
     else if (act === "close") res = await db.setExamStatus(paper.id, "closed");
     else if (act === "reopen") res = await db.setExamStatus(paper.id, "draft");
     b.disabled = false;
     if (!res.success) { toast(res.message || "操作失敗"); return; }
-    toast(act === "publish" ? "已發佈" : "已更新");
+    toast(
+      act === "announce" ? (live ? "預告文已發佈到會友首頁" : "預告文已發佈（測試：僅管理員首頁）")
+      : act === "publish" ? (live ? "測驗已正式發佈，會友可作答" : "已開放測試作答（僅管理員）")
+      : act === "close" ? "測驗已關閉"
+      : "已改回草稿"
+    );
     rerender();
   }));
 
   const sub = body.querySelector("#exam-admin-sub");
-  if (examAdminSubview === "meta") renderExamMetaForm(sub, paper, rerender);
+  if (examAdminSubview === "notice") renderExamNoticeForm(sub, paper, rerender);
+  else if (examAdminSubview === "meta") renderExamMetaForm(sub, paper, rerender);
   else if (examAdminSubview === "grade") renderExamGrading(sub, paper.id);
   else if (examAdminSubview === "stats") renderExamStats(sub, paper.id);
   else renderExamQuestionBank(sub, paper, questions, rerender);
+}
+
+// ── 預告文編輯（首頁 8/30 宣示 banner 的內容來源）──
+function renderExamNoticeForm(host, paper, rerender) {
+  const a = paper.announcement || {};
+  const locked = paper.status === "published" || paper.status === "closed";
+  const openTxt = paper.open_at ? toLocalInput(paper.open_at).replace("T", " ") : "（尚未設定）";
+  const closeTxt = paper.close_at ? toLocalInput(paper.close_at).replace("T", " ") : "（尚未設定）";
+  host.innerHTML = `
+    <div class="exam-admin__form">
+      <p class="exam-admin__hint">這裡的內容會顯示在會友首頁的「速讀測驗」置頂區塊。${
+        locked ? "測驗已正式發佈，預告文已鎖定。" : paper.status === "announced" ? "預告文已在首頁顯示，仍可在此微調文案。" : "填好後回上方按「發佈預告文」。"}</p>
+      <label>標題（必填）
+        <input class="form-control" data-n="headline" maxlength="40" value="${esc(a.headline || "")}" ${locked ? "disabled" : ""}></label>
+      <label>內容（必填）
+        <textarea class="form-control" data-n="body" rows="4" ${locked ? "disabled" : ""} placeholder="例：8/30 00:00 起開放 24 小時，作答限時 75 分鐘。開始前請先詳閱測驗宣示規則。">${esc(a.body || "")}</textarea></label>
+      <label>入口按鈕文字（選填，預設「進入測驗」）
+        <input class="form-control" data-n="ctaLabel" maxlength="12" value="${esc(a.ctaLabel || "")}" ${locked ? "disabled" : ""}></label>
+      <p class="exam-admin__meta">開放時間：${esc(openTxt)} ～ ${esc(closeTxt)}（於「試卷設定」分頁調整）</p>
+      ${locked ? "" : '<button type="button" class="primary-btn" id="exam-notice-save">儲存預告文</button>'}
+    </div>`;
+  if (locked) return;
+  host.querySelector("#exam-notice-save")?.addEventListener("click", async (e) => {
+    const payload = {
+      headline: host.querySelector('[data-n="headline"]').value.trim(),
+      body: host.querySelector('[data-n="body"]').value.trim(),
+      ctaLabel: host.querySelector('[data-n="ctaLabel"]').value.trim()
+    };
+    e.target.disabled = true;
+    const res = await db.saveExamAnnouncement(paper.id, payload);
+    e.target.disabled = false;
+    if (!res.success) { toast(res.message || "儲存失敗"); return; }
+    toast("預告文已儲存");
+    rerender();
+  });
 }
 
 // ── 統計報表（整體 / 大區 / 牧區 / 小組 / 逐題正確率 / 名單）──

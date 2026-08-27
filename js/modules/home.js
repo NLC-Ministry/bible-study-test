@@ -298,6 +298,7 @@ export function updateDashboardView() {
 
   renderDailyVerse();
   updateAnnouncementsList();
+  void refreshExamHomeBanner();
 
 
 
@@ -2700,8 +2701,86 @@ function bindQuizPledgeBanner() {
   }
 }
 
+// 首頁「速讀大測驗」置頂區塊：內容全部由後台「預告文」分頁維護。
+// db.getExamHomeBanner() 在功能關閉 / 尚未發佈預告時回 null → 整塊隱藏。
+async function refreshExamHomeBanner() {
+  const card = document.getElementById("quiz-announcement-banner");
+  const host = document.getElementById("exam-home-banner");
+  if (!card || !host) return;
+
+  let d = null;
+  try {
+    if (typeof db !== "undefined" && typeof db.getExamHomeBanner === "function") {
+      const res = await db.getExamHomeBanner();
+      d = res && res.data ? res.data : null;
+    }
+  } catch (_) { d = null; }
+
+  if (!d || !d.paperId) { card.classList.add("hidden"); host.innerHTML = ""; return; }
+
+  const now = Date.parse(d.serverNow) || Date.now();
+  const openTs = Date.parse(d.openAt) || 0;
+  const closeTs = Date.parse(d.closeAt) || 0;
+  const my = d.myAttemptStatus || null;
+
+  let badge = "即將開放";
+  let badgeKind = "warning";
+  let note = d.body || "";
+  let action = null; // { kind:'enter'|'resume'|'result'|'pledge', label }
+
+  if (my === "graded") {
+    badge = "已公布成績"; badgeKind = "success";
+    note = d.myTotalScore != null ? `你的總分：${d.myTotalScore} 分` : "成績已公布。";
+    action = { kind: "result", label: "查看成績" };
+  } else if (my === "submitted") {
+    badge = "已完成作答"; badgeKind = "brand";
+    note = "你已完成作答，成績公布後會在這裡顯示。";
+  } else if (my === "in_progress") {
+    badge = "作答中"; badgeKind = "brand";
+    note = "你有一份未完成的測驗，計時仍在進行。";
+    action = { kind: "resume", label: "繼續作答" };
+  } else if (d.status === "closed" || (closeTs && now > closeTs)) {
+    badge = "已結束"; badgeKind = "neutral";
+    note = d.body || "測驗已結束。";
+  } else if (d.status === "published" && openTs && now >= openTs && (!closeTs || now <= closeTs)) {
+    badge = "開放中"; badgeKind = "success";
+    action = { kind: "enter", label: d.ctaLabel || "進入測驗" };
+  } else {
+    badge = "即將開放"; badgeKind = "warning";
+    action = { kind: "pledge", label: "測驗宣示" };
+  }
+
+  const goExam = () => {
+    const url = "exam.html?paper=" + encodeURIComponent(d.paperId) + "&return=" + encodeURIComponent(location.pathname + location.search);
+    try { location.assign(url); } catch (_) { location.href = url; }
+  };
+
+  host.innerHTML = `
+    <span class="nlc-icon nlc-icon--hero exam-home-banner__icon" data-icon="megaphone" aria-hidden="true"></span>
+    <div class="exam-home-banner__main">
+      <div class="exam-home-banner__head">
+        <h3 class="card-title exam-home-banner__title">${escapeHTML(d.headline || d.title || "速讀大測驗")}</h3>
+        <span class="stat-badge stat-badge--${badgeKind}">${escapeHTML(badge)}</span>
+      </div>
+      ${note ? `<p class="exam-home-banner__note">${escapeHTML(note)}</p>` : ""}
+    </div>
+    ${action ? `<button type="button" class="primary-btn exam-home-banner__btn" id="exam-home-banner-action">${escapeHTML(action.label)}</button>` : ""}`;
+
+  card.classList.remove("hidden");
+  if (typeof hydrateIcons === "function") hydrateIcons(host);
+
+  const btn = host.querySelector("#exam-home-banner-action");
+  if (btn && action) {
+    btn.addEventListener("click", () => {
+      if (action.kind === "pledge") openQuizPledgeModal();
+      else goExam();
+    });
+  }
+}
+
 window.openQuizPledgeModal = openQuizPledgeModal;
 window.closeQuizPledgeModal = closeQuizPledgeModal;
+window.refreshExamHomeBanner = refreshExamHomeBanner;
 
 export function init() {
   initDevotionalControls();

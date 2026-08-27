@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260828_exam_p3d" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260828_exam_p3g" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -270,20 +270,10 @@
       <!-- VIEW 1: DASHBOARD -->
       <section id="dashboard-view" class="view-pane hidden">
         <div class="grid-layout">
-          <!-- 置頂公告：8/30 速讀測驗預告。點擊查看規則會先顯示「測驗宣示」，
-               測驗入口本身要等 8/30 才開放，目前只做到宣示畫面。 -->
-          <div class="glass-card card-col span-12 bento-card quiz-announcement-banner" id="quiz-announcement-banner">
-            <div style="display:flex; align-items:center; gap:0.85rem; flex-wrap:wrap;">
-              <span class="nlc-icon nlc-icon--hero" data-icon="megaphone" aria-hidden="true" style="color: var(--color-brand); flex-shrink:0;"></span>
-              <div style="flex:1; min-width:200px;">
-                <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.2rem;">
-                  <h3 class="card-title" style="margin:0;">8/30 速讀測驗即將登場</h3>
-                  <span class="stat-badge stat-badge--warning">即將開放</span>
-                </div>
-                <p style="margin:0; font-size:0.875rem; color:var(--text-secondary); line-height:1.5;">8/30 00:00 起開放 24 小時，作答限時 75 分鐘。開始前請先詳閱測驗宣示規則。</p>
-              </div>
-              <button type="button" class="primary-btn" id="btn-open-quiz-pledge" style="white-space:nowrap;">測驗宣示</button>
-            </div>
+          <!-- 置頂：速讀「大測驗」預告 / 入口。內容由後台「預告文」分頁維護，
+               透過 db.getExamHomeBanner() 帶入；功能關閉或尚未發佈預告時整塊隱藏。 -->
+          <div class="glass-card card-col span-12 bento-card quiz-announcement-banner hidden" id="quiz-announcement-banner">
+            <div class="exam-home-banner" id="exam-home-banner"></div>
           </div>
 
           <!-- Main Column: Personal Progress & Announcements -->
@@ -2644,7 +2634,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260828_exam_p3d"></script>
+  <script type="module" src="js/app.js?v=20260828_exam_p3g"></script>
 </body>
 
 </html>

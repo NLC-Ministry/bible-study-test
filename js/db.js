@@ -3231,6 +3231,10 @@ const db = {
       exam_question_not_found: "找不到這一題。",
       exam_question_not_deletable: "試卷已發佈，無法刪除題目。",
       exam_already_published: "試卷已發佈。",
+      exam_not_announced: "請先「發佈預告文」，才能發佈測驗。",
+      exam_announcement_incomplete: "請先填寫預告文的標題與內容。",
+      exam_announcement_already_published: "預告文已發佈。",
+      exam_announcement_locked: "測驗已正式發佈，預告文無法再修改。",
       exam_window_invalid: "請先設定正確的開放起訖時間。",
       exam_section_count_mismatch: "各大題題數與設定不符。",
       exam_answer_key_incomplete: "還有題目未填答案。",
@@ -3276,11 +3280,27 @@ const db = {
   async deleteExamQuestion(questionId) {
     return this._callExamRpc("exam_delete_question", { p_question_id: questionId });
   },
+  async saveExamAnnouncement(paperId, announcement) {
+    return this._callExamRpc("exam_save_announcement", {
+      p_paper_id: paperId,
+      p_announcement: announcement || {}
+    });
+  },
+  async publishExamAnnouncement(paperId) {
+    return this._callExamRpc("exam_publish_announcement", { p_paper_id: paperId });
+  },
   async publishExam(paperId) {
     return this._callExamRpc("exam_publish", { p_paper_id: paperId });
   },
   async setExamStatus(paperId, status) {
     return this._callExamRpc("exam_set_status", { p_paper_id: paperId, p_status: status });
+  },
+
+  // 首頁 8/30 宣示 banner（一般會友；功能關閉 / 無已發預告試卷回 null）
+  async getExamHomeBanner() {
+    const result = await this._callExamRpc("exam_home_banner");
+    return result.success ? { data: result.data || null, error: null }
+                          : { data: null, error: result.error || new Error(result.message) };
   },
 
   // 作答

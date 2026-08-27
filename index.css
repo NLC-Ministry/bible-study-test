@@ -10930,6 +10930,38 @@ body.dark-theme .plan-calendar .plan-day-cell.active .day-number, body.dark-them
   box-shadow: var(--shadow-sm);
   border-color: var(--color-warning) !important;
 }
+#quiz-announcement-banner.hidden { display: none; }
+
+/* 首頁「速讀大測驗」置頂區塊：內容由後台預告文帶入（喇叭圖示 + 標題/說明 + 入口鈕）。 */
+.exam-home-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+.exam-home-banner__icon {
+  color: var(--color-brand);
+  flex-shrink: 0;
+}
+.exam-home-banner__main {
+  flex: 1;
+  min-width: 200px;
+}
+.exam-home-banner__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.2rem;
+}
+.exam-home-banner__title { margin: 0; }
+.exam-home-banner__note {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.exam-home-banner__btn { white-space: nowrap; }
 
 /* 3. Border Beam Glow Animation */
 .bento-card::before {
