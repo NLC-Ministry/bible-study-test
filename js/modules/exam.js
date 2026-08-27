@@ -45,7 +45,25 @@ export async function maybeResumeExam() {
   return mountExamRunner({ paperId });
 }
 
-// ────────────────────────────────────────────────────────────── 後台面板（P1 精簡）
+// ══════════════════════════════════════════════════════════════ 後台面板（P2：題庫編輯 + 批改）
+const SECTION_TARGET_DEFAULT = { truefalse: 20, single: 20, multiple: 10, matching: 10, ordering: 10, shortanswer: 3 };
+let examAdminSubview = "bank";          // bank | meta | grade
+let examAdminGradeFilter = "pending";   // pending | graded | all
+
+const toLocalInput = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const fromLocalInput = (v) => (v ? new Date(v).toISOString() : null);
+const lines = (t) => String(t || "").split("\n").map((s) => s.trim()).filter(Boolean);
+const parseIdText = (arr) => arr.map((r) => {
+  const i = r.indexOf("|");
+  return i < 0 ? { id: r.trim(), text: "" } : { id: r.slice(0, i).trim(), text: r.slice(i + 1).trim() };
+});
+
 export async function renderExamPanel(root) {
   if (!root) return;
   root.innerHTML = '<div class="admin-user-directory__empty">載入大測驗設定…</div>';
@@ -84,27 +102,303 @@ export async function renderExamPanel(root) {
   const paperRes = await db.getExamPaperAdmin();
   if (!paperRes.success) {
     body.innerHTML = `<div class="admin-user-directory__empty">${esc(paperRes.message || "無法載入試卷")}${
-      paperRes.error ? "（請確認 migration 0096 與 nlc-data 已部署）" : ""}</div>`;
+      paperRes.error ? "（請確認 migration 0096 / 0097 與 nlc-data 已部署）" : ""}</div>`;
     return;
   }
   const paper = paperRes.data && paperRes.data.paper;
   const questions = (paperRes.data && paperRes.data.questions) || [];
+  const attemptCount = paperRes.data?.attemptCount || 0;
+
+  if (!paper) {
+    body.innerHTML = `
+      <div class="exam-admin__paper">
+        <p class="exam-admin__meta">目前沒有試卷。建立一份後即可開始出題。</p>
+        <button type="button" class="primary-btn" id="exam-create-paper">建立新試卷</button>
+      </div>`;
+    body.querySelector("#exam-create-paper").addEventListener("click", async () => {
+      const res = await db.upsertExamPaper({ title: "速讀測驗", mode: "test",
+        section_targets: SECTION_TARGET_DEFAULT });
+      if (!res.success) { toast(res.message || "建立失敗"); return; }
+      renderExamPanel(root);
+    });
+    return;
+  }
+
   const counts = {};
   questions.forEach((q) => { counts[q.section] = (counts[q.section] || 0) + 1; });
-  const badge = paper && (paper.status === "published" ? "success" : paper.status === "closed" ? "neutral" : "warning");
+  const badge = paper.status === "published" ? "success" : paper.status === "closed" ? "neutral" : "warning";
+  const rerender = () => renderExamPanel(root);
 
   body.innerHTML = `
-    ${paper ? `
-      <div class="exam-admin__paper">
-        <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${badge}">${esc(paper.status)}</span>　<span class="exam-admin__meta">${esc(paper.mode)}</span></p>
-        <p class="exam-admin__meta">開放：${paper.open_at ? esc(paper.open_at) : "未設定"} ～ ${paper.close_at ? esc(paper.close_at) : "未設定"}
-          ・限時 ${paper.duration_minutes} 分・滿分 ${paper.total_points}・作答 ${paperRes.data.attemptCount} 人</p>
-        <p class="exam-admin__meta">題數：${SECTION_ORDER.map((s) => `${SECTION_TITLE[s].slice(2)} ${counts[s] || 0}`).join("　")}</p>
-        <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.5rem;">
-          <a class="primary-btn" id="exam-preview-run" href="exam.html?paper=${encodeURIComponent(paper.id)}" target="_blank" rel="noopener">以我的帳號預覽作答（獨立頁）</a>
-        </div>
-      </div>` : `
-      <div class="admin-user-directory__empty">目前沒有試卷。P2 會加入題庫編輯器；現在可先用 SQL 建立一份 <code>mode='test'</code> 的試卷。</div>`}`;
+    <div class="exam-admin__paper">
+      <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${badge}">${esc(paper.status)}</span>　<span class="exam-admin__meta">${esc(paper.mode)}</span></p>
+      <p class="exam-admin__meta">開放：${paper.open_at ? esc(toLocalInput(paper.open_at).replace("T", " ")) : "未設定"} ～ ${paper.close_at ? esc(toLocalInput(paper.close_at).replace("T", " ")) : "未設定"}
+        ・限時 ${paper.duration_minutes} 分・滿分 ${paper.total_points}・作答 ${attemptCount} 人</p>
+      <p class="exam-admin__meta">題數：${SECTION_ORDER.map((s) => `${SECTION_TITLE[s].slice(2)} ${counts[s] || 0}/${(paper.section_targets || {})[s] ?? "?"}`).join("　")}</p>
+      <div class="exam-admin__actions">
+        <a class="secondary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}" target="_blank" rel="noopener">預覽作答（獨立頁）</a>
+        ${paper.status === "draft" ? '<button type="button" class="primary-btn" data-exam-act="publish">發佈試卷</button>' : ""}
+        ${paper.status === "published" ? '<button type="button" class="secondary-btn" data-exam-act="close">關閉測驗</button>' : ""}
+        ${paper.status !== "draft" ? '<button type="button" class="secondary-btn" data-exam-act="reopen">改回草稿</button>' : ""}
+      </div>
+    </div>
+    <nav class="exam-admin__subnav">
+      <button type="button" data-exam-sub="bank" class="${examAdminSubview === "bank" ? "active" : ""}">題庫編輯</button>
+      <button type="button" data-exam-sub="meta" class="${examAdminSubview === "meta" ? "active" : ""}">試卷設定</button>
+      <button type="button" data-exam-sub="grade" class="${examAdminSubview === "grade" ? "active" : ""}">簡答批改</button>
+    </nav>
+    <div id="exam-admin-sub"></div>`;
+
+  body.querySelectorAll("[data-exam-sub]").forEach((b) => b.addEventListener("click", () => {
+    examAdminSubview = b.dataset.examSub; rerender();
+  }));
+  body.querySelectorAll("[data-exam-act]").forEach((b) => b.addEventListener("click", async () => {
+    const act = b.dataset.examAct;
+    b.disabled = true;
+    let res;
+    if (act === "publish") res = await db.publishExam(paper.id);
+    else if (act === "close") res = await db.setExamStatus(paper.id, "closed");
+    else if (act === "reopen") res = await db.setExamStatus(paper.id, "draft");
+    b.disabled = false;
+    if (!res.success) { toast(res.message || "操作失敗"); return; }
+    toast(act === "publish" ? "已發佈" : "已更新");
+    rerender();
+  }));
+
+  const sub = body.querySelector("#exam-admin-sub");
+  if (examAdminSubview === "meta") renderExamMetaForm(sub, paper, rerender);
+  else if (examAdminSubview === "grade") renderExamGrading(sub, paper.id);
+  else renderExamQuestionBank(sub, paper, questions, rerender);
+}
+
+// ── 試卷設定表單 ──
+function renderExamMetaForm(host, paper, rerender) {
+  const p = paper;
+  const rules = ((p.pledge || {}).rules || []).join("\n");
+  host.innerHTML = `
+    <div class="exam-admin__form">
+      <label>標題<input class="form-control" data-f="title" value="${esc(p.title)}"></label>
+      <label>模式
+        <select class="form-control" data-f="mode">
+          <option value="test" ${p.mode === "test" ? "selected" : ""}>test（測試，不會出現在會友端）</option>
+          <option value="live" ${p.mode === "live" ? "selected" : ""}>live（正式）</option>
+        </select></label>
+      <div class="exam-admin__form-row">
+        <label>開放起<input type="datetime-local" class="form-control" data-f="open_at" value="${esc(toLocalInput(p.open_at))}"></label>
+        <label>開放迄<input type="datetime-local" class="form-control" data-f="close_at" value="${esc(toLocalInput(p.close_at))}"></label>
+      </div>
+      <div class="exam-admin__form-row">
+        <label>限時（分）<input type="number" class="form-control" data-f="duration_minutes" value="${p.duration_minutes}"></label>
+        <label>滿分<input type="number" class="form-control" data-f="total_points" value="${p.total_points}"></label>
+      </div>
+      <label>宣示：開放說明<input class="form-control" data-f="pledge_open" value="${esc((p.pledge || {}).openText || "")}"></label>
+      <label>宣示：規則（每行一條）<textarea class="form-control" rows="6" data-f="pledge_rules">${esc(rules)}</textarea></label>
+      <label>宣示：確認句（{name} 會代入姓名）<input class="form-control" data-f="pledge_consent" value="${esc((p.pledge || {}).consentTemplate || "{name} 清楚以上測驗規則，亦會遵守規則來完成本次測驗。")}"></label>
+      <button type="button" class="primary-btn" id="exam-meta-save">儲存試卷設定</button>
+    </div>`;
+  host.querySelector("#exam-meta-save").addEventListener("click", async (e) => {
+    const g = (f) => host.querySelector(`[data-f="${f}"]`).value;
+    e.target.disabled = true;
+    const res = await db.upsertExamPaper({
+      id: p.id, title: g("title"), mode: g("mode"),
+      open_at: fromLocalInput(g("open_at")), close_at: fromLocalInput(g("close_at")),
+      duration_minutes: Number(g("duration_minutes")) || 75,
+      total_points: Number(g("total_points")) || 100,
+      pledge: { openText: g("pledge_open"), rules: lines(g("pledge_rules")), consentTemplate: g("pledge_consent") }
+    });
+    e.target.disabled = false;
+    if (!res.success) { toast(res.message || "儲存失敗"); return; }
+    toast("已儲存");
+    rerender();
+  });
+}
+
+// ── 題庫編輯（六大題，每題可存 / 刪 / 新增）──
+function renderExamQuestionBank(host, paper, questions, rerender) {
+  if (paper.status !== "draft") {
+    host.innerHTML = `<div class="admin-user-directory__empty">試卷已${paper.status === "published" ? "發佈" : "關閉"}，題目已鎖定。要改題請先「改回草稿」（會影響已作答的人，請謹慎）。</div>`;
+    return;
+  }
+  const bySection = {};
+  questions.forEach((q) => { (bySection[q.section] ||= []).push(q); });
+  SECTION_ORDER.forEach((s) => (bySection[s] ||= []).sort((a, b) => a.position - b.position));
+
+  host.innerHTML = SECTION_ORDER.map((sec) => `
+    <section class="exam-admin__bank-sec" data-section="${sec}">
+      <h4>${esc(SECTION_TITLE[sec])}　<span class="exam-admin__meta">${bySection[sec].length}／${(paper.section_targets || {})[sec] ?? "?"} 題</span></h4>
+      <div class="exam-admin__q-list">${bySection[sec].map((q) => qEditCard(sec, q)).join("")}</div>
+      <button type="button" class="secondary-btn" data-add-q="${sec}">＋ 新增${SECTION_TITLE[sec].slice(2)}</button>
+    </section>`).join("");
+
+  const wire = (card) => {
+    const sec = card.closest("[data-section]").dataset.section;
+    card.querySelector("[data-q-save]").addEventListener("click", async (e) => {
+      const built = collectQCard(card, sec);
+      if (built.error) { toast(built.error); return; }
+      e.target.disabled = true;
+      const res = await db.upsertExamQuestion({
+        id: card.dataset.qid || undefined, paper_id: paper.id, section: sec,
+        position: Number(card.dataset.qpos) || undefined,
+        points: built.points, payload: built.payload, answer_key: built.answer_key
+      });
+      e.target.disabled = false;
+      if (!res.success) { toast(res.message || "儲存失敗"); return; }
+      toast("已儲存"); rerender();
+    });
+    card.querySelector("[data-q-del]")?.addEventListener("click", async () => {
+      if (!confirm("刪除這一題？")) return;
+      const res = await db.deleteExamQuestion(card.dataset.qid);
+      if (!res.success) { toast(res.message || "刪除失敗"); return; }
+      rerender();
+    });
+  };
+  host.querySelectorAll(".exam-admin__q-card").forEach(wire);
+  host.querySelectorAll("[data-add-q]").forEach((b) => b.addEventListener("click", () => {
+    const sec = b.dataset.addQ;
+    const list = b.closest("[data-section]").querySelector(".exam-admin__q-list");
+    list.insertAdjacentHTML("beforeend", qEditCard(sec, null));
+    wire(list.lastElementChild);
+    list.lastElementChild.scrollIntoView({ block: "center" });
+  }));
+}
+
+function qEditCard(sec, q) {
+  const pl = (q && q.payload) || {};
+  const ak = q ? q.answer_key : undefined;
+  const idAttr = q ? `data-qid="${esc(q.id)}" data-qpos="${q.position}"` : "";
+  let body = `<label>題幹<textarea class="form-control" data-p="stem" rows="2">${esc(pl.stem || "")}</textarea></label>`;
+
+  if (sec === "truefalse") {
+    body += `<label>正解<select class="form-control" data-a="tf">
+      <option value="true" ${ak === true ? "selected" : ""}>O（對）</option>
+      <option value="false" ${ak === false ? "selected" : ""}>X（錯）</option></select></label>`;
+  } else if (sec === "single" || sec === "multiple") {
+    const opts = pl.options || ["", "", "", ""];
+    const ansArr = sec === "multiple" ? (Array.isArray(ak) ? ak : []) : [];
+    body += `<div class="exam-admin__opts">${opts.map((o, i) => `
+      <div class="exam-admin__opt">
+        <input type="${sec === "multiple" ? "checkbox" : "radio"}" name="ak-${q ? q.id : "new"}" data-a="opt" value="${i}"
+          ${sec === "multiple" ? (ansArr.includes(i) ? "checked" : "") : (ak === i ? "checked" : "")}>
+        <input class="form-control" data-p="opt" value="${esc(o)}">
+      </div>`).join("")}</div>
+      <button type="button" class="exam-admin__link" data-opt-add>＋ 選項</button>`;
+  } else if (sec === "matching") {
+    body += `<label>左欄（每行 id|文字）<textarea class="form-control" rows="4" data-p="left">${esc((pl.left || []).map((x) => x.id + "|" + x.text).join("\n"))}</textarea></label>
+      <label>右欄（每行 id|文字，數量須與左欄相等）<textarea class="form-control" rows="4" data-p="right">${esc((pl.right || []).map((x) => x.id + "|" + x.text).join("\n"))}</textarea></label>
+      <label>正解（每行 左id=右id）<textarea class="form-control" rows="4" data-a="match">${esc(Object.entries(ak || {}).map(([l, r]) => l + "=" + r).join("\n"))}</textarea></label>`;
+  } else if (sec === "ordering") {
+    body += `<label>事件（每行 id|文字，＝待排序區呈現順序）<textarea class="form-control" rows="5" data-p="items">${esc((pl.items || []).map((x) => x.id + "|" + x.text).join("\n"))}</textarea></label>
+      <label>正確順序（id 以逗號分隔）<input class="form-control" data-a="order" value="${esc((Array.isArray(ak) ? ak : []).join(","))}"></label>`;
+  } else if (sec === "shortanswer") {
+    body += `<label>參考答案<textarea class="form-control" rows="3" data-p="ref">${esc(pl.referenceAnswer || "")}</textarea></label>
+      <label>評分要點（每行一項）<textarea class="form-control" rows="3" data-p="rubric">${esc((pl.rubric || []).join("\n"))}</textarea></label>
+      <label>配分<input type="number" class="form-control" data-p="max" value="${pl.maxPoints ?? (q ? q.points : 10)}"></label>`;
+  }
+  return `<div class="exam-admin__q-card" ${idAttr}>
+    ${body}
+    <div class="exam-admin__q-actions">
+      <button type="button" class="primary-btn" data-q-save>儲存此題</button>
+      ${q ? '<button type="button" class="exam-admin__link exam-admin__link--danger" data-q-del>刪除</button>' : ""}
+    </div>
+  </div>`;
+}
+
+function collectQCard(card, sec) {
+  const stem = card.querySelector('[data-p="stem"]').value.trim();
+  if (!stem) return { error: "題幹不能空白" };
+  let payload = { stem };
+  let answer_key = null;
+  let points = 1;
+
+  if (sec === "truefalse") {
+    answer_key = card.querySelector('[data-a="tf"]').value === "true";
+  } else if (sec === "single" || sec === "multiple") {
+    const opts = [...card.querySelectorAll('[data-p="opt"]')].map((i) => i.value.trim());
+    payload.options = opts;
+    const checked = [...card.querySelectorAll('[data-a="opt"]')].filter((i) => i.checked).map((i) => Number(i.value));
+    if (sec === "single") {
+      if (checked.length !== 1) return { error: "單選題請選 1 個正解" };
+      answer_key = checked[0];
+    } else {
+      if (checked.length < 2) return { error: "複選題至少 2 個正解" };
+      answer_key = checked.sort((a, b) => a - b);
+    }
+  } else if (sec === "matching") {
+    const left = parseIdText(lines(card.querySelector('[data-p="left"]').value));
+    const right = parseIdText(lines(card.querySelector('[data-p="right"]').value));
+    payload.left = left; payload.right = right;
+    answer_key = {};
+    lines(card.querySelector('[data-a="match"]').value).forEach((r) => {
+      const [l, rr] = r.split("=");
+      if (l && rr) answer_key[l.trim()] = rr.trim();
+    });
+    if (Object.keys(answer_key).length !== left.length) return { error: "連連看：正解組數要等於左欄項數" };
+  } else if (sec === "ordering") {
+    const items = parseIdText(lines(card.querySelector('[data-p="items"]').value));
+    payload.items = items;
+    answer_key = card.querySelector('[data-a="order"]').value.split(",").map((s) => s.trim()).filter(Boolean);
+    if (answer_key.length !== items.length) return { error: "排序題：正解 id 數要等於事件數" };
+  } else if (sec === "shortanswer") {
+    payload.referenceAnswer = card.querySelector('[data-p="ref"]').value.trim();
+    payload.rubric = lines(card.querySelector('[data-p="rubric"]').value);
+    points = Number(card.querySelector('[data-p="max"]').value) || 10;
+    payload.maxPoints = points;
+    answer_key = null;
+  }
+  return { payload, answer_key, points };
+}
+
+// ── 簡答批改佇列（分數 + 評語）──
+async function renderExamGrading(host, paperId) {
+  host.innerHTML = '<div class="admin-user-directory__empty">載入批改清單…</div>';
+  const res = await db.getExamGradingQueue(paperId, examAdminGradeFilter);
+  if (!res.success) { host.innerHTML = `<div class="admin-user-directory__empty">${esc(res.message || "載入失敗")}</div>`; return; }
+  const { summary = {}, items = [] } = res.data || {};
+
+  host.innerHTML = `
+    <div class="exam-admin__grade-head">
+      <span class="exam-admin__meta">待批 ${summary.pending ?? "?"}／已批 ${summary.graded ?? "?"}／共 ${summary.total ?? "?"}</span>
+      <span class="exam-admin__filter">
+        ${["pending", "graded", "all"].map((f) => `<button type="button" data-gf="${f}" class="${examAdminGradeFilter === f ? "active" : ""}">${{ pending: "待批", graded: "已批", all: "全部" }[f]}</button>`).join("")}
+      </span>
+    </div>
+    ${items.length ? items.map(gradeCard).join("") : '<div class="admin-user-directory__empty">沒有符合的簡答作答。</div>'}`;
+
+  host.querySelectorAll("[data-gf]").forEach((b) => b.addEventListener("click", () => {
+    examAdminGradeFilter = b.dataset.gf; renderExamGrading(host, paperId);
+  }));
+  host.querySelectorAll(".exam-admin__grade-card").forEach((card) => {
+    card.querySelector("[data-grade-save]").addEventListener("click", async (e) => {
+      const pts = Number(card.querySelector('[data-g="points"]').value);
+      const cmt = card.querySelector('[data-g="comment"]').value;
+      if (isNaN(pts)) { toast("請輸入分數"); return; }
+      e.target.disabled = true;
+      const r = await db.gradeExamAnswer(card.dataset.answerId, pts, cmt);
+      e.target.disabled = false;
+      if (!r.success) { toast(r.message || "儲存失敗"); return; }
+      toast(r.data?.attemptFinalized ? "已批改，該生總分已結算" : "已儲存");
+      renderExamGrading(host, paperId);
+    });
+  });
+}
+
+function gradeCard(it) {
+  const who = [it.greatRegion, it.pastoralZone, it.smallGroup].filter(Boolean).join(" / ");
+  return `<div class="exam-admin__grade-card" data-answer-id="${esc(it.answerId)}">
+    <p class="exam-admin__grade-who"><strong>${esc(it.examineeName || "（未具名）")}</strong>${who ? `　<span class="exam-admin__meta">${esc(who)}</span>` : ""}
+      ${it.awardedPoints != null ? `　<span class="stat-badge stat-badge--success">已批 ${it.awardedPoints}</span>` : '　<span class="stat-badge stat-badge--warning">待批</span>'}</p>
+    <p class="exam-admin__grade-stem">第 ${it.position} 題（${it.points} 分）：${esc(it.stem || "")}</p>
+    <details><summary class="exam-admin__link">參考答案／評分要點</summary>
+      <p class="exam-admin__meta">${esc(it.referenceAnswer || "—")}</p>
+      <ul class="exam-admin__rubric">${(it.rubric || []).map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
+    </details>
+    <div class="exam-admin__grade-resp">${esc(it.response || "（未作答）")}</div>
+    <div class="exam-admin__grade-inputs">
+      <label>分數（0～${it.points}）<input type="number" step="0.5" min="0" max="${it.points}" class="form-control" data-g="points" value="${it.awardedPoints ?? ""}"></label>
+      <label>評語（會回饋給作答者）<textarea class="form-control" rows="2" data-g="comment">${esc(it.graderComment || "")}</textarea></label>
+      <button type="button" class="primary-btn" data-grade-save>儲存</button>
+    </div>
+  </div>`;
 }
 
 // ────────────────────────────────────────────────────────────── 滿版作答頁

@@ -14825,3 +14825,34 @@ textarea::placeholder {
 .exam-closed-card { padding: 1.25rem; }
 .exam-closed-card h3 { margin: 0 0 0.4rem; }
 .exam-closed-card p { margin: 0; font-size: 0.9375rem; color: var(--text-secondary); }
+
+/* 大測驗後台：試卷設定 / 題庫編輯 / 簡答批改 */
+.exam-admin__actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
+.exam-admin__subnav { display: flex; gap: 0.25rem; margin: 1rem 0 0.75rem; border-bottom: 1px solid var(--border-card); }
+.exam-admin__subnav button { background: none; border: none; border-bottom: 2px solid transparent; padding: 0.5rem 0.85rem; font-size: 0.9375rem; color: var(--text-secondary); cursor: pointer; font-family: inherit; }
+.exam-admin__subnav button.active { color: var(--text-primary); border-bottom-color: var(--color-brand); font-weight: var(--type-weight-strong, 600); }
+.exam-admin__form { display: flex; flex-direction: column; gap: 0.75rem; max-width: 640px; }
+.exam-admin__form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.875rem; color: var(--text-secondary); }
+.exam-admin__form-row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.exam-admin__form-row label { flex: 1; min-width: 160px; }
+.exam-admin__bank-sec { margin: 1.25rem 0; }
+.exam-admin__bank-sec h4 { margin: 0 0 0.5rem; font-size: 1rem; color: var(--text-primary); font-weight: var(--type-weight-strong, 600); }
+.exam-admin__q-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 0.6rem; }
+.exam-admin__q-card { border: 1px solid var(--border-card); border-radius: 12px; padding: 0.85rem 0.95rem; background: var(--bg-card); display: flex; flex-direction: column; gap: 0.6rem; }
+.exam-admin__q-card label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.875rem; color: var(--text-secondary); }
+.exam-admin__opts { display: flex; flex-direction: column; gap: 0.4rem; }
+.exam-admin__opt { display: flex; align-items: center; gap: 0.5rem; }
+.exam-admin__opt input[type="text"], .exam-admin__opt .form-control { flex: 1; }
+.exam-admin__q-actions { display: flex; align-items: center; gap: 0.75rem; }
+.exam-admin__link { background: none; border: none; color: var(--color-brand); font-size: 0.875rem; cursor: pointer; padding: 0; font-family: inherit; }
+.exam-admin__link--danger { color: var(--color-danger-foreground); }
+.exam-admin__grade-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+.exam-admin__filter button, .exam-admin__grade-head .exam-admin__filter button { background: none; border: 1px solid var(--border-card); border-radius: 999px; padding: 0.25rem 0.7rem; font-size: 0.875rem; color: var(--text-secondary); cursor: pointer; margin-left: 0.3rem; font-family: inherit; }
+.exam-admin__filter button.active { border-color: var(--color-brand); color: var(--color-brand); }
+.exam-admin__grade-card { border: 1px solid var(--border-card); border-radius: 12px; padding: 0.85rem 0.95rem; background: var(--bg-card); margin-bottom: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.exam-admin__grade-who { margin: 0; font-size: 0.9375rem; color: var(--text-primary); }
+.exam-admin__grade-stem { margin: 0; font-size: 0.9375rem; color: var(--text-primary); line-height: 1.6; }
+.exam-admin__rubric { margin: 0.3rem 0 0; padding-left: 1.2rem; font-size: 0.875rem; color: var(--text-secondary); }
+.exam-admin__grade-resp { border: 1px solid var(--border-card); background: var(--bg-input); border-radius: 8px; padding: 0.6rem 0.75rem; font-size: 0.9375rem; color: var(--text-primary); line-height: 1.7; white-space: pre-wrap; }
+.exam-admin__grade-inputs { display: flex; flex-direction: column; gap: 0.5rem; }
+.exam-admin__grade-inputs label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.875rem; color: var(--text-secondary); }
