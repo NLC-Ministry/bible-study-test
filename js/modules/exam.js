@@ -158,6 +158,7 @@ export async function renderExamPanel(root) {
       <button type="button" data-exam-sub="bank" class="${examAdminSubview === "bank" ? "active" : ""}">題庫編輯</button>
       <button type="button" data-exam-sub="meta" class="${examAdminSubview === "meta" ? "active" : ""}">試卷設定</button>
       <button type="button" data-exam-sub="grade" class="${examAdminSubview === "grade" ? "active" : ""}">簡答批改</button>
+      <button type="button" data-exam-sub="stats" class="${examAdminSubview === "stats" ? "active" : ""}">統計</button>
     </nav>
     <div id="exam-admin-sub"></div>`;
 
@@ -181,7 +182,101 @@ export async function renderExamPanel(root) {
   const sub = body.querySelector("#exam-admin-sub");
   if (examAdminSubview === "meta") renderExamMetaForm(sub, paper, rerender);
   else if (examAdminSubview === "grade") renderExamGrading(sub, paper.id);
+  else if (examAdminSubview === "stats") renderExamStats(sub, paper.id);
   else renderExamQuestionBank(sub, paper, questions, rerender);
+}
+
+// ── 統計報表（整體 / 大區 / 牧區 / 小組 / 逐題正確率 / 名單）──
+async function renderExamStats(host, paperId) {
+  host.innerHTML = '<div class="admin-user-directory__empty">載入統計…</div>';
+  const res = await db.getExamStats(paperId);
+  if (!res.success) { host.innerHTML = `<div class="admin-user-directory__empty">${esc(res.message || "載入失敗")}</div>`; return; }
+  const d = res.data || {};
+  const o = d.overall || {};
+  const num = (v) => (v == null ? "—" : v);
+  const rateBar = (r) => {
+    const pct = Math.round((r || 0) * 100);
+    return `<span class="exam-stats__bar"><span class="exam-stats__bar-fill" style="width:${pct}%"></span></span> ${pct}%`;
+  };
+  const tbl = (rows, cols) => `<table class="exam-stats__table"><thead><tr>${cols.map((c) => `<th>${esc(c.h)}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map((r) => `<tr>${cols.map((c) => `<td>${c.f(r)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+
+  host.innerHTML = `
+    <div class="exam-stats__tiles">
+      <div class="exam-stats__tile"><span>作答</span><strong>${num(o.submitted)}</strong></div>
+      <div class="exam-stats__tile"><span>已批改</span><strong>${num(o.graded)}</strong></div>
+      <div class="exam-stats__tile"><span>作答中</span><strong>${num(o.inProgress)}</strong></div>
+      <div class="exam-stats__tile"><span>平均（自動）</span><strong>${num(o.avgAuto)}</strong></div>
+      <div class="exam-stats__tile"><span>平均（總分）</span><strong>${num(o.avgTotal)}</strong></div>
+      <div class="exam-stats__tile"><span>最高／最低</span><strong>${num(o.maxTotal)} / ${num(o.minTotal)}</strong></div>
+    </div>
+
+    <details class="exam-stats__sec" open><summary>各大區</summary>
+      ${tbl(d.byRegion || [], [
+        { h: "大區", f: (r) => esc(r.name) }, { h: "作答", f: (r) => r.count },
+        { h: "已批", f: (r) => r.graded }, { h: "平均總分", f: (r) => num(r.avgTotal) }])}
+    </details>
+    <details class="exam-stats__sec"><summary>各牧區</summary>
+      ${tbl(d.byZone || [], [
+        { h: "大區", f: (r) => esc(r.region) }, { h: "牧區", f: (r) => esc(r.name) },
+        { h: "作答", f: (r) => r.count }, { h: "已批", f: (r) => r.graded }, { h: "平均總分", f: (r) => num(r.avgTotal) }])}
+    </details>
+    <details class="exam-stats__sec"><summary>各小組</summary>
+      ${tbl(d.byGroup || [], [
+        { h: "牧區", f: (r) => esc(r.zone) }, { h: "小組", f: (r) => esc(r.name) },
+        { h: "作答", f: (r) => r.count }, { h: "已批", f: (r) => r.graded }, { h: "平均總分", f: (r) => num(r.avgTotal) }])}
+    </details>
+    <details class="exam-stats__sec" open><summary>個人／組隊</summary>
+      ${tbl(d.byDivision || [], [
+        { h: "類別", f: (r) => esc(r.label) },
+        { h: "作答", f: (r) => r.count }, { h: "已批", f: (r) => r.graded },
+        { h: "平均總分", f: (r) => num(r.avgTotal) }])}
+    </details>
+    <details class="exam-stats__sec"><summary>各組隊（${(d.byTeam || []).length} 隊）</summary>
+      ${tbl(d.byTeam || [], [
+        { h: "隊名", f: (r) => esc(r.name || "") },
+        { h: "組別", f: (r) => (r.division ? `${r.division} 人` : "—") },
+        { h: "作答", f: (r) => r.members }, { h: "已批", f: (r) => r.graded },
+        { h: "平均總分", f: (r) => num(r.avgTotal) },
+        { h: "總分和", f: (r) => num(r.totalSum) },
+        { h: "最高／最低", f: (r) => `${num(r.maxTotal)} / ${num(r.minTotal)}` }])}
+    </details>
+    <details class="exam-stats__sec"><summary>逐題正確率（一～五大題）</summary>
+      ${tbl(d.byQuestion || [], [
+        { h: "大題", f: (r) => esc((SECTION_TITLE[r.section] || r.section).slice(0, 3)) },
+        { h: "題", f: (r) => r.position },
+        { h: "作答數", f: (r) => r.answered },
+        { h: "正確率", f: (r) => rateBar(r.correctRate) }])}
+    </details>
+    <details class="exam-stats__sec" open><summary>作答名單（${(d.roster || []).length} 人）</summary>
+      <div class="exam-stats__toolbar"><button type="button" class="secondary-btn" id="exam-stats-csv">匯出 CSV</button></div>
+      <div class="exam-stats__roster">${tbl(d.roster || [], [
+        { h: "姓名", f: (r) => esc(r.name) },
+        { h: "大區", f: (r) => esc(r.greatRegion || "") },
+        { h: "牧區", f: (r) => esc(r.pastoralZone || "") },
+        { h: "小組", f: (r) => esc(r.smallGroup || "") },
+        { h: "組隊", f: (r) => esc(r.team || (r.teamDivision ? `${r.teamDivision} 人組` : "個人")) },
+        { h: "自動", f: (r) => num(r.autoScore) },
+        { h: "簡答", f: (r) => num(r.manualScore) },
+        { h: "總分", f: (r) => (r.status === "graded" ? `<strong>${num(r.totalScore)}</strong>` : "待批改") }])}</div>
+    </details>`;
+
+  host.querySelector("#exam-stats-csv")?.addEventListener("click", () => {
+    const rows = d.roster || [];
+    const head = ["姓名", "大區", "牧區", "小組", "組隊", "組別", "狀態", "自動", "簡答", "總分", "送出時間"];
+    const csv = [head.join(",")].concat(rows.map((r) => [
+      r.name, r.greatRegion, r.pastoralZone, r.smallGroup,
+      r.team || (r.teamDivision ? `${r.teamDivision}人組` : "個人"),
+      r.teamDivision ? `${r.teamDivision}人` : "個人",
+      r.status, r.autoScore, r.manualScore, r.totalScore, r.submittedAt
+    ].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))).join("\r\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `exam_${(d.paper && d.paper.title) || "results"}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
 }
 
 // 把 paper.sections（[{type,count,pointsPer}]）轉成 {type: {count,pointsPer}}

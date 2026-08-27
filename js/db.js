@@ -3320,6 +3320,25 @@ const db = {
     });
   },
 
+  // 統計報表（admin/pastor）
+  async getExamStats(paperId) {
+    return this._callExamRpc("exam_get_stats", { p_paper_id: paperId });
+  },
+
+  // 成績通知（合併進 app 的通知鈴）
+  async fetchExamNotifications() {
+    const result = await this._callExamRpc("get_exam_notifications");
+    return result.success
+      ? { data: Array.isArray(result.data) ? result.data : [], error: null }
+      : { data: [], error: result.error || new Error(result.message) };
+  },
+  async acknowledgeExamNotification(notificationId = null) {
+    const result = await this._callExamRpc("mark_exam_notifications_read", {
+      p_notification_id: notificationId || null
+    });
+    return { error: result.success ? null : (result.error || new Error(result.message)) };
+  },
+
   async getMyReadingTeam(plan) {
     const planId = this._readingTeamPlanId(plan);
     if (!planId) return { success: false, message: "這個計畫目前未開放團隊報名。" };

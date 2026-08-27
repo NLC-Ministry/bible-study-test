@@ -94,7 +94,10 @@ const EXAM_RPC_FUNCTIONS = new Set([
   "exam_submit_attempt",
   "exam_get_my_result",
   "exam_get_grading_queue",
-  "exam_grade_answer"
+  "exam_grade_answer",
+  "exam_get_stats",
+  "get_exam_notifications",
+  "mark_exam_notifications_read"
 ]);
 const EXAM_ADMIN_RPC_FUNCTIONS = new Set([
   "exam_upsert_paper",
@@ -104,7 +107,8 @@ const EXAM_ADMIN_RPC_FUNCTIONS = new Set([
   "exam_publish",
   "exam_set_status",
   "exam_get_grading_queue",
-  "exam_grade_answer"
+  "exam_grade_answer",
+  "exam_get_stats"
 ]);
 const PROFILE_SELECT = "id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, name_review_approved, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_contract_version, member_context_membership_lifecycle_state, member_context_placement_state, member_context_placement_workflow_state, member_context_has_required_placement, member_context_required_action, member_context_required_action_url, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments, role_definition:role_definitions(id, code, label, sort_order, is_assignable, can_manage_plans, can_manage_permissions, scope_type)";
 // Same as PROFILE_SELECT minus name_review_approved (migration 0069) — used

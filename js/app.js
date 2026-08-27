@@ -39,7 +39,7 @@ let buildVersion = "__BUILD_VERSION__";
 if (!/^\d{14}$/.test(buildVersion)) {
   buildVersion = "dev_" + Date.now();
 }
-buildVersion += "_clean_demo_mode_v20_quiz_manual_retry_v1_member_hub_name_sync_v1_quiz_load_error_v1_group_filter_reset_fix_v1_quiz_publish_flow_redesign_v1_row_cap_pagination_fix_v1_quiz_entry_reading_gate_v1_quiz_feature_reopen_restore_v1_admin_mobile_layout_v1_reader_audio_resume_fix_v1_joined_plan_collapse_v1_admin_tabs_lead_v1_0830_quiz_pledge_banner_v1_big_exam_p1_v1_fullscreen_resilience_v1_exam_p2_admin_v1_result_review_v1_feature_toggle_move_v1_paper_picker_v1_section_config_v1";
+buildVersion += "_clean_demo_mode_v20_quiz_manual_retry_v1_member_hub_name_sync_v1_quiz_load_error_v1_group_filter_reset_fix_v1_quiz_publish_flow_redesign_v1_row_cap_pagination_fix_v1_quiz_entry_reading_gate_v1_quiz_feature_reopen_restore_v1_admin_mobile_layout_v1_reader_audio_resume_fix_v1_joined_plan_collapse_v1_admin_tabs_lead_v1_0830_quiz_pledge_banner_v1_big_exam_p1_v1_fullscreen_resilience_v1_exam_p2_admin_v1_result_review_v1_feature_toggle_move_v1_paper_picker_v1_section_config_v1_exam_p3_stats_notify_v1";
 const moduleCache = {};
 const RELEASE_ONBOARDING_MODULE_PATH = './modules/onboarding-helper.js?v=20260826_quiz_remove_duplicate_scope_filter';
 const RELEASE_ONBOARDING_STORAGE_KEY = "bible_onboarding_seen_version";
@@ -137,14 +137,21 @@ async function refreshCareReminderBadge(options = {}) {
   careReminderBadgeLastRefresh = now;
 
   try {
-    const [careResult, quizResult] = await Promise.all([
+    const [careResult, quizResult, examResult] = await Promise.all([
       db.fetchCareReminders(),
       typeof db.fetchQuizNotifications === "function"
         ? db.fetchQuizNotifications()
+        : Promise.resolve({ data: [], error: null }),
+      typeof db.fetchExamNotifications === "function"
+        ? db.fetchExamNotifications()
         : Promise.resolve({ data: [], error: null })
     ]);
-    if (!careResult.error || !quizResult.error) {
-      updateCareReminderBadge([...(careResult.data || []), ...(quizResult.data || [])]);
+    if (!careResult.error || !quizResult.error || !examResult.error) {
+      updateCareReminderBadge([
+        ...(careResult.data || []),
+        ...(quizResult.data || []),
+        ...(examResult.data || [])
+      ]);
     }
   } catch (error) {
     console.warn("Care reminder badge refresh failed:", error);
@@ -171,17 +178,20 @@ async function renderNotificationsList() {
   container.innerHTML = `<div style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.875rem;"><span class="nlc-icon nlc-icon--sm" data-icon="loading" aria-hidden="true"></span> 載入中...</div>`;
   if (typeof hydrateIcons === "function") hydrateIcons(container);
 
-  const [careResult, quizResult] = await Promise.all([
+  const [careResult, quizResult, examResult] = await Promise.all([
     db.fetchAllNotifications(),
     typeof db.fetchQuizNotifications === "function"
       ? db.fetchQuizNotifications()
+      : Promise.resolve({ data: [], error: null }),
+    typeof db.fetchExamNotifications === "function"
+      ? db.fetchExamNotifications()
       : Promise.resolve({ data: [], error: null })
   ]);
-  const notifications = [...(careResult.data || []), ...(quizResult.data || [])]
+  const notifications = [...(careResult.data || []), ...(quizResult.data || []), ...(examResult.data || [])]
     .sort((left, right) => String(right.createdAt || right.created_at || right.sent_on || "")
       .localeCompare(String(left.createdAt || left.created_at || left.sent_on || "")))
     .slice(0, 20);
-  const error = careResult.error && quizResult.error ? careResult.error : null;
+  const error = careResult.error && quizResult.error && examResult.error ? careResult.error : null;
 
   if (error || !notifications || notifications.length === 0) {
     container.innerHTML = `<div class="notification-popover__empty">目前沒有通知</div>`;
@@ -207,12 +217,13 @@ async function renderNotificationsList() {
     const senderName = String(sender.name || "").trim() || "—";
     const senderRoleRaw = getUserRoleCode(sender);
     const isQuizNotification = item.type === "quiz";
+    const isExamNotification = item.type === "exam";
     const isTeamReminder = String(item.plan_key || "").startsWith("reading-team:");
     const senderRole = isTeamReminder
       ? "隊友"
       : (getRoleDefinition(senderRoleRaw)?.label || roleNames[senderRoleRaw] || "領袖");
 
-    const displaySenderRole = isQuizNotification ? "小測驗發佈者" : senderRole;
+    const displaySenderRole = isExamNotification ? "大測驗" : (isQuizNotification ? "小測驗發佈者" : senderRole);
     const dateStr = item.sent_on || "";
 
     div.innerHTML = `
@@ -227,12 +238,19 @@ async function renderNotificationsList() {
       e.stopPropagation();
       if (item.status === 'unread') {
         div.classList.remove("notification-item--unread");
-        if (isQuizNotification && typeof db.acknowledgeQuizNotification === "function") {
+        if (isExamNotification && typeof db.acknowledgeExamNotification === "function") {
+          await db.acknowledgeExamNotification(item.id);
+        } else if (isQuizNotification && typeof db.acknowledgeQuizNotification === "function") {
           await db.acknowledgeQuizNotification(item.id);
         } else {
           await db.acknowledgeCareReminder(item.id);
         }
         await refreshCareReminderBadge({ force: true });
+      }
+      if (isExamNotification && item.paperId) {
+        document.getElementById("notification-popover")?.classList.add("hidden");
+        window.open("exam.html?paper=" + encodeURIComponent(item.paperId), "_blank", "noopener");
+        return;
       }
       if (isQuizNotification) {
         const planKey = String(item.globalPlanId || "");

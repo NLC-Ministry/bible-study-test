@@ -14897,3 +14897,19 @@ textarea::placeholder {
 .exam-admin__grade-resp { border: 1px solid var(--border-card); background: var(--bg-input); border-radius: 8px; padding: 0.6rem 0.75rem; font-size: 0.9375rem; color: var(--text-primary); line-height: 1.7; white-space: pre-wrap; }
 .exam-admin__grade-inputs { display: flex; flex-direction: column; gap: 0.5rem; }
 .exam-admin__grade-inputs label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.875rem; color: var(--text-secondary); }
+
+/* 大測驗統計報表 */
+.exam-stats__tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.6rem; margin-bottom: 1rem; }
+.exam-stats__tile { border: 1px solid var(--border-card); border-radius: 10px; padding: 0.6rem 0.75rem; background: var(--bg-card); display: flex; flex-direction: column; gap: 0.2rem; }
+.exam-stats__tile span { font-size: 0.875rem; color: var(--text-muted); }
+.exam-stats__tile strong { font-size: 1.1rem; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.exam-stats__sec { border: 1px solid var(--border-card); border-radius: 10px; padding: 0.5rem 0.85rem; margin-bottom: 0.6rem; }
+.exam-stats__sec summary { cursor: pointer; font-size: 0.9375rem; font-weight: var(--type-weight-strong, 600); color: var(--text-primary); }
+.exam-stats__table { width: 100%; border-collapse: collapse; margin-top: 0.6rem; font-size: 0.875rem; }
+.exam-stats__table th, .exam-stats__table td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border-card); color: var(--text-primary); white-space: nowrap; }
+.exam-stats__table th { color: var(--text-secondary); font-weight: var(--type-weight-strong, 600); }
+.exam-stats__table td { font-variant-numeric: tabular-nums; }
+.exam-stats__bar { display: inline-block; width: 90px; height: 8px; border-radius: 4px; background: var(--bg-input); vertical-align: middle; overflow: hidden; }
+.exam-stats__bar-fill { display: block; height: 100%; background: var(--color-brand); }
+.exam-stats__toolbar { margin: 0.6rem 0; }
+.exam-stats__roster { max-height: 420px; overflow: auto; }
