@@ -70,6 +70,17 @@ export function assertRelativeModuleImportsResolve(modulesDir) {
     }
   });
 }
+
+export function copyLazyModuleRuntime(root, outDir) {
+  const modulesSrc = join(root, "js", "modules");
+  if (!existsSync(modulesSrc)) return false;
+  cpDirRecursive(modulesSrc, join(outDir, "modules"));
+  // Lazy modules are served from /modules instead of /js/modules. Preserve
+  // their ../data/* relative imports by publishing js/data at /data too.
+  cpDirRecursive(join(root, "js", "data"), join(outDir, "data"));
+  assertRelativeModuleImportsResolve(join(outDir, "modules"));
+  return true;
+}
 // Matches a local <script src="..."></script> with `src` in ANY attribute position
 const SCRIPT_RE = /<script\b[^>]*?\ssrc="(?!https?:|\/\/)([^"?#]+)(?:[?#][^"]*)?"[^>]*>\s*<\/script>/g;
 const CSS_RE = /<link\s+rel="stylesheet"\s+href="(?!https?:|\/\/)([^"?#]+)(?:[?#][^"]*)?"[^>]*>/g;
@@ -199,8 +210,7 @@ export function emitBundle({ root, outDir }) {
   console.log("DEBUG: Checking modulesSrc: " + modulesSrc);
   if (existsSync(modulesSrc)) {
     console.log("DEBUG: Copying modules...");
-    cpDirRecursive(modulesSrc, join(outDir, "modules"));
-    assertRelativeModuleImportsResolve(join(outDir, "modules"));
+    copyLazyModuleRuntime(root, outDir);
   }
   const issueReportEntry = join(root, "js", "modules", "issue-report-ui.js");
   if (existsSync(issueReportEntry)) {
