@@ -49,6 +49,7 @@ export async function maybeResumeExam() {
 const SECTION_TARGET_DEFAULT = { truefalse: 20, single: 20, multiple: 10, matching: 10, ordering: 10, shortanswer: 3 };
 let examAdminSubview = "bank";          // bank | meta | grade
 let examAdminGradeFilter = "pending";   // pending | graded | all
+let examAdminPaperId = null;            // 目前選中的試卷（null = 最新那份）
 
 const toLocalInput = (iso) => {
   if (!iso) return "";
@@ -87,42 +88,65 @@ export async function renderExamPanel(root) {
     return;
   }
 
-  const paperRes = await db.getExamPaperAdmin();
+  const paperRes = await db.getExamPaperAdmin(examAdminPaperId);
   if (!paperRes.success) {
     body.innerHTML = `<div class="admin-user-directory__empty">${esc(paperRes.message || "無法載入試卷")}${
-      paperRes.error ? "（請確認 migration 0096 / 0097 與 nlc-data 已部署）" : ""}</div>`;
+      paperRes.error ? "（請確認 migration 0096～0100 與 nlc-data 已部署）" : ""}</div>`;
     return;
   }
+  const papers = (paperRes.data && paperRes.data.papers) || [];
   const paper = paperRes.data && paperRes.data.paper;
   const questions = (paperRes.data && paperRes.data.questions) || [];
   const attemptCount = paperRes.data?.attemptCount || 0;
+  // 目前選中的試卷已被刪 → 退回最新那份
+  if (examAdminPaperId && !paper) { examAdminPaperId = null; renderExamPanel(root); return; }
+  if (paper) examAdminPaperId = paper.id;
+
+  const rerender = () => renderExamPanel(root);
+  const createPaper = async () => {
+    const res = await db.upsertExamPaper({ title: "速讀測驗", mode: "test", section_targets: SECTION_TARGET_DEFAULT });
+    if (!res.success) { toast(res.message || "建立失敗"); return; }
+    examAdminPaperId = res.data?.id || null;
+    rerender();
+  };
+  const pickerBar = `
+    <div class="exam-admin__picker">
+      <label>試卷
+        <select class="form-control" id="exam-paper-picker">
+          ${papers.map((p) => `<option value="${esc(p.id)}" ${p.id === (paper && paper.id) ? "selected" : ""}>${esc(p.title)}｜${esc(p.status)}｜${esc(p.mode)}｜${p.questionCount} 題${p.attemptCount ? "｜作答 " + p.attemptCount : ""}</option>`).join("")}
+        </select>
+      </label>
+      <button type="button" class="secondary-btn" id="exam-create-paper">＋ 建立新試卷</button>
+    </div>`;
+  const wirePicker = () => {
+    body.querySelector("#exam-paper-picker")?.addEventListener("change", (e) => {
+      examAdminPaperId = e.target.value || null; rerender();
+    });
+    body.querySelector("#exam-create-paper")?.addEventListener("click", createPaper);
+  };
 
   if (!paper) {
-    body.innerHTML = `
+    body.innerHTML = `${papers.length ? pickerBar : ""}
       <div class="exam-admin__paper">
-        <p class="exam-admin__meta">目前沒有試卷。建立一份後即可開始出題。</p>
-        <button type="button" class="primary-btn" id="exam-create-paper">建立新試卷</button>
+        <p class="exam-admin__meta">${papers.length ? "請從上方選一份試卷，或" : "目前沒有試卷。"}建立一份後即可開始出題。</p>
+        ${papers.length ? "" : '<button type="button" class="primary-btn" id="exam-create-paper">建立新試卷</button>'}
       </div>`;
-    body.querySelector("#exam-create-paper").addEventListener("click", async () => {
-      const res = await db.upsertExamPaper({ title: "速讀測驗", mode: "test",
-        section_targets: SECTION_TARGET_DEFAULT });
-      if (!res.success) { toast(res.message || "建立失敗"); return; }
-      renderExamPanel(root);
-    });
+    wirePicker();
+    body.querySelector(".exam-admin__paper #exam-create-paper")?.addEventListener("click", createPaper);
     return;
   }
 
   const counts = {};
   questions.forEach((q) => { counts[q.section] = (counts[q.section] || 0) + 1; });
   const badge = paper.status === "published" ? "success" : paper.status === "closed" ? "neutral" : "warning";
-  const rerender = () => renderExamPanel(root);
 
   body.innerHTML = `
+    ${pickerBar}
     <div class="exam-admin__paper">
       <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${badge}">${esc(paper.status)}</span>　<span class="exam-admin__meta">${esc(paper.mode)}</span></p>
       <p class="exam-admin__meta">開放：${paper.open_at ? esc(toLocalInput(paper.open_at).replace("T", " ")) : "未設定"} ～ ${paper.close_at ? esc(toLocalInput(paper.close_at).replace("T", " ")) : "未設定"}
         ・限時 ${paper.duration_minutes} 分・滿分 ${paper.total_points}・作答 ${attemptCount} 人</p>
-      <p class="exam-admin__meta">題數：${SECTION_ORDER.map((s) => `${SECTION_TITLE[s].slice(2)} ${counts[s] || 0}/${(paper.section_targets || {})[s] ?? "?"}`).join("　")}</p>
+      <p class="exam-admin__meta">題數：${SECTION_ORDER.filter((s) => examSectionCfg(paper)[s]).map((s) => `${SECTION_TITLE[s].slice(2)} ${counts[s] || 0}/${examSectionCfg(paper)[s].count}`).join("　") || "（尚未設定題型）"}</p>
       <div class="exam-admin__actions">
         <a class="secondary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}" target="_blank" rel="noopener">預覽作答（獨立頁）</a>
         ${paper.status === "draft" ? '<button type="button" class="primary-btn" data-exam-act="publish">發佈試卷</button>' : ""}
@@ -137,6 +161,7 @@ export async function renderExamPanel(root) {
     </nav>
     <div id="exam-admin-sub"></div>`;
 
+  wirePicker();
   body.querySelectorAll("[data-exam-sub]").forEach((b) => b.addEventListener("click", () => {
     examAdminSubview = b.dataset.examSub; rerender();
   }));
@@ -159,10 +184,31 @@ export async function renderExamPanel(root) {
   else renderExamQuestionBank(sub, paper, questions, rerender);
 }
 
-// ── 試卷設定表單 ──
+// 把 paper.sections（[{type,count,pointsPer}]）轉成 {type: {count,pointsPer}}
+function examSectionCfg(paper) {
+  const map = {};
+  (Array.isArray(paper.sections) ? paper.sections : []).forEach((s) => {
+    if (s && s.type) map[s.type] = { count: Number(s.count) || 0, pointsPer: Number(s.pointsPer) || 1 };
+  });
+  return map;
+}
+
+// ── 試卷設定表單（含題型與配分）──
 function renderExamMetaForm(host, paper, rerender) {
   const p = paper;
   const rules = ((p.pledge || {}).rules || []).join("\n");
+  const cfg = examSectionCfg(p);
+  const secRows = SECTION_ORDER.map((t) => {
+    const on = !!cfg[t];
+    const c = cfg[t] || { count: SECTION_TARGET_DEFAULT[t] || 0, pointsPer: t === "shortanswer" ? 10 : 1 };
+    return `<div class="exam-admin__sec-row" data-sec-type="${t}">
+      <label class="exam-admin__sec-on"><input type="checkbox" data-s="on" ${on ? "checked" : ""}> ${esc(SECTION_TITLE[t])}</label>
+      <label>題數<input type="number" min="0" class="form-control" data-s="count" value="${c.count}"></label>
+      <label>每題配分<input type="number" min="0" step="0.5" class="form-control" data-s="pts" value="${c.pointsPer}"></label>
+      <span class="exam-admin__sec-sub" data-s="sub">小計 ${c.count * c.pointsPer}</span>
+    </div>`;
+  }).join("");
+
   host.innerHTML = `
     <div class="exam-admin__form">
       <label>標題<input class="form-control" data-f="title" value="${esc(p.title)}"></label>
@@ -175,23 +221,53 @@ function renderExamMetaForm(host, paper, rerender) {
         <label>開放起<input type="datetime-local" class="form-control" data-f="open_at" value="${esc(toLocalInput(p.open_at))}"></label>
         <label>開放迄<input type="datetime-local" class="form-control" data-f="close_at" value="${esc(toLocalInput(p.close_at))}"></label>
       </div>
-      <div class="exam-admin__form-row">
-        <label>限時（分）<input type="number" class="form-control" data-f="duration_minutes" value="${p.duration_minutes}"></label>
-        <label>滿分<input type="number" class="form-control" data-f="total_points" value="${p.total_points}"></label>
-      </div>
+      <label>限時（分）<input type="number" class="form-control" data-f="duration_minutes" value="${p.duration_minutes}"></label>
+
+      <fieldset class="exam-admin__sec-cfg">
+        <legend>題型與配分</legend>
+        <p class="exam-admin__meta">勾選要納入這份測驗的題型，設定各題型題數與每題配分。滿分自動加總。</p>
+        ${secRows}
+        <p class="exam-admin__sec-total">滿分：<strong data-s="total">${p.total_points}</strong> 分</p>
+      </fieldset>
+
       <label>宣示：開放說明<input class="form-control" data-f="pledge_open" value="${esc((p.pledge || {}).openText || "")}"></label>
       <label>宣示：規則（每行一條）<textarea class="form-control" rows="6" data-f="pledge_rules">${esc(rules)}</textarea></label>
       <label>宣示：確認句（{name} 會代入姓名）<input class="form-control" data-f="pledge_consent" value="${esc((p.pledge || {}).consentTemplate || "{name} 清楚以上測驗規則，亦會遵守規則來完成本次測驗。")}"></label>
       <button type="button" class="primary-btn" id="exam-meta-save">儲存試卷設定</button>
     </div>`;
+
+  const collectSections = () => [...host.querySelectorAll(".exam-admin__sec-row")]
+    .filter((r) => r.querySelector('[data-s="on"]').checked)
+    .map((r) => ({
+      type: r.dataset.secType,
+      count: Math.max(0, Number(r.querySelector('[data-s="count"]').value) || 0),
+      pointsPer: Math.max(0, Number(r.querySelector('[data-s="pts"]').value) || 0)
+    }));
+  const refreshTotals = () => {
+    let total = 0;
+    host.querySelectorAll(".exam-admin__sec-row").forEach((r) => {
+      const on = r.querySelector('[data-s="on"]').checked;
+      const c = Number(r.querySelector('[data-s="count"]').value) || 0;
+      const pp = Number(r.querySelector('[data-s="pts"]').value) || 0;
+      r.querySelector('[data-s="sub"]').textContent = on ? `小計 ${c * pp}` : "（不納入）";
+      r.classList.toggle("is-off", !on);
+      if (on) total += c * pp;
+    });
+    host.querySelector('[data-s="total"]').textContent = total;
+  };
+  host.querySelectorAll('.exam-admin__sec-row input').forEach((i) => i.addEventListener("input", refreshTotals));
+  refreshTotals();
+
   host.querySelector("#exam-meta-save").addEventListener("click", async (e) => {
     const g = (f) => host.querySelector(`[data-f="${f}"]`).value;
+    const sections = collectSections();
+    if (!sections.length) { toast("至少要有一個題型"); return; }
     e.target.disabled = true;
     const res = await db.upsertExamPaper({
       id: p.id, title: g("title"), mode: g("mode"),
       open_at: fromLocalInput(g("open_at")), close_at: fromLocalInput(g("close_at")),
       duration_minutes: Number(g("duration_minutes")) || 75,
-      total_points: Number(g("total_points")) || 100,
+      sections,
       pledge: { openText: g("pledge_open"), rules: lines(g("pledge_rules")), consentTemplate: g("pledge_consent") }
     });
     e.target.disabled = false;
@@ -201,27 +277,33 @@ function renderExamMetaForm(host, paper, rerender) {
   });
 }
 
-// ── 題庫編輯（六大題，每題可存 / 刪 / 新增）──
+// ── 題庫編輯（依試卷啟用的題型，每題可存 / 刪 / 新增）──
 function renderExamQuestionBank(host, paper, questions, rerender) {
   if (paper.status !== "draft") {
     host.innerHTML = `<div class="admin-user-directory__empty">試卷已${paper.status === "published" ? "發佈" : "關閉"}，題目已鎖定。要改題請先「改回草稿」（會影響已作答的人，請謹慎）。</div>`;
     return;
   }
+  const cfg = examSectionCfg(paper);
+  const activeSections = SECTION_ORDER.filter((s) => cfg[s]);
+  if (!activeSections.length) {
+    host.innerHTML = '<div class="admin-user-directory__empty">這份試卷還沒設定題型。請先到「試卷設定」勾選要哪些題型。</div>';
+    return;
+  }
   const bySection = {};
   questions.forEach((q) => { (bySection[q.section] ||= []).push(q); });
-  SECTION_ORDER.forEach((s) => (bySection[s] ||= []).sort((a, b) => a.position - b.position));
+  activeSections.forEach((s) => (bySection[s] ||= []).sort((a, b) => a.position - b.position));
 
-  host.innerHTML = SECTION_ORDER.map((sec) => `
+  host.innerHTML = activeSections.map((sec) => `
     <section class="exam-admin__bank-sec" data-section="${sec}">
-      <h4>${esc(SECTION_TITLE[sec])}　<span class="exam-admin__meta">${bySection[sec].length}／${(paper.section_targets || {})[sec] ?? "?"} 題</span></h4>
-      <div class="exam-admin__q-list">${bySection[sec].map((q) => qEditCard(sec, q)).join("")}</div>
+      <h4>${esc(SECTION_TITLE[sec])}　<span class="exam-admin__meta">${bySection[sec].length}／${cfg[sec].count} 題・每題 ${cfg[sec].pointsPer} 分</span></h4>
+      <div class="exam-admin__q-list">${bySection[sec].map((q) => qEditCard(sec, q, cfg[sec])).join("")}</div>
       <button type="button" class="secondary-btn" data-add-q="${sec}">＋ 新增${SECTION_TITLE[sec].slice(2)}</button>
     </section>`).join("");
 
   const wire = (card) => {
     const sec = card.closest("[data-section]").dataset.section;
     card.querySelector("[data-q-save]").addEventListener("click", async (e) => {
-      const built = collectQCard(card, sec);
+      const built = collectQCard(card, sec, cfg[sec]);
       if (built.error) { toast(built.error); return; }
       e.target.disabled = true;
       const res = await db.upsertExamQuestion({
@@ -244,13 +326,13 @@ function renderExamQuestionBank(host, paper, questions, rerender) {
   host.querySelectorAll("[data-add-q]").forEach((b) => b.addEventListener("click", () => {
     const sec = b.dataset.addQ;
     const list = b.closest("[data-section]").querySelector(".exam-admin__q-list");
-    list.insertAdjacentHTML("beforeend", qEditCard(sec, null));
+    list.insertAdjacentHTML("beforeend", qEditCard(sec, null, cfg[sec]));
     wire(list.lastElementChild);
     list.lastElementChild.scrollIntoView({ block: "center" });
   }));
 }
 
-function qEditCard(sec, q) {
+function qEditCard(sec, q, secCfg) {
   const pl = (q && q.payload) || {};
   const ak = q ? q.answer_key : undefined;
   const idAttr = q ? `data-qid="${esc(q.id)}" data-qpos="${q.position}"` : "";
@@ -280,7 +362,7 @@ function qEditCard(sec, q) {
   } else if (sec === "shortanswer") {
     body += `<label>參考答案<textarea class="form-control" rows="3" data-p="ref">${esc(pl.referenceAnswer || "")}</textarea></label>
       <label>評分要點（每行一項）<textarea class="form-control" rows="3" data-p="rubric">${esc((pl.rubric || []).join("\n"))}</textarea></label>
-      <label>配分<input type="number" class="form-control" data-p="max" value="${pl.maxPoints ?? (q ? q.points : 10)}"></label>`;
+      <p class="exam-admin__meta">配分 ${(secCfg && secCfg.pointsPer) ?? 10} 分（在「試卷設定 → 題型與配分」調整）</p>`;
   }
   return `<div class="exam-admin__q-card" ${idAttr}>
     ${body}
@@ -291,12 +373,12 @@ function qEditCard(sec, q) {
   </div>`;
 }
 
-function collectQCard(card, sec) {
+function collectQCard(card, sec, secCfg) {
   const stem = card.querySelector('[data-p="stem"]').value.trim();
   if (!stem) return { error: "題幹不能空白" };
   let payload = { stem };
   let answer_key = null;
-  let points = 1;
+  let points = (secCfg && Number(secCfg.pointsPer)) || (sec === "shortanswer" ? 10 : 1);
 
   if (sec === "truefalse") {
     answer_key = card.querySelector('[data-a="tf"]').value === "true";
@@ -329,7 +411,6 @@ function collectQCard(card, sec) {
   } else if (sec === "shortanswer") {
     payload.referenceAnswer = card.querySelector('[data-p="ref"]').value.trim();
     payload.rubric = lines(card.querySelector('[data-p="rubric"]').value);
-    points = Number(card.querySelector('[data-p="max"]').value) || 10;
     payload.maxPoints = points;
     answer_key = null;
   }

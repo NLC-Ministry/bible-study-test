@@ -14833,6 +14833,8 @@ textarea::placeholder {
 .exam-closed-card p { margin: 0; font-size: 0.9375rem; color: var(--text-secondary); }
 
 /* 大測驗後台：試卷設定 / 題庫編輯 / 簡答批改 */
+.exam-admin__picker { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 0.9rem; }
+.exam-admin__picker label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.875rem; color: var(--text-secondary); flex: 1; min-width: 240px; }
 .exam-admin__actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
 .exam-admin__subnav { display: flex; gap: 0.25rem; margin: 1rem 0 0.75rem; border-bottom: 1px solid var(--border-card); }
 .exam-admin__subnav button { background: none; border: none; border-bottom: 2px solid transparent; padding: 0.5rem 0.85rem; font-size: 0.9375rem; color: var(--text-secondary); cursor: pointer; font-family: inherit; }
@@ -14841,6 +14843,16 @@ textarea::placeholder {
 .exam-admin__form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.875rem; color: var(--text-secondary); }
 .exam-admin__form-row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
 .exam-admin__form-row label { flex: 1; min-width: 160px; }
+.exam-admin__sec-cfg { border: 1px solid var(--border-card); border-radius: 12px; padding: 0.85rem 1rem; margin: 0.25rem 0; }
+.exam-admin__sec-cfg legend { font-size: 0.9375rem; font-weight: var(--type-weight-strong, 600); color: var(--text-primary); padding: 0 0.4rem; }
+.exam-admin__sec-row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; padding: 0.5rem 0; border-top: 1px solid var(--border-card); }
+.exam-admin__sec-row:first-of-type { border-top: none; }
+.exam-admin__sec-row.is-off { opacity: 0.55; }
+.exam-admin__sec-row label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.875rem; color: var(--text-secondary); }
+.exam-admin__sec-on { flex-direction: row !important; align-items: center; gap: 0.4rem !important; min-width: 130px; color: var(--text-primary) !important; font-weight: var(--type-weight-strong, 600); }
+.exam-admin__sec-row .form-control { width: 6rem; }
+.exam-admin__sec-sub { font-size: 0.875rem; color: var(--text-muted); padding-bottom: 0.35rem; }
+.exam-admin__sec-total { margin: 0.6rem 0 0; font-size: 0.9375rem; color: var(--text-primary); }
 .exam-admin__bank-sec { margin: 1.25rem 0; }
 .exam-admin__bank-sec h4 { margin: 0 0 0.5rem; font-size: 1rem; color: var(--text-primary); font-weight: var(--type-weight-strong, 600); }
 .exam-admin__q-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 0.6rem; }
