@@ -148,7 +148,7 @@ export async function renderExamPanel(root) {
         ・限時 ${paper.duration_minutes} 分・滿分 ${paper.total_points}・作答 ${attemptCount} 人</p>
       <p class="exam-admin__meta">題數：${SECTION_ORDER.filter((s) => examSectionCfg(paper)[s]).map((s) => `${SECTION_TITLE[s].slice(2)} ${counts[s] || 0}/${examSectionCfg(paper)[s].count}`).join("　") || "（尚未設定題型）"}</p>
       <div class="exam-admin__actions">
-        <a class="secondary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}" target="_blank" rel="noopener">預覽作答（獨立頁）</a>
+        <a class="secondary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}&preview=1" target="_blank" rel="noopener">預覽試卷</a>
         ${paper.status === "draft" ? '<button type="button" class="primary-btn" data-exam-act="publish">發佈試卷</button>' : ""}
         ${paper.status === "published" ? '<button type="button" class="secondary-btn" data-exam-act="close">關閉測驗</button>' : ""}
         ${paper.status !== "draft" ? '<button type="button" class="secondary-btn" data-exam-act="reopen">改回草稿</button>' : ""}
@@ -566,7 +566,7 @@ function gradeCard(it) {
 }
 
 // ────────────────────────────────────────────────────────────── 滿版作答頁
-export function mountExamRunner({ paperId = null, standalone = false } = {}) {
+export function mountExamRunner({ paperId = null, standalone = false, preview = false } = {}) {
   document.getElementById("exam-fullscreen")?.remove();
   const host = document.createElement("div");
   host.id = "exam-fullscreen";
@@ -583,16 +583,17 @@ export function mountExamRunner({ paperId = null, standalone = false } = {}) {
   document.body.appendChild(host);
   try { document.body.dataset.examOpen = "1"; document.body.style.overflow = "hidden"; } catch (_) {}
 
-  const runner = new ExamRunner(host, paperId, standalone);
+  const runner = new ExamRunner(host, paperId, standalone, preview);
   host.querySelector("#exam-back").addEventListener("click", () => runner.requestExit());
   runner.boot();
   return runner;
 }
 
 class ExamRunner {
-  constructor(host, paperId, standalone = false) {
+  constructor(host, paperId, standalone = false, preview = false) {
     this.host = host;
     this.standalone = standalone;
+    this.preview = !!preview;
     this.el = host.querySelector("#exam-fs-inner");
     this.titleEl = host.querySelector("#exam-fs-title");
     this.timerEl = host.querySelector("#exam-timer");
@@ -624,7 +625,7 @@ class ExamRunner {
 
   async boot() {
     this.el.innerHTML = '<div class="admin-user-directory__empty">載入測驗…</div>';
-    const res = await db.getExamForAttempt(this.paperId);
+    const res = await db.getExamForAttempt(this.paperId, { preview: this.preview });
     if (!res.success) {
       // 網路 / 功能未開等錯誤：不清 active 旗標，保留稍後自動重試的機會
       this.el.innerHTML = `<div class="admin-user-directory__empty">${esc(res.message)}
@@ -637,6 +638,16 @@ class ExamRunner {
     this.paper = d.paper;
     this.openState = d.state;
     if (this.titleEl && this.paper) this.titleEl.textContent = this.paper.title;
+
+    // 後台預覽：唯讀呈現整卷題目，不建 attempt、不倒數、不送出、不跳結果畫面
+    // （不動 exam_active_paper 旗標，以免影響使用者自己可能進行中的作答續作）
+    if (this.preview || d.preview) {
+      this.attempt = { status: "preview", paperSnapshot: { questions: d.previewQuestions || [] }, layout: {} };
+      this.deadlineTs = 0;
+      this.hydrateFromAttempt();
+      this.renderRunner();
+      return;
+    }
 
     if (d.attempt) {
       this.attempt = d.attempt;
@@ -833,17 +844,27 @@ class ExamRunner {
       </section>`;
     }).join("");
 
-    this.el.innerHTML = `
-      <div id="exam-questions">${sectionsHtml}</div>
-      <div class="exam-submit-bar">
-        <button type="button" id="exam-submit" class="primary-btn" style="width:100%;">送出答案</button>
-      </div>`;
+    const bar = this.preview
+      ? `<div class="exam-submit-bar">
+           <p class="exam-q__note">預覽模式：此畫面僅供檢視題目，不會計時、不會建立作答紀錄。</p>
+           <button type="button" id="exam-preview-close" class="secondary-btn" style="width:100%;">關閉預覽</button>
+         </div>`
+      : `<div class="exam-submit-bar">
+           <button type="button" id="exam-submit" class="primary-btn" style="width:100%;">送出答案</button>
+         </div>`;
+    this.el.innerHTML = `<div id="exam-questions">${sectionsHtml}</div>${bar}`;
 
-    if (this.timerEl) this.timerEl.hidden = false;
     if (typeof hydrateIcons === "function") hydrateIcons(this.el);
     this.el.querySelectorAll("[data-exam-q]").forEach((node) => this.bindQuestion(node, layout));
-    this.el.querySelector("#exam-submit").addEventListener("click", () => this.submit("manual"));
 
+    if (this.preview) {
+      if (this.timerEl) this.timerEl.hidden = true;
+      this.el.querySelector("#exam-preview-close")?.addEventListener("click", () => this.destroy());
+      return;
+    }
+
+    if (this.timerEl) this.timerEl.hidden = false;
+    this.el.querySelector("#exam-submit").addEventListener("click", () => this.submit("manual"));
     this.startTimer();
   }
 
@@ -1115,7 +1136,7 @@ class ExamRunner {
   }
 
   // ── 暫存 ──
-  markDirty() { this.dirty = true; this.persistLocal(); }
+  markDirty() { if (this.preview) return; this.dirty = true; this.persistLocal(); }
   async flushSave() {
     if (!this.dirty || !this.attempt || this.attempt.status !== "in_progress" || this.submitting) return;
     this.dirty = false;

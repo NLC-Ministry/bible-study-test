@@ -16,10 +16,10 @@ import './design/icons.js';
 import './state.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './auth.js?v=20260827_proactive_token_refresh';
 import './auth-launch.mjs';
-import './db.js?v=20260828_exam_p3b';
+import './db.js?v=20260828_exam_p3d';
 import './utils.js?v=20260827_round_schedule_start_on_actual_entry';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
-import { mountExamRunner } from './modules/exam.js?v=20260828_exam_p3b';
+import { mountExamRunner } from './modules/exam.js?v=20260828_exam_p3d';
 
 const boot = document.getElementById('exam-boot');
 const setBoot = (msg) => { if (boot) boot.textContent = msg; };
@@ -50,7 +50,9 @@ const setBoot = (msg) => { if (boot) boot.textContent = msg; };
     console.warn('[exam-entry] loadUserData failed', err);
   }
 
-  const paperId = new URLSearchParams(location.search).get('paper') || null;
+  const qs = new URLSearchParams(location.search);
+  const paperId = qs.get('paper') || null;
+  const preview = qs.get('preview') === '1' || qs.get('preview') === 'true';
   boot?.remove();
-  mountExamRunner({ paperId, standalone: true });
+  mountExamRunner({ paperId, standalone: true, preview });
 })();

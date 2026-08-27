@@ -3284,8 +3284,11 @@ const db = {
   },
 
   // 作答
-  async getExamForAttempt(paperId = null) {
-    return this._callExamRpc("exam_get_for_attempt", { p_paper_id: paperId || null });
+  async getExamForAttempt(paperId = null, { preview = false } = {}) {
+    return this._callExamRpc("exam_get_for_attempt", {
+      p_paper_id: paperId || null,
+      p_preview: !!preview
+    });
   },
   async startExamAttempt(paperId, pledgeName, readingTeamId = null) {
     return this._callExamRpc("exam_start_attempt", {
