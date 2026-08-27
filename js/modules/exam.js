@@ -173,9 +173,11 @@ export async function renderExamPanel(root) {
         : "測試模式：按「開放測試作答」後只有系統管理員能進入作答，會友端看不到（發佈後題庫鎖定）。");
     }
   } else if (paper.status === "published") {
+    actions.push(`<a class="primary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}" target="_blank" rel="noopener">實際作答（走完整流程）</a>`);
     actions.push('<button type="button" class="secondary-btn" data-exam-act="close">關閉測驗</button>');
     actions.push('<button type="button" class="secondary-btn" data-exam-act="reopen">改回草稿</button>');
-    hints.push(isLive ? "測驗進行中，會友可於開放時間內作答。" : "測試模式進行中，僅系統管理員可作答。");
+    hints.push((isLive ? "測驗進行中，會友可於開放時間內作答。" : "測試模式進行中，僅系統管理員可作答。")
+      + " 「實際作答」會建立一筆真的作答紀錄且記錄以第一次為準；要重測請先清掉自己的紀錄（見說明）。");
   } else if (paper.status === "closed") {
     actions.push('<button type="button" class="secondary-btn" data-exam-act="reopen">改回草稿</button>');
     hints.push("測驗已關閉，不再接受作答。");
