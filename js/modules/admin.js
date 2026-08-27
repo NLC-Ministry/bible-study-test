@@ -1491,6 +1491,13 @@ function setAdminPlanSubtab(subtab, loadData = true) {
     sharedOrgFilter.classList.toggle('hidden', hideSharedOrgFilter);
     sharedOrgFilter.style.display = hideSharedOrgFilter ? 'none' : 'flex';
   }
+  // 大測驗有自己的「試卷清單」下拉，不吃共用的「計畫篩選」。
+  const sharedPlanFilter = document.querySelector('.admin-plan-filter-card:not(.admin-plan-filter-card--org)');
+  if (sharedPlanFilter) {
+    const hidePlanFilter = requested === 'exam';
+    sharedPlanFilter.classList.toggle('hidden', hidePlanFilter);
+    sharedPlanFilter.style.display = hidePlanFilter ? 'none' : 'flex';
+  }
   if (loadData && state.activePlan) {
     void loadActiveAdminPlanSubtab(false);
   }
