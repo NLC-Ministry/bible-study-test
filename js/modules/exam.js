@@ -1,8 +1,15 @@
-// js/modules/exam.js — 速讀「大測驗」P1：作答流程（宣示 gate → server 計時 → 六題型
-// → 送出鎖定 → 成績）。出題與批改 UI 在 P2。此模組不含自動計分，一切以 server 為準。
+// js/modules/exam.js — 速讀「大測驗」P1：滿版作答頁（宣示 gate → server 計時 → 六題型
+// → 送出鎖定 → 成績）。出題與批改 UI 在 P2。不含自動計分，一切以 server 為準。
+//
+// 設計重點：
+//  · 滿版獨立頁：#exam-fullscreen 掛在 <body>，蓋掉 app chrome，不受換 tab / 重繪影響
+//  · 計時以 server 的 deadlineAt（絕對時間）為準，背景暫停 / 裝置休眠回來仍正確
+//  · 每 15 秒 + 切到背景 flush 到 server；同時鏡射到 localStorage，重整 / 當掉不丟答案
+//  · 切 App / 螢幕鎖回來（visibilitychange / pageshow）→ resync：重抓 attempt、
+//    校正剩餘時間、補回 server 已存的答案；若已被送出則切到成績頁
+//  · token 刷新由 db.js 透明處理；送出失敗自動重試數次
 //
 // 依賴全域：state、db（js/db.js）、escapeHTML、hydrateIcons、window.showToast
-// 樣式在 index.css 的「大測驗（速讀測驗）作答 UI」區塊。
 
 const SECTION_ORDER = ["truefalse", "single", "multiple", "matching", "ordering", "shortanswer"];
 const SECTION_TITLE = {
@@ -22,6 +29,7 @@ const esc = (s) => (typeof escapeHTML === "function" ? escapeHTML(String(s ?? ""
   .replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])));
 const toast = (m) => (typeof window.showToast === "function" ? window.showToast(m) : null);
 const cssAttr = (v) => String(v).replace(/["\\]/g, "\\$&");
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ────────────────────────────────────────────────────────────── 後台面板（P1 精簡）
 export async function renderExamPanel(root) {
@@ -79,42 +87,69 @@ export async function renderExamPanel(root) {
           ・限時 ${paper.duration_minutes} 分・滿分 ${paper.total_points}・作答 ${paperRes.data.attemptCount} 人</p>
         <p class="exam-admin__meta">題數：${SECTION_ORDER.map((s) => `${SECTION_TITLE[s].slice(2)} ${counts[s] || 0}`).join("　")}</p>
         <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.5rem;">
-          <button type="button" class="primary-btn" id="exam-preview-run">以我的帳號預覽作答</button>
+          <button type="button" class="primary-btn" id="exam-preview-run">以我的帳號預覽作答（滿版）</button>
         </div>
       </div>` : `
-      <div class="admin-user-directory__empty">目前沒有試卷。P2 會加入題庫編輯器；現在可先用 SQL 建立一份 <code>mode='test'</code> 的試卷。</div>`}
-    <div id="exam-runner-slot" style="margin-top:1rem;"></div>`;
+      <div class="admin-user-directory__empty">目前沒有試卷。P2 會加入題庫編輯器；現在可先用 SQL 建立一份 <code>mode='test'</code> 的試卷。</div>`}`;
 
   const runBtn = body.querySelector("#exam-preview-run");
-  if (runBtn) {
-    runBtn.addEventListener("click", () => {
-      mountExamRunner(body.querySelector("#exam-runner-slot"), { paperId: paper.id });
-    });
-  }
+  if (runBtn) runBtn.addEventListener("click", () => mountExamRunner({ paperId: paper.id }));
 }
 
-// ────────────────────────────────────────────────────────────── 作答流程
-export async function mountExamRunner(container, { paperId = null } = {}) {
-  if (!container) return;
-  const runner = new ExamRunner(container, paperId);
-  await runner.boot();
+// ────────────────────────────────────────────────────────────── 滿版作答頁
+export function mountExamRunner({ paperId = null } = {}) {
+  document.getElementById("exam-fullscreen")?.remove();
+  const host = document.createElement("div");
+  host.id = "exam-fullscreen";
+  host.className = "exam-fullscreen";
+  host.innerHTML = `
+    <div class="exam-fullscreen__bar">
+      <p class="exam-fullscreen__title" id="exam-fs-title">大測驗</p>
+      <div class="exam-fullscreen__bar-right">
+        <span class="exam-timer" id="exam-timer" hidden></span>
+        <button type="button" class="secondary-btn" id="exam-back">返回</button>
+      </div>
+    </div>
+    <div class="exam-fullscreen__inner" id="exam-fs-inner"></div>`;
+  document.body.appendChild(host);
+  try { document.body.dataset.examOpen = "1"; document.body.style.overflow = "hidden"; } catch (_) {}
+
+  const runner = new ExamRunner(host, paperId);
+  host.querySelector("#exam-back").addEventListener("click", () => runner.requestExit());
+  runner.boot();
   return runner;
 }
 
 class ExamRunner {
-  constructor(container, paperId) {
-    this.el = container;
+  constructor(host, paperId) {
+    this.host = host;
+    this.el = host.querySelector("#exam-fs-inner");
+    this.titleEl = host.querySelector("#exam-fs-title");
+    this.timerEl = host.querySelector("#exam-timer");
     this.paperId = paperId;
     this.paper = null;
     this.attempt = null;
+    this.deadlineTs = 0;
     this.questionsById = {};
     this.RESP = {};
+    this.lsKey = null;
     this.timerId = null;
     this.saveTimer = null;
+    this.persistTimer = null;
     this.dirty = false;
     this.submitting = false;
+    this.resyncing = false;
     this._matchResize = null;
-    this._onVis = () => { if (document.visibilityState === "hidden") this.flushSave(); };
+    this._onVis = () => {
+      if (document.visibilityState === "hidden") { this.persistLocal(); this.flushSave(); }
+      else this.resync();
+    };
+    this._onPageShow = () => this.resync();
+    this._onBeforeUnload = (e) => {
+      if (this.attempt && this.attempt.status === "in_progress" && !this.submitting) {
+        e.preventDefault(); e.returnValue = ""; return "";
+      }
+    };
   }
 
   async boot() {
@@ -125,12 +160,22 @@ class ExamRunner {
     if (d.state === "no_paper") { this.el.innerHTML = '<div class="admin-user-directory__empty">目前沒有可作答的試卷。</div>'; return; }
     this.paper = d.paper;
     this.openState = d.state;
+    if (this.titleEl && this.paper) this.titleEl.textContent = this.paper.title;
 
     if (d.attempt) {
       this.attempt = d.attempt;
+      this.deadlineTs = Date.parse(this.attempt.deadlineAt) || (Date.now() + (this.attempt.secondsRemaining || 0) * 1000);
+      this.lsKey = "exam_resp_" + this.attempt.id;
       this.hydrateFromAttempt();
-      if (this.attempt.status === "in_progress") this.renderRunner();
-      else await this.renderResult();
+      this.mergeLocal();
+      if (this.attempt.status === "in_progress") {
+        this.attachLifecycle();
+        this.renderRunner();
+        this.persistLocal();
+        void this.flushSave();     // 把 localStorage-only 的答案推上去
+      } else {
+        await this.renderResult();
+      }
       return;
     }
     if (this.openState === "not_open") { this.el.innerHTML = this.closedCard("測驗尚未開放作答。"); return; }
@@ -138,10 +183,71 @@ class ExamRunner {
     this.renderPledge();
   }
 
+  // ── 生命週期監聽（只在 in_progress 掛，離開時全部拆掉） ──
+  attachLifecycle() {
+    document.addEventListener("visibilitychange", this._onVis);
+    window.addEventListener("pageshow", this._onPageShow);
+    window.addEventListener("focus", this._onPageShow);
+    window.addEventListener("beforeunload", this._onBeforeUnload);
+    if (!this.saveTimer) this.saveTimer = setInterval(() => this.flushSave(), 15000);
+    if (!this.persistTimer) this.persistTimer = setInterval(() => this.persistLocal(), 3000);
+  }
+  detachLifecycle() {
+    document.removeEventListener("visibilitychange", this._onVis);
+    window.removeEventListener("pageshow", this._onPageShow);
+    window.removeEventListener("focus", this._onPageShow);
+    window.removeEventListener("beforeunload", this._onBeforeUnload);
+    if (this._matchResize) { window.removeEventListener("resize", this._matchResize); this._matchResize = null; }
+    if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
+    if (this.persistTimer) { clearInterval(this.persistTimer); this.persistTimer = null; }
+    this.stopTimer();
+  }
+
+  destroy() {
+    this.detachLifecycle();
+    try { delete document.body.dataset.examOpen; document.body.style.overflow = ""; } catch (_) {}
+    this.host?.remove();
+  }
+
+  requestExit() {
+    if (this.attempt && this.attempt.status === "in_progress" && !this.submitting) {
+      if (!confirm("測驗仍在進行，計時不會停止。要先離開嗎？（稍後回來可從原處續作）")) return;
+      this.persistLocal(); this.flushSave();
+    }
+    this.destroy();
+  }
+
+  // ── 切 App / 螢幕鎖回來：重抓 attempt、校正時間、補答案 ──
+  async resync() {
+    if (this.resyncing || this.submitting || !this.attempt || this.attempt.status !== "in_progress") return;
+    this.resyncing = true;
+    try {
+      const res = await db.getExamForAttempt(this.paperId);
+      if (!res.success || !res.data) return;
+      const a = res.data.attempt;
+      if (!a) return;
+      if (a.status !== "in_progress") {           // 已在別處送出 / 被自動收卷
+        this.attempt.status = a.status;
+        this.detachLifecycle();
+        await this.renderResult();
+        return;
+      }
+      this.deadlineTs = Date.parse(a.deadlineAt) || this.deadlineTs;
+      const saved = a.savedAnswers || {};
+      let filled = false;
+      Object.keys(saved).forEach((qid) => {
+        if (this.RESP[qid] === undefined) { this.RESP[qid] = saved[qid]; filled = true; }
+      });
+      this.tickTimer();
+      if (Date.now() >= this.deadlineTs) { this.submit("timeout"); return; }
+      if (filled) this.renderRunner();           // 有補回答案才整頁重繪
+    } finally {
+      this.resyncing = false;
+    }
+  }
+
   closedCard(msg) {
-    return `<div class="glass-card exam-closed-card">
-      <h3>${esc(this.paper?.title || "速讀測驗")}</h3>
-      <p>${esc(msg)}</p></div>`;
+    return `<div class="glass-card exam-closed-card"><h3>${esc(this.paper?.title || "速讀測驗")}</h3><p>${esc(msg)}</p></div>`;
   }
 
   hydrateFromAttempt() {
@@ -151,8 +257,24 @@ class ExamRunner {
     Object.keys(saved).forEach((qid) => { this.RESP[qid] = saved[qid]; });
   }
 
-  // ── 宣示 gate（規則 1〜6，姓名自動帶入） ──
+  mergeLocal() {
+    if (!this.lsKey) return;
+    try {
+      const raw = localStorage.getItem(this.lsKey);
+      if (!raw) return;
+      const local = JSON.parse(raw);
+      Object.keys(local || {}).forEach((qid) => { this.RESP[qid] = local[qid]; }); // 本地最新，覆蓋
+    } catch (_) {}
+  }
+  persistLocal() {
+    if (!this.lsKey) return;
+    try { localStorage.setItem(this.lsKey, JSON.stringify(this.collectAnswers())); } catch (_) {}
+  }
+  clearLocal() { try { if (this.lsKey) localStorage.removeItem(this.lsKey); } catch (_) {} }
+
+  // ── 宣示 gate ──
   renderPledge() {
+    if (this.timerEl) this.timerEl.hidden = true;
     const pledge = this.paper.pledge || {};
     const rules = Array.isArray(pledge.rules) ? pledge.rules : [];
     const name = (typeof getDisplayName === "function" ? getDisplayName(state.currentUser) : null)
@@ -191,7 +313,7 @@ class ExamRunner {
     this.el.innerHTML = '<div class="admin-user-directory__empty">開始作答…</div>';
     const teamId = state.myReadingTeam?.team?.id || state.readingTeam?.team?.id || null;
     const res = await db.startExamAttempt(this.paper.id, pledgeName, teamId);
-    if (!res.success) { this.el.innerHTML = `<div class="admin-user-directory__empty">${esc(res.message)}</div>`; return; }
+    if (!res.success) { toast(res.message || "無法開始"); this.renderPledge(); return; }
     return this.boot();
   }
 
@@ -217,22 +339,19 @@ class ExamRunner {
     }).join("");
 
     this.el.innerHTML = `
-      <div class="exam-timer-bar" id="exam-timer-bar"></div>
       <div id="exam-questions">${sectionsHtml}</div>
       <div class="exam-submit-bar">
         <button type="button" id="exam-submit" class="primary-btn" style="width:100%;">送出答案</button>
       </div>`;
 
+    if (this.timerEl) this.timerEl.hidden = false;
     if (typeof hydrateIcons === "function") hydrateIcons(this.el);
     this.el.querySelectorAll("[data-exam-q]").forEach((node) => this.bindQuestion(node, layout));
     this.el.querySelector("#exam-submit").addEventListener("click", () => this.submit("manual"));
 
     this.startTimer();
-    document.addEventListener("visibilitychange", this._onVis);
-    this.scheduleSave();
   }
 
-  // ── 逐題渲染（用 canonical id/index；layout 只決定顯示順序） ──
   renderQuestion(q, idx, layout) {
     if (!q) return "";
     const head = `<p class="exam-q__stem"><span class="exam-q__num">${idx + 1}.</span>${esc(q.payload?.stem || "")}</p>`;
@@ -369,7 +488,6 @@ class ExamRunner {
   }
 
   drawMatchLines(board, qid) {
-    // 連線用 createElementNS 動態建立（避免在原始碼放 SVG 字面標記）
     const NS = "http://www.w3.org/2000/svg";
     let svg = board.querySelector(".match-lines");
     if (!svg) {
@@ -475,34 +593,34 @@ class ExamRunner {
     this.bindQuestion(this.el.querySelector(`[data-exam-q="${cssAttr(qid)}"]`), this.attempt.layout || {});
   }
 
-  // ── 計時（server 權威） ──
+  // ── 計時：以 server 的絕對截止時間為準（背景暫停 / 休眠回來仍正確） ──
   startTimer() {
-    const started = Date.now();
-    const base = Number(this.attempt.secondsRemaining || 0);
-    const tick = () => {
-      const left = Math.max(0, base - Math.floor((Date.now() - started) / 1000));
-      const bar = this.el.querySelector("#exam-timer-bar");
-      if (bar) {
-        const mm = String(Math.floor(left / 60)).padStart(2, "0");
-        const ss = String(left % 60).padStart(2, "0");
-        bar.textContent = `剩餘時間　${mm}:${ss}`;
-        bar.classList.toggle("exam-timer-bar--low", left < 300);
-      }
-      if (left <= 0) { this.stopTimer(); this.submit("timeout"); }
-    };
-    tick();
-    this.timerId = setInterval(tick, 1000);
+    this.stopTimer();
+    this.tickTimer();
+    this.timerId = setInterval(() => this.tickTimer(), 1000);
   }
   stopTimer() { if (this.timerId) clearInterval(this.timerId); this.timerId = null; }
+  tickTimer() {
+    const left = Math.max(0, Math.round((this.deadlineTs - Date.now()) / 1000));
+    if (this.timerEl) {
+      const mm = String(Math.floor(left / 60)).padStart(2, "0");
+      const ss = String(left % 60).padStart(2, "0");
+      this.timerEl.textContent = `剩餘 ${mm}:${ss}`;
+      this.timerEl.classList.toggle("exam-timer--low", left < 300);
+    }
+    if (left <= 0 && this.attempt && this.attempt.status === "in_progress" && !this.submitting) {
+      this.stopTimer();
+      this.submit("timeout");
+    }
+  }
 
-  // ── 自動暫存 ──
-  markDirty() { this.dirty = true; }
-  scheduleSave() { this.saveTimer = setInterval(() => this.flushSave(), 20000); }
+  // ── 暫存 ──
+  markDirty() { this.dirty = true; this.persistLocal(); }
   async flushSave() {
     if (!this.dirty || !this.attempt || this.attempt.status !== "in_progress" || this.submitting) return;
     this.dirty = false;
     const res = await db.saveExamProgress(this.attempt.id, this.collectAnswers());
-    if (!res.success && res.error) this.dirty = true;
+    if (!res.success && res.error) this.dirty = true;   // 下個週期重試
   }
 
   collectAnswers() {
@@ -517,39 +635,49 @@ class ExamRunner {
     return out;
   }
 
-  // ── 送出 ──
+  // ── 送出（失敗自動重試） ──
   async submit(reason) {
     if (this.submitting) return;
     if (reason === "manual" && !confirm("確定送出？送出後即鎖定，記錄以第一次為準、不可重作。")) return;
     this.submitting = true;
     this.stopTimer();
-    if (this.saveTimer) clearInterval(this.saveTimer);
     const btn = this.el.querySelector("#exam-submit");
     if (btn) { btn.disabled = true; btn.textContent = "送出中…"; }
-    const res = await db.submitExamAttempt(this.attempt.id, this.collectAnswers(), reason);
-    document.removeEventListener("visibilitychange", this._onVis);
-    if (!res.success) {
+
+    let res = null;
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      res = await db.submitExamAttempt(this.attempt.id, this.collectAnswers(), reason);
+      if (res.success) break;
+      if (attempt < 4) { toast("送出未成功，重試中…"); await sleep(1500 * attempt); }
+    }
+    if (!res || !res.success) {
       this.submitting = false;
       if (btn) { btn.disabled = false; btn.textContent = "送出答案"; }
-      toast(res.message || "送出失敗");
+      if (reason !== "manual") this.startTimer();   // 逾時自動送出失敗 → 恢復倒數，下次再試
+      toast((res && res.message) || "送出失敗，請檢查網路後再試一次");
       return;
     }
+    this.clearLocal();
     this.attempt.status = res.data?.status || "submitted";
+    this.detachLifecycle();
     await this.renderResult(res.data);
   }
 
   // ── 成績 / 已送出 ──
   async renderResult(submitData) {
-    this.stopTimer();
-    if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
-    if (this._matchResize) { window.removeEventListener("resize", this._matchResize); this._matchResize = null; }
-    document.removeEventListener("visibilitychange", this._onVis);
+    this.detachLifecycle();
+    if (this.timerEl) this.timerEl.hidden = true;
 
     const res = await db.getMyExamResult(this.paper.id);
     const d = res.success ? (res.data || {}) : {};
     const graded = d.state === "graded";
     const auto = d.autoScore ?? submitData?.autoScore ?? "—";
     const total = d.totalScore ?? submitData?.totalScore;
+    const answers = (Array.isArray(d.answers) ? d.answers.slice() : []).sort((a, b) => {
+      const ra = a.sectionRank ?? (SECTION_ORDER.indexOf(a.section) + 1 || 99);
+      const rb = b.sectionRank ?? (SECTION_ORDER.indexOf(b.section) + 1 || 99);
+      return ra - rb || (a.position || 0) - (b.position || 0);
+    });
 
     this.el.innerHTML = `
       <div class="glass-card" style="padding:1.4rem 1.5rem;">
@@ -560,12 +688,12 @@ class ExamRunner {
           ${graded ? `　｜　簡答題：<strong>${d.manualScore ?? "—"}</strong> 分　｜　總分：<strong>${total ?? "—"}</strong> 分`
                    : "<br>簡答題（第六大題）待管理員人工評分，完成後會通知你。"}
         </div>
-        ${Array.isArray(d.answers) && d.answers.length ? `
-          <details>
-            <summary class="exam-result__summary">查看逐題結果</summary>
+        ${answers.length ? `
+          <details open>
+            <summary class="exam-result__summary">逐題結果（依大題順序）</summary>
             <div class="exam-result__list">
-              ${d.answers.map((a) => `<div class="exam-result__row">
-                第 ${a.position} 題（${esc(SECTION_TITLE[a.section]?.slice(2) || a.section)}）：
+              ${answers.map((a) => `<div class="exam-result__row">
+                ${esc(SECTION_TITLE[a.section] || a.section)}　第 ${a.position} 題：
                 ${a.section === "shortanswer"
                   ? `${a.awardedPoints != null ? `<strong>${a.awardedPoints} 分</strong>` : "待批改"}${
                       a.graderComment ? `<br>評語：${esc(a.graderComment)}` : ""}`
@@ -573,7 +701,9 @@ class ExamRunner {
               </div>`).join("")}
             </div>
           </details>` : ""}
+        <button type="button" class="secondary-btn" id="exam-result-close" style="margin-top:1rem;">關閉</button>
       </div>`;
+    this.el.querySelector("#exam-result-close")?.addEventListener("click", () => this.destroy());
   }
 }
 
