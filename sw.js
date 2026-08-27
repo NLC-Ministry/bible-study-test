@@ -106,7 +106,13 @@ self.addEventListener("fetch", event => {
 
   if (isStaticRequest(request)) {
     const url = new URL(request.url);
-    if (url.pathname.includes("/app.") && url.pathname.endsWith(".js")) {
+    // App bundle + lazy ESM modules + their shared data: always try network first
+    // so a deploy is picked up immediately. index.html marks /modules & /data as
+    // "no-cache, must-revalidate"; cacheFirst here would ignore that and pin an
+    // old /modules/exam.js (imported without a ?v=) until the SW cache rotates.
+    if ((url.pathname.includes("/app.") && url.pathname.endsWith(".js"))
+      || url.pathname.startsWith("/modules/")
+      || url.pathname.startsWith("/data/")) {
       event.respondWith(cacheManager.networkFirst(request, { timeoutMs: 3000 }));
       return;
     }

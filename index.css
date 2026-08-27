@@ -3396,7 +3396,7 @@ body:not(.dark-theme) .settings-row-btn:hover {
 .login-gate-refresh-actions p {
   margin: 0.65rem 0 0;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 0.875rem;
   line-height: 1.5;
 }
 
