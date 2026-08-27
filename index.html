@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260827_big_exam_p2b" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260827_big_exam_p2c" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -1985,6 +1985,17 @@
                 </button>
               </div>
               <p class="admin-feature-setting-feedback hidden" id="admin-daily-quiz-feature-feedback" role="status"></p>
+              <div class="admin-feature-setting-row">
+                <div class="admin-feature-setting-row__label">
+                  <strong>大測驗（速讀測驗）</strong>
+                  <span id="admin-exam-feature-status">讀取設定中…</span>
+                </div>
+                <button type="button" class="feature-switch" id="admin-exam-feature-toggle"
+                  role="switch" aria-checked="false" aria-label="開放大測驗（速讀測驗）" disabled>
+                  <span class="feature-switch__thumb" aria-hidden="true"></span>
+                </button>
+              </div>
+              <p class="admin-feature-setting-feedback hidden" id="admin-exam-feature-feedback" role="status"></p>
             </div>
           </div>
           </div>
@@ -2624,7 +2635,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260827_big_exam_p2b"></script>
+  <script type="module" src="js/app.js?v=20260827_big_exam_p2c"></script>
 </body>
 
 </html>

@@ -68,34 +68,22 @@ export async function renderExamPanel(root) {
   if (!root) return;
   root.innerHTML = '<div class="admin-user-directory__empty">載入大測驗設定…</div>';
 
-  const feature = await db.getFeatureSetting("speed_reading_exam", false);
-  const enabled = !feature.error && feature.enabled === true;
-
   root.innerHTML = `
     <section class="admin-management-section exam-admin">
       <div class="exam-admin__row">
         <div>
           <h3 class="card-title" style="margin:0;">大測驗（速讀測驗）</h3>
-          <p class="exam-admin__hint">測試期功能：僅系統管理員可見。開啟後才會啟用出題、作答與批改。</p>
+          <p class="exam-admin__hint">功能開關在「系統管理 → 功能開放設定」。這裡負責出題、發佈、批改與預覽。</p>
         </div>
-        <button type="button" id="exam-feature-toggle"
-          class="${enabled ? "secondary-btn" : "primary-btn"}">${enabled ? "關閉功能" : "開啟功能"}</button>
       </div>
       <div id="exam-admin-body" style="margin-top:1rem;"></div>
     </section>`;
 
-  root.querySelector("#exam-feature-toggle").addEventListener("click", async (e) => {
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    const res = await db.updateFeatureSetting("speed_reading_exam", !enabled);
-    btn.disabled = false;
-    if (res.error) { toast("更新設定失敗"); return; }
-    renderExamPanel(root);
-  });
-
   const body = root.querySelector("#exam-admin-body");
-  if (!enabled) {
-    body.innerHTML = '<div class="admin-user-directory__empty">功能未開啟。開啟後可建立試卷並預覽作答流程。</div>';
+
+  const feature = await db.getFeatureSetting("speed_reading_exam", false);
+  if (feature.error || feature.enabled !== true) {
+    body.innerHTML = '<div class="admin-user-directory__empty">「大測驗」功能未開啟。請到「系統管理 → 功能開放設定」開啟後再回來。</div>';
     return;
   }
 

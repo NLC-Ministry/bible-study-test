@@ -48,14 +48,27 @@ function applyAdminDailyQuizFeatureVisibility(enabled) {
   if (!enabled && panel) panel.classList.add("hidden");
 }
 
-// 「大測驗」分頁：測試期只給系統管理員看得到（功能開關由分頁內部的 renderExamPanel 處理）。
-function applyAdminExamVisibility() {
+function updateExamFeatureControl(enabled, options = {}) {
+  const toggle = document.getElementById("admin-exam-feature-toggle");
+  const status = document.getElementById("admin-exam-feature-status");
+  if (!toggle || !status) return;
+  toggle.setAttribute("aria-checked", enabled ? "true" : "false");
+  toggle.setAttribute("aria-label", enabled ? "大測驗（速讀測驗）功能已開啟" : "大測驗（速讀測驗）功能已關閉");
+  toggle.disabled = options.disabled === true;
+  status.textContent = enabled
+    ? "已開啟：計劃管理會出現「大測驗」分頁，可出題、發佈、批改與作答。"
+    : "已關閉：隱藏「大測驗」分頁並停止作答；既有試卷、題目與成績都會保留。";
+}
+
+// 「大測驗」計劃管理分頁：系統管理員 + speed_reading_exam 功能開啟時才顯示。
+function applyAdminExamVisibility(enabled) {
   const isAdmin = state.currentUser && getUserRoleCode(state.currentUser) === "admin";
+  const show = isAdmin && enabled === true;
   const tab = document.querySelector('#admin-plan-subtabs [data-plan-subtab="exam"]');
   const panel = document.getElementById("admin-plan-subtab-exam");
-  if (tab) { tab.classList.toggle("hidden", !isAdmin); tab.style.display = isAdmin ? "" : "none"; }
-  if (!isAdmin && activeAdminPlanSubtab === "exam") setAdminPlanSubtab("join-status");
-  if (!isAdmin && panel) panel.classList.add("hidden");
+  if (tab) { tab.classList.toggle("hidden", !show); tab.style.display = show ? "" : "none"; }
+  if (!show && activeAdminPlanSubtab === "exam") setAdminPlanSubtab("join-status");
+  if (!show && panel) panel.classList.add("hidden");
 }
 
 export async function renderAdminFeatureSettings() {
@@ -66,14 +79,22 @@ export async function renderAdminFeatureSettings() {
   const quizFeedback = document.getElementById("admin-daily-quiz-feature-feedback");
   if (!card || !toggle || !feedback || !quizToggle || !quizFeedback) return;
 
+  const examToggle = document.getElementById("admin-exam-feature-toggle");
+  const examFeedback = document.getElementById("admin-exam-feature-feedback");
+
   const isAdmin = state.currentUser && getUserRoleCode(state.currentUser) === "admin";
   card.classList.toggle("hidden", !isAdmin);
-  applyAdminExamVisibility();
   if (!isAdmin) {
-    const quizResult = await db.getFeatureSetting("daily_quiz", false);
+    const [quizResult, examResult] = await Promise.all([
+      db.getFeatureSetting("daily_quiz", false),
+      db.getFeatureSetting("speed_reading_exam", false)
+    ]);
     const quizEnabled = !quizResult.error && quizResult.enabled === true;
     window.dailyQuizFeatureEnabled = quizEnabled;
     applyAdminDailyQuizFeatureVisibility(quizEnabled);
+    const examEnabled = !examResult.error && examResult.enabled === true;
+    window.speedReadingExamFeatureEnabled = examEnabled;
+    applyAdminExamVisibility(examEnabled);
     return;
   }
 
@@ -83,10 +104,13 @@ export async function renderAdminFeatureSettings() {
   quizFeedback.classList.add("hidden");
   quizFeedback.textContent = "";
   updateDailyQuizFeatureControl(false, { disabled: true });
+  if (examFeedback) { examFeedback.classList.add("hidden"); examFeedback.textContent = ""; }
+  updateExamFeatureControl(false, { disabled: true });
 
-  const [result, quizResult] = await Promise.all([
+  const [result, quizResult, examResult] = await Promise.all([
     db.getFeatureSetting("pastoral_sharing_wall", false),
-    db.getFeatureSetting("daily_quiz", false)
+    db.getFeatureSetting("daily_quiz", false),
+    db.getFeatureSetting("speed_reading_exam", false)
   ]);
   if (result.error) {
     updatePastoralWallControl(false, { disabled: true });
@@ -104,6 +128,43 @@ export async function renderAdminFeatureSettings() {
     window.dailyQuizFeatureEnabled = quizEnabled;
     updateDailyQuizFeatureControl(quizEnabled);
     applyAdminDailyQuizFeatureVisibility(quizEnabled);
+  }
+  if (examResult.error) {
+    updateExamFeatureControl(false, { disabled: true });
+    if (examFeedback) {
+      examFeedback.textContent = "無法載入設定：從伺服器獲取大測驗設定失敗。";
+      examFeedback.classList.remove("hidden");
+    }
+  } else {
+    const examEnabled = examResult.enabled === true;
+    window.speedReadingExamFeatureEnabled = examEnabled;
+    updateExamFeatureControl(examEnabled);
+    applyAdminExamVisibility(examEnabled);
+  }
+
+  if (examToggle && !examToggle.dataset.featureSettingBound) {
+    examToggle.dataset.featureSettingBound = "true";
+    examToggle.addEventListener("click", async () => {
+      const currentEnabled = examToggle.getAttribute("aria-checked") === "true";
+      const nextEnabled = !currentEnabled;
+      updateExamFeatureControl(currentEnabled, { disabled: true });
+      examFeedback?.classList.add("hidden");
+      const saveResult = await db.updateFeatureSetting("speed_reading_exam", nextEnabled);
+      if (saveResult.error) {
+        updateExamFeatureControl(currentEnabled);
+        if (examFeedback) {
+          examFeedback.textContent = "更新設定失敗：無法將設定儲存至伺服器。";
+          examFeedback.classList.remove("hidden");
+        }
+        return;
+      }
+      window.speedReadingExamFeatureEnabled = nextEnabled;
+      updateExamFeatureControl(nextEnabled);
+      applyAdminExamVisibility(nextEnabled);
+      if (typeof showToast === "function") {
+        showToast(nextEnabled ? "大測驗功能已開啟！" : "大測驗功能已關閉。");
+      }
+    });
   }
 
   if (!toggle.dataset.featureSettingBound) {
@@ -1447,7 +1508,9 @@ function initAdminPlanSubtabs() {
   // The selected plan is resolved immediately afterwards by
   // renderAdminPlanManagement(). Avoid starting a stale/duplicate request
   // against whatever plan happened to be active before opening Admin.
-  applyAdminExamVisibility();
+  // Tab visibility is (re)asserted authoritatively by renderAdminFeatureSettings()
+  // once the speed_reading_exam flag is known; use the cached value meanwhile.
+  applyAdminExamVisibility(window.speedReadingExamFeatureEnabled === true);
   setAdminPlanSubtab(savedSubtab, false);
 }
 
