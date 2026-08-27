@@ -683,7 +683,24 @@ class ExamRunner {
     this.detachLifecycle();
     try { delete document.body.dataset.examOpen; document.body.style.overflow = ""; } catch (_) {}
     this.host?.remove();
-    if (this.standalone) { try { location.href = "/"; } catch (_) {} }
+    if (this.standalone) this._leaveStandalone();
+  }
+
+  // 關閉獨立測驗頁：優先「上一頁」回到進入前的分頁（bfcache 會原樣還原 SPA 狀態），
+  // 沒有可回的歷史才退而求其次用 ?return= 或首頁。不開新分頁、不強制回首頁。
+  _leaveStandalone() {
+    try {
+      let internalRef = true;
+      if (document.referrer) {
+        try { internalRef = new URL(document.referrer).origin === location.origin; } catch (_) { internalRef = false; }
+      }
+      if (window.history.length > 1 && internalRef) { window.history.back(); return; }
+    } catch (_) {}
+    try {
+      const ret = new URLSearchParams(location.search).get("return");
+      if (ret && /^\/(?!\/)/.test(ret)) { location.replace(ret); return; }
+    } catch (_) {}
+    try { location.replace("/"); } catch (_) {}
   }
 
   requestExit() {

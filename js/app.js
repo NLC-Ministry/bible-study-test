@@ -249,7 +249,13 @@ async function renderNotificationsList() {
       }
       if (isExamNotification && item.paperId) {
         document.getElementById("notification-popover")?.classList.add("hidden");
-        window.open("exam.html?paper=" + encodeURIComponent(item.paperId), "_blank", "noopener");
+        // 同分頁導向，不開新視窗：安裝版 PWA / 手機 / 桌機行為一致，也不會被彈窗攔截。
+        // 帶上 return，測驗頁關閉時用「上一頁」回到這裡（原分頁狀態由 bfcache 還原）。
+        const back = location.pathname + location.search;
+        location.assign(
+          "exam.html?paper=" + encodeURIComponent(item.paperId) +
+          "&return=" + encodeURIComponent(back)
+        );
         return;
       }
       if (isQuizNotification) {
