@@ -136,45 +136,56 @@ export async function renderExamPanel(root) {
     return;
   }
 
-  const badge = paper.status === "published" ? "success"
-    : paper.status === "announced" ? "brand"
-    : paper.status === "closed" ? "neutral" : "neutral";
-  const statusLabel = { draft: "草稿", announced: "預告已發佈", published: "測驗進行中", closed: "已關閉" }[paper.status] || paper.status;
-  const noticeReady = !!((paper.announcement || {}).headline || "").trim() && !!((paper.announcement || {}).body || "").trim();
   const isLive = paper.mode === "live";
   const who = isLive ? "全體會友" : "僅系統管理員（測試模式）";
+  const annPub = paper.announcement_published === true;
+  const noticeReady = !!((paper.announcement || {}).headline || "").trim() && !!((paper.announcement || {}).body || "").trim();
+
+  const badge = paper.status === "published" ? "success" : "neutral";
+  const statusLabel = { draft: "草稿（可編輯）", published: "測驗進行中", closed: "已關閉" }[paper.status] || paper.status;
+  const annBadge = annPub
+    ? '　<span class="stat-badge stat-badge--brand">預告文已發佈</span>'
+    : '　<span class="stat-badge stat-badge--neutral">預告文未發佈</span>';
 
   const actions = [
     `<a class="secondary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}&preview=1" target="_blank" rel="noopener">預覽試卷</a>`
   ];
-  let actionHint = "";
-  if (paper.status === "draft") {
-    // 預告文還沒填好前，不顯示發佈按鈕，只給指引
+  const hints = [];
+
+  // ── 預告文（獨立於 status，不鎖題庫）──
+  if (!annPub && paper.status !== "closed") {
     if (noticeReady) {
       actions.push('<button type="button" class="primary-btn" data-exam-act="announce">發佈預告文</button>');
-      actionHint = `發佈後，${who}的首頁會出現這份測驗的預告區塊。`;
+      hints.push(`發佈預告文後，${who}的首頁會出現預告區塊；試卷仍可留在草稿繼續改題、切換模式。`);
     } else {
-      actionHint = "在「預告文」分頁填好標題與內容後，這裡才會出現「發佈預告文」按鈕。";
+      hints.push("在「預告文」分頁填好標題與內容後，這裡才會出現「發佈預告文」按鈕。");
     }
-  } else if (paper.status === "announced") {
-    actions.push(`<button type="button" class="primary-btn" data-exam-act="publish">${isLive ? "正式發佈測驗" : "開放測試作答"}</button>`);
-    actionHint = isLive
-      ? "發佈後，開放時間內全體會友即可進入作答（記錄以第一次為準）。"
-      : "測試模式：發佈後只有系統管理員能進入作答，會友端看不到。";
+  } else if (annPub) {
+    actions.push('<button type="button" class="secondary-btn" data-exam-act="unannounce">撤下預告文</button>');
+  }
+
+  // ── 測驗本身（status）──
+  if (paper.status === "draft") {
+    if (annPub) {
+      actions.push(`<button type="button" class="primary-btn" data-exam-act="publish">${isLive ? "正式發佈測驗" : "開放測試作答"}</button>`);
+      hints.push(isLive
+        ? "題目都備妥、模式切成 live 後，按「正式發佈測驗」，開放時間內全體會友即可作答（發佈後題庫鎖定）。"
+        : "測試模式：按「開放測試作答」後只有系統管理員能進入作答，會友端看不到（發佈後題庫鎖定）。");
+    }
   } else if (paper.status === "published") {
     actions.push('<button type="button" class="secondary-btn" data-exam-act="close">關閉測驗</button>');
-    actionHint = isLive ? "測驗進行中，會友可於開放時間內作答。" : "測試模式進行中，僅系統管理員可作答。";
-  } else if (paper.status === "closed") {
-    actionHint = "測驗已關閉，不再接受作答。";
-  }
-  if (paper.status !== "draft") {
     actions.push('<button type="button" class="secondary-btn" data-exam-act="reopen">改回草稿</button>');
+    hints.push(isLive ? "測驗進行中，會友可於開放時間內作答。" : "測試模式進行中，僅系統管理員可作答。");
+  } else if (paper.status === "closed") {
+    actions.push('<button type="button" class="secondary-btn" data-exam-act="reopen">改回草稿</button>');
+    hints.push("測驗已關閉，不再接受作答。");
   }
+  const actionHint = hints.join(" ");
 
   body.innerHTML = `
     ${pickerBar}
     <div class="exam-admin__paper">
-      <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${badge}">${esc(statusLabel)}</span>　<span class="exam-admin__meta">${esc(paper.mode === "live" ? "正式 live" : "測試 test")}</span></p>
+      <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${badge}">${esc(statusLabel)}</span>${annBadge}　<span class="exam-admin__meta">${esc(paper.mode === "live" ? "正式 live" : "測試 test")}</span></p>
       <div class="exam-admin__actions">${actions.join("")}</div>
       ${actionHint ? `<p class="exam-admin__meta">${esc(actionHint)}</p>` : ""}
     </div>
@@ -195,11 +206,13 @@ export async function renderExamPanel(root) {
     const act = b.dataset.examAct;
     const live = paper.mode === "live";
     if (act === "announce" && live && !confirm("將把這份預告文發佈到全體會友的首頁。確定？")) return;
-    if (act === "publish" && live && !confirm("將正式開放全體會友作答（開放時間內）。確定？")) return;
-    if (act === "reopen" && !confirm("改回草稿後，會友首頁的預告 / 測驗入口會一併撤下。確定？")) return;
+    if (act === "unannounce" && !confirm("撤下後，會友首頁就不會再顯示這份測驗的預告區塊。確定？")) return;
+    if (act === "publish" && live && !confirm("將正式開放全體會友作答（開放時間內），發佈後題庫會鎖定。確定？")) return;
+    if (act === "reopen" && !confirm("改回草稿後，會友將無法再進入作答（預告文仍會保留在首頁）。確定？")) return;
     b.disabled = true;
     let res;
     if (act === "announce") res = await db.publishExamAnnouncement(paper.id);
+    else if (act === "unannounce") res = await db.unpublishExamAnnouncement(paper.id);
     else if (act === "publish") res = await db.publishExam(paper.id);
     else if (act === "close") res = await db.setExamStatus(paper.id, "closed");
     else if (act === "reopen") res = await db.setExamStatus(paper.id, "draft");
@@ -207,6 +220,7 @@ export async function renderExamPanel(root) {
     if (!res.success) { toast(res.message || "操作失敗"); return; }
     toast(
       act === "announce" ? (live ? "預告文已發佈到會友首頁" : "預告文已發佈（測試：僅管理員首頁）")
+      : act === "unannounce" ? "已撤下預告文"
       : act === "publish" ? (live ? "測驗已正式發佈，會友可作答" : "已開放測試作答（僅管理員）")
       : act === "close" ? "測驗已關閉"
       : "已改回草稿"
@@ -225,13 +239,16 @@ export async function renderExamPanel(root) {
 // ── 預告文編輯（首頁 8/30 宣示 banner 的內容來源）──
 function renderExamNoticeForm(host, paper, rerender) {
   const a = paper.announcement || {};
-  const locked = paper.status === "published" || paper.status === "closed";
+  const locked = paper.status === "closed";
+  const annPub = paper.announcement_published === true;
   const openTxt = paper.open_at ? toLocalInput(paper.open_at).replace("T", " ") : "（尚未設定）";
   const closeTxt = paper.close_at ? toLocalInput(paper.close_at).replace("T", " ") : "（尚未設定）";
   host.innerHTML = `
     <div class="exam-admin__form">
       <p class="exam-admin__hint">這裡的內容會顯示在會友首頁的「速讀測驗」置頂區塊。${
-        locked ? "測驗已正式發佈，預告文已鎖定。" : paper.status === "announced" ? "預告文已在首頁顯示，仍可在此微調文案。" : "填好後回上方按「發佈預告文」。"}</p>
+        locked ? "測驗已關閉，預告文已鎖定。"
+        : annPub ? "預告文已發佈、正在首頁顯示，仍可在此微調文案並儲存。"
+        : "填好標題與內容後，回上方按「發佈預告文」即可上線（不影響試卷草稿狀態）。"}</p>
       <label>標題（必填）
         <input class="form-control" data-n="headline" maxlength="40" value="${esc(a.headline || "")}" ${locked ? "disabled" : ""}></label>
       <label>內容（必填）

@@ -3289,6 +3289,9 @@ const db = {
   async publishExamAnnouncement(paperId) {
     return this._callExamRpc("exam_publish_announcement", { p_paper_id: paperId });
   },
+  async unpublishExamAnnouncement(paperId) {
+    return this._callExamRpc("exam_unpublish_announcement", { p_paper_id: paperId });
+  },
   async publishExam(paperId) {
     return this._callExamRpc("exam_publish", { p_paper_id: paperId });
   },

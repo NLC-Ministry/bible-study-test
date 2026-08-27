@@ -2719,16 +2719,16 @@ async function refreshExamHomeBanner() {
   if (!d || !d.paperId) { card.classList.add("hidden"); host.innerHTML = ""; return; }
 
   const now = Date.parse(d.serverNow) || Date.now();
-  const openTs = Date.parse(d.openAt) || 0;
   const closeTs = Date.parse(d.closeAt) || 0;
   const my = d.myAttemptStatus || null;
+  const canEnter = d.canEnter === true;   // server 已判斷 mode/status/開放時間/角色
 
   let badge = "即將開放";
   let badgeKind = "warning";
   let note = d.body || "";
   let action = null; // { kind:'enter'|'resume'|'result'|'pledge', label }
 
-  if (my === "graded") {
+  if (d.resultReady) {
     badge = "已公布成績"; badgeKind = "success";
     note = d.myTotalScore != null ? `你的總分：${d.myTotalScore} 分` : "成績已公布。";
     action = { kind: "result", label: "查看成績" };
@@ -2742,7 +2742,7 @@ async function refreshExamHomeBanner() {
   } else if (d.status === "closed" || (closeTs && now > closeTs)) {
     badge = "已結束"; badgeKind = "neutral";
     note = d.body || "測驗已結束。";
-  } else if (d.status === "published" && openTs && now >= openTs && (!closeTs || now <= closeTs)) {
+  } else if (canEnter) {
     badge = "開放中"; badgeKind = "success";
     action = { kind: "enter", label: d.ctaLabel || "進入測驗" };
   } else {
