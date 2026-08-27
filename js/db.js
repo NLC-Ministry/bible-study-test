@@ -1,6 +1,7 @@
 import { getResponsePayloadBytes, networkMetrics } from './performance/network-metrics.mjs';
 import { fetchReadingLogsByPlanIds } from './data/reading-log-batches.mjs';
 import { getConfirmedReadingRound, getCurrentRoundChapterProgress } from './data/current-round-progress.mjs';
+import { isPlanProgressLocked } from './data/plan-progress-availability.mjs';
 import { getUserOnboardingBlock } from './member-journey.mjs';
 import {
   applyLoginGateView,
@@ -1324,6 +1325,8 @@ const db = {
                 planObj.is_fixed = isFixed;
                 const linkedGlobalPlan = (state.globalPlans || []).find(p => p.id === globalPlanId || p.presetKey === key || p.name === dbPlan.name);
                 planObj.isHidden = Boolean(linkedGlobalPlan && (linkedGlobalPlan.isHidden || linkedGlobalPlan.is_hidden));
+                planObj.planKind = linkedGlobalPlan?.planKind || (campaignStageNo >= 1 ? "church_campaign_stage" : "standard");
+                planObj.stageNo = linkedGlobalPlan?.stageNo || campaignStageNo || null;
                 planObj.level = effectiveLevel;
                 planObj.currentRound = confirmedRound;
                 planObj.wasDowngraded = dbPlan.was_downgraded || false;
@@ -1781,6 +1784,11 @@ const db = {
     console.log('🏗️ [系統審計] 進入資料讀寫，當前操作類型：資料庫寫入進度', '資料版本:', state.dataVersion);
     const todayISO = new Date().toISOString();
     const targetPlan = planOverride || state.activePlan;
+    if (isChecked && targetPlan && isPlanProgressLocked(targetPlan, { hidden: window.isPlanHidden?.(targetPlan) })) {
+      const progressError = new Error("此階段尚未正式開放，無法記錄已讀");
+      progressError.code = "PLAN_PROGRESS_LOCKED";
+      throw progressError;
+    }
     const planId = targetPlan ? targetPlan.id : null;
     const presetKey = targetPlan ? targetPlan.presetKey : null;
     const round = roundOverride || (targetPlan ? (targetPlan.currentRound || 1) : 1);

@@ -3,6 +3,7 @@
 import { createReaderBottomDwellController, observeReaderEndSentinel } from "./reader-bottom-dwell.mjs";
 import { getReaderSpeechRate, resolveReaderStartIndex, selectPreferredChineseVoice, selectPreferredVoice } from "./reader-speech.mjs";
 import { rankBibleSearchResults } from "./bible-search-ranker.mjs";
+import { isPlanProgressLocked } from "../data/plan-progress-availability.mjs";
 
 export function openReaderLayer(element) {
   if (!element) return;
@@ -161,6 +162,7 @@ async function autoMarkCurrentPlanReaderTaskRead(expectedTargetKey) {
   if (isCurrentPlanReaderTaskRead(taskContext)) return true;
   if (state.readerState.autoMarked || state.readerState.autoMarkInFlight) return false;
   if (taskContext.plan && isPlanExpired(taskContext.plan)) return false;
+  if (isPlanProgressLocked(taskContext.plan, { hidden: window.isPlanHidden?.(taskContext.plan) })) return false;
   if (taskContext.round < Number(taskContext.plan.currentRound || 1)) return false;
   // Offline reading mode is read-only for progress — skip silently rather
   // than showing a toast, matching this auto-mark flow's existing "never
@@ -575,6 +577,11 @@ export function initReaderControls() {
 
       // 💡 關鍵修復：唯讀歷史鎖定，防止從讀經頁面誤觸修改歷史遍數打卡紀錄
       const planRound = state.readerState.planRound || (state.activePlan ? state.activePlan.currentRound || 1 : 1);
+      const taskPlan = getCurrentPlanReaderTask()?.plan || state.activePlan;
+      if (isChecked && isPlanProgressLocked(taskPlan, { hidden: window.isPlanHidden?.(taskPlan) })) {
+        showToast("此階段尚未正式開放，目前僅供預覽，無法記錄已讀。");
+        return;
+      }
       if (state.activePlan && planRound < (state.activePlan.currentRound || 1)) {
         showToast("此遍進度已完成存檔，無法修改以前的打卡紀錄。");
         return;
@@ -2713,6 +2720,7 @@ function checkReaderBottomDwell(surface = getReaderScrollSurface(), isAtBottom =
     eligible: Boolean(
       taskContext &&
       window.appRouter && window.appRouter.currentTab === "reader-view" &&
+      !isPlanProgressLocked(taskContext.plan, { hidden: window.isPlanHidden?.(taskContext.plan) }) &&
       !isCurrentPlanReaderTaskRead(taskContext) &&
       !state.readerState.autoMarked &&
       !state.readerState.autoMarkInFlight

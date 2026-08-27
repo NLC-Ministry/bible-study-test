@@ -11,6 +11,7 @@ import {
 } from "./plan-participation-helpers.mjs";
 import { getPlanUpgradeAvailability } from "./plan-upgrade-availability.mjs";
 import { createReaderBottomDwellController, observeReaderEndSentinel } from "./reader-bottom-dwell.mjs";
+import { isPlanProgressLocked } from "../data/plan-progress-availability.mjs";
 import {
   cleanPlanAssociatedBadges,
   removePlanReadingLogs,
@@ -3587,20 +3588,11 @@ window.toggleYouVersionChapter = function (checkboxEl, book, chapter, taskRound 
   const willBeChecked = !isCurrentlyRead;
   const currentRound = taskRound || (state.activePlan ? (state.activePlan.currentRound || 1) : 1);
 
-  // 限制：如果計畫的開始時間尚未到達，不允許勾選已讀，只能進去查看進度
-  if (state.activePlan && state.activePlan.startDate) {
-    const today = new Date();
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const parts = state.activePlan.startDate.split("-");
-    const planStart = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-    
-    if (todayStart < planStart) {
-      showToast("此計畫尚未開始，目前僅供預覽，無法勾選已讀。");
-      if (checkboxEl) {
-        checkboxEl.checked = isCurrentlyRead;
-      }
-      return;
-    }
+  // 未發布或尚未到開始日的階段只能預覽；允許取消先前誤記的已讀。
+  if (willBeChecked && isPlanProgressLocked(state.activePlan, { hidden: window.isPlanHidden?.(state.activePlan) })) {
+    showToast("此階段尚未正式開放，目前僅供預覽，無法記錄已讀。");
+    if (checkboxEl) checkboxEl.checked = isCurrentlyRead;
+    return;
   }
 
   // 💡 關鍵修復：唯讀歷史鎖定，防止誤觸修改已完成遍數的打卡紀錄
@@ -4430,6 +4422,7 @@ async function autoMarkInlineReaderTaskRead(expectedTargetKey) {
   if (isInlineReaderTaskRead(task)) return true;
   if (state.inlineReader.autoMarked || state.inlineReader.autoMarkInFlight) return false;
   if (isPlanExpired(task.plan) || task.round < Number(task.plan.currentRound || 1)) return false;
+  if (isPlanProgressLocked(task.plan, { hidden: window.isPlanHidden?.(task.plan) })) return false;
   // Offline reading mode is read-only for progress — skip silently, matching
   // this auto-mark flow's existing "no intrusive toast" design.
   if (state.offlineMode) return false;
@@ -4480,7 +4473,13 @@ async function autoMarkInlineReaderTaskRead(expectedTargetKey) {
 function checkInlineReaderBottomDwell(surface = document.querySelector(".main-content"), isAtBottom = null) {
   const task = getCurrentInlineReaderTask();
   inlineReaderBottomDwellController?.check(surface, {
-    eligible: Boolean(task && !isInlineReaderTaskRead(task) && !state.inlineReader.autoMarked && !state.inlineReader.autoMarkInFlight),
+    eligible: Boolean(
+      task &&
+      !isPlanProgressLocked(task.plan, { hidden: window.isPlanHidden?.(task.plan) }) &&
+      !isInlineReaderTaskRead(task) &&
+      !state.inlineReader.autoMarked &&
+      !state.inlineReader.autoMarkInFlight
+    ),
     targetKey: getInlineReaderTargetKey(),
     isAtBottom
   });
