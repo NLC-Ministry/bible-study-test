@@ -46,7 +46,7 @@ const ICON_SIZE_CSS_VARS = [
 
 function walk(dir, acc = []) {
   for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === "dist" || name === ".git" || name === ".worktrees") continue;
+    if (name === "node_modules" || name === "dist" || name === ".git" || name === ".worktrees" || name === "scratch") continue;
     const abs = join(dir, name);
     const st = statSync(abs);
     if (st.isDirectory()) walk(abs, acc);

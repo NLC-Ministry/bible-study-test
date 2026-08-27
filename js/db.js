@@ -1024,6 +1024,26 @@ const db = {
   applyLoginOnboardingGate() {
     const hasTokens = typeof auth !== "undefined" && typeof auth.isLoggedIn === "function" && auth.isLoggedIn();
     const block = hasTokens ? getUserOnboardingBlock(state.currentUser) : null;
+    // A failed/slow sync (e.g. under backend load) falls through to whatever
+    // state.currentUser already holds, which can be a stale localStorage
+    // snapshot from an earlier session — including one taken during a brief
+    // real inactive_membership blip that has since resolved. Don't take that
+    // at face value: retry once quietly first, and only actually gate the
+    // user out if the fresh result still says inactive. This mirrors
+    // retryPlanEligibilityQuietly()'s handling of member_context_unavailable
+    // in js/app.js, applied here to the harder-blocking inactive_membership
+    // reason on the global login gate.
+    if (block && block.reason === "inactive_membership" && !this._loginGateInactiveRetryPending) {
+      this._loginGateInactiveRetryPending = true;
+      this.syncNlcSessionWithSupabase(true)
+        .then(() => this.applyLoginOnboardingGate())
+        .catch(err => console.warn("[LoginOnboardingGate] inactive_membership re-check failed:", err))
+        .finally(() => { this._loginGateInactiveRetryPending = false; });
+      // Fall through and still render the gate immediately below with the
+      // (possibly stale) current block — the retry above will silently
+      // re-render a moment later if it turns out to be wrong. This avoids
+      // leaving the screen blank while the retry is in flight.
+    }
     const copy = getLoginGateCopy(block, { hasTokens });
     const loginGate = document.getElementById("login-gate");
     const appLayout = document.querySelector(".app-layout");

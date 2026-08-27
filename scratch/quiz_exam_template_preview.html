@@ -3,9 +3,35 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="../index.css">
 <style>
-  body { padding: 1.25rem; max-width: 860px; margin: 0 auto; background: var(--bg-page, #101010); }
+  /* 自足樣式：預覽不依賴 App 的 index.css。整合進 App 時改用專案設計 token 即可。 */
+  :root {
+    --bg-page: #f4f5f7; --bg-card: #ffffff; --bg-input: #ffffff;
+    --border-card: rgba(0,0,0,.14);
+    --text-primary: #111418; --text-secondary: rgba(17,20,24,.72); --text-muted: rgba(17,20,24,.55);
+    --color-brand: #04A9D2; --color-brand-muted: rgba(4,169,210,.10);
+    --color-danger: #d64550; --color-success: #1f9d57;
+    --type-weight-strong: 600;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-page: #0f1113; --bg-card: #1b1e21; --bg-input: #23272b;
+      --border-card: rgba(255,255,255,.16);
+      --text-primary: #f2f4f6; --text-secondary: rgba(242,244,246,.72); --text-muted: rgba(242,244,246,.55);
+      --color-brand: #35c4e6; --color-brand-muted: rgba(53,196,230,.14);
+      --color-danger: #f2707a; --color-success: #46c07f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { padding: 1.25rem; max-width: 860px; margin: 0 auto; background: var(--bg-page); color: var(--text-primary);
+    font-family: -apple-system, "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+  .stat-badge { display:inline-block; font-size:.72rem; padding:.15rem .5rem; border-radius:999px; border:1px solid var(--border-card); color:var(--text-secondary); }
+  .stat-badge--warning { color:#b5860b; border-color:#e0b64d; background:rgba(224,182,77,.12); }
+  .primary-btn { background:var(--color-brand); color:#fff; border:none; border-radius:10px; padding:.5rem .95rem; font-size:.85rem; font-weight:var(--type-weight-strong); cursor:pointer; }
+  .primary-btn:disabled { opacity:.4; cursor:not-allowed; }
+  .secondary-btn { background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border-card); border-radius:10px; padding:.5rem .95rem; font-size:.85rem; cursor:pointer; }
+  .form-control { border:1px solid var(--border-card); border-radius:8px; padding:.45rem .6rem; background:var(--bg-input); color:var(--text-primary); font-size:.85rem; font-family:inherit; }
+  .form-control:focus { outline:2px solid var(--color-brand); outline-offset:1px; }
   .exam-toolbar { display:flex; gap:.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center; }
   .exam-toolbar .spacer { flex:1; }
   .exam-section { margin: 1rem 0 1.5rem; }
@@ -17,12 +43,46 @@
   .opt { display:flex; align-items:flex-start; gap:.5rem; font-size:.875rem; line-height:1.6; padding:.2rem 0; color: var(--text-primary); }
   .opt input { margin-top:.25rem; }
   .tf-row { display:flex; gap:1.25rem; }
-  .match-row { display:grid; grid-template-columns: 1fr auto minmax(150px, 200px); gap:.5rem; align-items:center; margin:.3rem 0; font-size:.875rem; color:var(--text-primary); }
-  .match-row select, .order-item select { padding:.35rem; border-radius:8px; border:1px solid var(--border-card); background:var(--bg-input); color:var(--text-primary); }
-  .order-item { display:flex; align-items:center; gap:.5rem; border:1px solid var(--border-card); border-radius:10px; padding:.45rem .6rem; margin:.3rem 0; background:var(--bg-input); font-size:.875rem; color:var(--text-primary); }
-  .order-item .grip { color:var(--text-muted); }
-  .order-item .ord-btns { margin-left:auto; display:flex; gap:.25rem; }
-  .order-item button { width:28px; height:28px; border-radius:8px; border:1px solid var(--border-card); background:var(--bg-card); color:var(--text-primary); cursor:pointer; }
+  .order-item select { padding:.35rem; border-radius:8px; border:1px solid var(--border-card); background:var(--bg-input); color:var(--text-primary); }
+  /* 連連看：可拉線配對。左欄圓點在「右側」、右欄圓點在「左側」，線只走中間空隙 */
+  .match-board { position:relative; display:grid; grid-template-columns:fit-content(46%) fit-content(46%); justify-content:space-between; column-gap:2rem; padding:.5rem 0; touch-action:manipulation; }
+  .match-node .match-label { overflow-wrap:anywhere; }
+  .match-lines { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; z-index:0; }
+  /* 每欄的框都撐成「該欄最寬的框」的寬度 → 框邊與圓點都對齊 */
+  .match-col { display:flex; flex-direction:column; align-items:stretch; gap:.55rem; min-width:0; }
+  .match-node { position:relative; z-index:1; display:flex; width:100%; align-items:center; gap:.5rem; border:1px solid var(--border-card); background:var(--bg-input); color:var(--text-primary); border-radius:10px; padding:.5rem .7rem; font-size:.85rem; line-height:1.4; cursor:pointer; font-family:inherit; }
+  .match-node .match-label { flex:1; overflow-wrap:anywhere; }
+  .match-col--left  .match-node { flex-direction:row-reverse; }   /* 圓點在框的右緣（靠中間），各框等寬故對齊 */
+  .match-col--left  .match-node .match-label { text-align:left; }
+  .match-col--right .match-node { flex-direction:row; }           /* 圓點在框的左緣（靠中間），各框等寬故對齊 */
+  .match-col--right .match-node .match-label { text-align:left; }  /* 文字緊接圓點、靠左，右側補白 */
+  .match-node:hover { border-color:var(--color-brand); }
+  .match-node.is-active { border-color:var(--color-brand); box-shadow:0 0 0 2px var(--color-brand-muted); }
+  .match-node.is-linked { border-color:var(--color-brand); }
+  .match-dot { width:13px; height:13px; border-radius:50%; background:var(--bg-card); border:2px solid var(--color-brand); flex-shrink:0; }
+  .match-node.is-linked .match-dot { background:var(--color-brand); }
+  .match-clear { margin-top:.5rem; background:none; border:1px solid var(--border-card); color:var(--text-secondary); border-radius:8px; padding:.3rem .6rem; font-size:.78rem; cursor:pointer; }
+  .match-hint { font-size:.78rem; color:var(--text-muted); margin:.15rem 0 .35rem; }
+  @media (max-width:480px){ .match-board{ gap:2rem; } .match-node{ font-size:.8rem; padding:.45rem .5rem; } }
+  /* 事件排序：積木式拖曳 */
+  .order-hint, .order-sub { font-size:.78rem; color:var(--text-muted); margin:.35rem 0 .25rem; }
+  .order-sub { font-weight:var(--type-weight-strong); color:var(--text-secondary); }
+  .order-answer { min-height:56px; display:flex; flex-direction:column; gap:.45rem; border:1.5px dashed var(--border-card); border-radius:12px; padding:.55rem; background:var(--bg-card); margin:.2rem 0 .5rem; transition:border-color .12s, background .12s; }
+  .order-answer.drop-hot { border-color:var(--color-brand); background:var(--color-brand-muted); }
+  .order-pool { display:flex; flex-wrap:wrap; gap:.45rem; padding:.15rem 0 .1rem; border-radius:10px; }
+  .order-pool.drop-hot { outline:2px dashed var(--color-brand); outline-offset:3px; }
+  .order-empty { color:var(--text-muted); font-size:.8rem; text-align:center; padding:.5rem; }
+  .order-chip { display:flex; align-items:center; gap:.5rem; border:1px solid var(--border-card); background:var(--bg-input); color:var(--text-primary); border-radius:10px; padding:.5rem .7rem; font-size:.85rem; line-height:1.4; cursor:grab; user-select:none; touch-action:none; }
+  .order-chip:active { cursor:grabbing; }
+  .order-chip.is-placeholder { opacity:.3; }
+  .order-chip.ghost { position:fixed; z-index:9999; margin:0; pointer-events:none; box-shadow:0 10px 24px rgba(0,0,0,.35); cursor:grabbing; }
+  .order-chip .chip-grip { color:var(--text-muted); letter-spacing:-2px; }
+  .order-chip .chip-text { flex:1; }
+  .order-num { flex-shrink:0; min-width:1.5em; height:1.5em; display:inline-flex; align-items:center; justify-content:center; border-radius:50%; background:var(--color-brand); color:#fff; font-size:.72rem; font-weight:var(--type-weight-strong); }
+  .chip-remove { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:.9rem; line-height:1; padding:0 .1rem; }
+  .order-chip.chip-correct { border-color:var(--color-success); }
+  .order-chip.chip-wrong { border-color:var(--color-danger); }
+  .order-indicator { height:3px; background:var(--color-brand); border-radius:3px; }
   textarea.form-control, input.form-control, select.form-control { width:100%; box-sizing:border-box; }
   .edit-grid { display:grid; gap:.4rem; }
   .edit-grid label { font-size:.78rem; color:var(--text-muted); display:block; }
@@ -34,9 +94,27 @@
   .ok { color: var(--color-success, #30a46c); }
   .bad { color: var(--color-danger, #e5484d); }
   pre.json-out { white-space:pre-wrap; word-break:break-all; font-size:.72rem; background:var(--bg-input); border:1px solid var(--border-card); border-radius:10px; padding:.75rem; color:var(--text-secondary); max-height:320px; overflow:auto; }
+
+  /* 宣示 gate */
+  .pledge-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:1rem; z-index:50; }
+  .pledge-panel { background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border-card); border-radius:18px; max-width:520px; width:100%; max-height:88vh; overflow-y:auto; padding:1.4rem 1.5rem; box-shadow:0 25px 50px -12px rgba(0,0,0,.4); }
+  .pledge-panel h3 { margin:0 0 .25rem; font-size:1.05rem; font-weight:var(--type-weight-strong); }
+  .pledge-open { font-size:.82rem; color:var(--text-secondary); margin:0 0 .9rem; line-height:1.6; }
+  .pledge-panel ol { font-size:.85rem; line-height:1.75; padding-left:1.2rem; margin:0 0 1rem; }
+  .pledge-consent { border:1px solid var(--border-card); background:var(--bg-input); border-radius:12px; padding:.85rem .95rem; margin-bottom:.9rem; font-size:.88rem; line-height:1.7; }
+  .pledge-consent input[type=text] { border:none; border-bottom:1.5px solid var(--color-brand); background:transparent; color:var(--color-brand); font-weight:var(--type-weight-strong); font-size:.92rem; padding:.1rem .3rem; width:9rem; }
+  .pledge-agree { display:flex; gap:.5rem; align-items:flex-start; font-size:.85rem; margin-bottom:1rem; }
+  .pledge-start { width:100%; padding:.75rem; border-radius:12px; border:none; background:var(--color-brand); color:#fff; font-weight:var(--type-weight-strong); font-size:.9rem; cursor:pointer; }
+  .pledge-start:disabled { opacity:.45; cursor:not-allowed; }
+
+  /* 計時列 */
+  .timer-bar { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:.6rem; background:var(--bg-card); border:1px solid var(--border-card); border-radius:12px; padding:.55rem .85rem; margin-bottom:.9rem; font-size:.85rem; color:var(--text-primary); }
+  .timer-bar .clock { font-weight:var(--type-weight-strong); font-variant-numeric:tabular-nums; font-size:1rem; }
+  .timer-bar.low { border-color:var(--color-danger,#e5484d); color:var(--color-danger,#e5484d); }
+  .locked-banner { border:1px solid var(--color-brand); background:var(--color-brand-muted, rgba(4,169,210,.08)); color:var(--text-primary); border-radius:12px; padding:.75rem .95rem; margin-bottom:.9rem; font-size:.85rem; line-height:1.6; }
 </style>
 </head>
-<body class="dark-theme">
+<body>
 
 <div class="exam-toolbar">
   <strong style="color:var(--text-primary);">速讀測驗模板預覽</strong>
@@ -44,10 +122,12 @@
   <span class="spacer"></span>
   <button class="secondary-btn" onclick="setMode('answer')">作答模式</button>
   <button class="secondary-btn" onclick="setMode('edit')">編輯模式</button>
-  <button class="primary-btn" id="action-btn" onclick="primaryAction()">自動計分</button>
+  <button class="primary-btn" id="action-btn" onclick="primaryAction()">送出答案</button>
+  <button class="secondary-btn" onclick="resetAttempt()" title="僅供預覽，重新顯示宣示畫面">重設（測試用）</button>
 </div>
 <p class="hint" id="mode-note"></p>
 
+<div id="timer-slot"></div>
 <div id="exam-root"></div>
 
 <pre class="json-out" id="json-out" hidden></pre>
@@ -61,8 +141,9 @@
    truefalse   是非題   → { stem, answer:true/false }                每題 1 分
    single      單選題   → { stem, options[], answer:索引 }           每題 1 分
    multiple    複選題   → { stem, options[], answers:[索引...] }      每題 1 分・全對才給分
-   matching    連連看   → { stem, left[], right[](可含干擾), answer:{左id:右id} }
-                          每「小題」為一組配對，整組全對才得 1 分（共 10 小題）
+   matching    連連看   → { stem, left[], right[], answer:{左id:右id} }
+                          左右數量相等、一一對應、無干擾項；作答時點左項再點右項拉線，
+                          再點一次取消。整組全對才得 1 分（共 10 小題）
    ordering    事件排序 → { stem, items[](=題目呈現順序), answer:[正確順序的 id] }
                           每「小題」排 4～6 個事件，整題順序全對才得 1 分（共 10 小題）
    shortanswer 簡答題   → { stem, referenceAnswer, rubric[], maxPoints:10 }
@@ -70,85 +151,185 @@
    ============================================================================ */
 const EXAM = {
   meta: {
-    title: "新生命聖經速讀測驗（範例）",
-    openAt: "2026-08-30T00:00:00+08:00",
-    durationMinutes: 75,
-    totalPoints: 120
+    title: "新生命小組教會聖經速讀測驗（創世記）",
+    openAt: "2026-08-30T00:00:00+08:00",   // 開放起始（8/30 零時）
+    openHours: 24,                          // 開放 24 小時
+    durationMinutes: 75,                    // 單次作答限時 75 分鐘
+    totalPoints: 100                        // 自動 70（一～五）＋ 人工 30（六）
+  },
+  // 測驗宣示：作答前必須先閱讀並同意，第 6 條姓名自動帶入
+  pledge: {
+    openText: "本次測驗開放時間為 8/30 零時起 24 小時內，本試卷作答時間為 75 分鐘。",
+    rules: [
+      "可以 OPEN 紙本聖經──接受測驗的過程當中，除了紙本聖經，我不會借助其他工具來進行答題。",
+      "我清楚本次測驗開放時間為 8/30 零時起 24 小時內，本試卷作答時間為 75 分鐘。",
+      "我將不會重複作答，亦即當完成測驗送交答案之後，我不會以各樣的理由要求重新接受測驗（測驗記錄亦將以第一次為準）。",
+      "不管是個人或三人六人組隊，我都是獨立接受測驗，不會與其他人就測驗內容進行討論及溝通。",
+      "在測驗關閉前（8/30 晚上 23 時 59 分 59 秒前）我將不會以任何的方式將題目內容洩漏給其他人。"
+    ],
+    consentTemplate: "{name} 清楚以上測驗規則，亦會遵守規則來完成本次測驗。"
   },
   sections: [
     {
       id: "tf", type: "truefalse", title: "一、是非題", pointsPer: 1, targetCount: 20,
-      instruction: "正確請選 O，錯誤請選 X。",
+      instruction: "正確請選 O，錯誤請選 X。（答案待補）",
       questions: [
-        { id: "tf1", stem: "（範例）挪亞方舟停在亞拉臘山上。", answer: true },
-        { id: "tf2", stem: "（範例）摩西帶領以色列人過的是地中海。", answer: false }
+        { id: "tf1", stem: "上帝用六天創造萬物，並且為萬物命名，然後第七天就安息了。", answer: null },
+        { id: "tf2", stem: "亞當夏娃吃了分別善惡樹的果子，發現自己赤身露體，就用獸的皮做衣服遮掩。", answer: null },
+        { id: "tf3", stem: "人造巴別塔，是為了避免分散各地，並且可以敬拜神，傳揚上帝的名。", answer: null },
+        { id: "tf4", stem: "撒拉得子後，欲把夏甲與以實馬利趕出家門，神對此非常不喜悅，因此命定以實馬利將成為大國。", answer: null },
+        { id: "tf5", stem: "面對兄長聯手陷害、波提乏夫人陷害、牢獄之災等困境，約瑟決心攀至高位，展開報復解心頭之恨。", answer: null },
+        { id: "tf6", stem: "創世記中記載了十項誡命（十誡）。", answer: null },
+        { id: "tf7", stem: "挪亞有三個兒子，分別叫做喇米、哈米和雅弗。", answer: null },
+        { id: "tf8", stem: "以撒是亞伯拉罕的第一個兒子。", answer: null },
+        { id: "tf9", stem: "上帝在造萬物的第三天創造了太陽、月亮和眾星，用來普照大地、分晝夜、作記號。", answer: null },
+        { id: "tf10", stem: "蛇誘惑夏娃時，夏娃回答神說「不可吃，也不可摸，免得你們死」，這與神起初的吩咐一字不差。", answer: null },
+        { id: "tf11", stem: "挪亞在洪水退去時，先放出一隻鴿子，鴿子找不著落腳之處飛回，後來才放出一隻烏鴉。", answer: null },
+        { id: "tf12", stem: "上帝呼召亞伯蘭出哈蘭時，亞伯蘭當時已經99歲了。", answer: null },
+        { id: "tf13", stem: "撒拉因不能生育，主動建議亞伯蘭納使女夏甲為妾；夏甲懷孕後，撒拉依然對她非常溫柔體貼。", answer: null },
+        { id: "tf14", stem: "以撒娶利百加時年40歲，利百加婚後立刻為以撒生下雙胞胎以掃與雅各。", answer: null },
+        { id: "tf15", stem: "雅各為了娶心愛的拉結，答應服事拉班七年，新婚次日早晨才發現拉班把大女兒利亞給了他。", answer: null },
+        { id: "tf16", stem: "酒政和膳長在獄中同夜各做了一夢，約瑟為他們解夢，三天後膳長官復原職，酒政則被掛在木頭上。", answer: null },
+        { id: "tf17", stem: "建造巴別塔的人的主要目的是要分散到全地。", answer: null },
+        { id: "tf18", stem: "雅各為拉結服事拉班七年，拉班就先把拉結給了他。", answer: null },
+        { id: "tf19", stem: "雅各在毗努伊勒與神摔跤後，被稱為以色列。", answer: null },
+        { id: "tf20", stem: "該隱是牧羊人，亞伯是種地的。", answer: null }
       ]
     },
     {
       id: "single", type: "single", title: "二、單選題", pointsPer: 1, targetCount: 20,
-      instruction: "每題僅一個最佳答案。",
+      instruction: "每題僅一個最佳答案。（答案待補）",
       questions: [
-        { id: "s1", stem: "（範例）大衛擊殺的非利士巨人名叫？",
-          options: ["歌利亞", "掃羅", "押沙龍", "尼布甲尼撒"], answer: 0 }
+        { id: "s1", stem: "創世記的作者是誰？", options: ["亞當", "亞伯拉罕", "約瑟", "摩西"], answer: null },
+        { id: "s2", stem: "聖經記載第一個向上帝獻祭的人是誰？", options: ["亞當", "塞特", "亞伯拉罕", "該隱"], answer: null },
+        { id: "s3", stem: "聖經記載第一個「築壇」獻祭的人是誰？", options: ["亞伯拉罕", "以撒", "雅各", "挪亞"], answer: null },
+        { id: "s4", stem: "根據聖經對創世記人物壽命的計算，亞當最遠能看到自己的第幾代子孫出生？", options: ["以諾（第七代）", "瑪土撒拉（第八代）", "拉麥（第九代）", "挪亞（第十代）"], answer: null },
+        { id: "s5", stem: "根據聖經對創世記人物壽命的計算，哪一位人物在世的時間與亞伯拉罕、以撒、雅各都有重疊？", options: ["挪亞", "閃", "他拉"], answer: null },
+        { id: "s6", stem: "根據聖經對創世記人物壽命的計算，下列哪一位人物有最多「白髮人送黑髮人」的經歷？", options: ["挪亞", "閃", "他拉"], answer: null },
+        { id: "s7", stem: "出方舟後，挪亞做的第一件事情是什麼？", options: ["尋找食物", "建立房屋", "築壇獻祭", "生兒養女"], answer: null },
+        { id: "s8", stem: "根據聖經記載，第一個獻上「什一奉獻」的人物是誰？", options: ["亞伯", "挪亞", "亞伯拉罕", "雅各"], answer: null },
+        { id: "s9", stem: "根據聖經描述，第一個被明確記載「因信稱義」的人物是誰？", options: ["挪亞", "亞伯拉罕", "以撒", "雅各"], answer: null },
+        { id: "s10", stem: "在上帝毀滅所多瑪和蛾摩拉時，羅得帶著一家人逃離，哪一個人回頭看而變成鹽柱沒有存活？", options: ["羅得", "妻子", "大女兒", "小女兒"], answer: null },
+        { id: "s11", stem: "舊約亞伯拉罕上山獻以撒與福音書中耶穌進耶路撒冷，都使用了相同的坐騎，是什麼？", options: ["馬", "羊", "騾", "驢"], answer: null },
+        { id: "s12", stem: "亞伯拉罕的老僕人為以撒挑選妻子，向神禱告中所展現的考驗標準是什麼？", options: ["容貌美麗", "身材姣好", "口齒清晰", "好服事人（願主動打水給僕人與駱駝喝）"], answer: null },
+        { id: "s13", stem: "雅各為得父親以撒的祝福假扮以掃，哪件事情讓以撒起疑？", options: ["衣服的香氣", "身體的毛", "烹飪的手藝", "說話的聲音"], answer: null },
+        { id: "s14", stem: "下列哪一位「不是」利亞所生的兒子？", options: ["流便", "西緬", "便雅憫", "猶大"], answer: null },
+        { id: "s15", stem: "雅各何時改名叫「以色列」？", options: ["以紅豆湯換取長子名分時", "投靠拉班路上夢見天梯時", "離開拉班回迦南路上在雅博渡口與天使摔跤後", "兒子們報復示劍城之後"], answer: null },
+        { id: "s16", stem: "當兄長們企圖殺害約瑟時，誰先站出來提議將他丟進坑裡以保全他的性命？", options: ["流便", "利未", "猶大", "便雅憫"], answer: null },
+        { id: "s17", stem: "約瑟解法老之夢後，法老對此給予了什麼評價？", options: ["約瑟有智慧與聰明", "約瑟有治理的才能", "約瑟有強大的團隊", "約瑟有神的靈在他裏頭"], answer: null },
+        { id: "s18", stem: "約瑟的兄長們為了買糧，總共往返迦南與埃及之間幾次（進埃及買糧的次數）？", options: ["一次", "兩次", "三次", "四次"], answer: null },
+        { id: "s19", stem: "誰挺身而出自願留在埃及作僕人，以代替便雅憫平安返回？", options: ["猶大", "迦得", "西布倫", "流便"], answer: null },
+        { id: "s20", stem: "挪亞方舟在洪水退去後停留在何處？", options: ["沙漠", "亞拉臘山", "以色列", "埃及"], answer: null }
       ]
     },
     {
       id: "multi", type: "multiple", title: "三、複選題", pointsPer: 1, targetCount: 10, scoring: "exact",
-      instruction: "每題有兩個以上正確答案，全部選對才得分。",
+      instruction: "每題有兩個以上正確答案，全部選對才得分。（答案待補）",
       questions: [
-        { id: "m1", stem: "（範例）以下哪些是舊約的「大先知書」？",
-          options: ["以賽亞書", "耶利米書", "阿摩司書", "以西結書"], answers: [0, 1, 3] }
+        { id: "m1", stem: "上帝造人（亞當）後，給人的吩咐與祝福是什麼？", options: ["要生養眾多，遍滿地面", "治理這地", "管理海裡的魚、空中的鳥，和地上各樣行動的活物", "工作與生活要有平衡"], answers: [] },
+        { id: "m2", stem: "聖經如何描述挪亞？", options: ["行公義、好憐憫、存謙卑的心", "與神同行", "是個義人", "是完全人"], answers: [] },
+        { id: "m3", stem: "亞伯拉罕跟以撒有哪些共同的經歷？", options: ["遭遇嚴重的飢荒", "都去過埃及以躲避飢荒", "為求自保，謊稱妻子是「妹子」", "妻子都曾面臨「不孕」的考驗"], answers: [] },
+        { id: "m4", stem: "上帝用哪些大自然的事物來比喻亞伯拉罕後裔的繁多？", options: ["地上的塵土", "天上的星", "海邊的沙", "葡萄園的葡萄"], answers: [] },
+        { id: "m5", stem: "雅各回迦南地面對以掃可能帶來的危險，他做了哪些應對措施？", options: ["將隊伍分隊安排", "預備牲畜為豐盛的禮物", "謙卑自己向以掃俯伏下拜", "將長子的名份歸還給以掃"], answers: [] },
+        { id: "m6", stem: "約瑟被賣去埃及後，歷任過哪些職務/角色？", options: ["護衛長波提乏的管家", "司獄管理囚犯的幫手", "全埃及治理事務的宰相", "埃及地方分區的省長"], answers: [] },
+        { id: "m7", stem: "關於巴別塔事件，哪些敘述正確？", options: ["當時全地的人語言相同", "人想建造城和塔，塔頂通天", "人想傳揚自己的名", "上帝變亂人的口音", "人因此被聚集在同一座城，永不分散"], answers: [] },
+        { id: "m8", stem: "關於雅各的經歷，哪些正確？", options: ["他曾用紅豆湯取得以掃的長子名分", "他曾藉著欺騙取得以撒給長子的祝福", "他在伯特利夢見通天的梯子", "他曾與神摔跤，後被稱為以色列", "他從未離開過迦南地"], answers: [] },
+        { id: "m9", stem: "關於約瑟被賣到埃及以前，哪些正確？", options: ["雅各偏愛約瑟", "雅各送給約瑟一件特別的彩衣", "約瑟曾作夢，夢見禾捆和天上的星月向他下拜", "約瑟的哥哥們因此嫉妒他", "約瑟是雅各最小的兒子"], answers: [] },
+        { id: "m10", stem: "下列哪些主題貫穿創世記？", options: ["上帝創造並賦予人使命", "人犯罪後仍需要上帝的憐憫與救贖", "上帝藉著約與應許推進祂的計畫", "上帝在人的罪惡與困境中仍掌管歷史", "家庭衝突、饒恕與和好"], answers: [] }
       ]
     },
     {
       id: "match", type: "matching", title: "四、連連看", pointsPer: 1, targetCount: 10,
-      instruction: "共 10 小題，每小題將左欄與右欄配對，整組全對才得 1 分。右欄可放干擾項。",
+      instruction: "共 10 小題。點左邊項目再點右邊項目即可連線，再點一次可取消。左右一一對應、無干擾項，整組全對才得 1 分。（答案待補）",
       questions: [
-        {
-          id: "mt1", stem: "（範例）人物與事蹟配對",
-          left: [
-            { id: "L1", text: "約瑟" },
-            { id: "L2", text: "但以理" },
-            { id: "L3", text: "以斯帖" },
-            { id: "L4", text: "尼希米" }
-          ],
-          right: [
-            { id: "甲", text: "在獅子坑中蒙保守" },
-            { id: "乙", text: "作埃及宰相" },
-            { id: "丙", text: "冒死見王拯救同胞" },
-            { id: "丁", text: "重建耶路撒冷城牆" },
-            { id: "戊", text: "（干擾）建造方舟" }
-          ],
-          answer: { L1: "乙", L2: "甲", L3: "丙", L4: "丁" }
-        }
+        { id: "mt1", stem: "人物與事件",
+          left: [{ id: "L1", text: "亞當" }, { id: "L2", text: "挪亞" }, { id: "L3", text: "約瑟" }, { id: "L4", text: "亞伯拉罕" }],
+          right: [{ id: "R1", text: "解夢拯救埃及" }, { id: "R2", text: "建造方舟" }, { id: "R3", text: "犯罪後躲避神" }, { id: "R4", text: "被神呼召離開本地、本族、父家" }],
+          answer: {} },
+        { id: "mt2", stem: "地點與事件",
+          left: [{ id: "L1", text: "伊甸園" }, { id: "L2", text: "巴別" }, { id: "L3", text: "伯特利" }, { id: "L4", text: "所多瑪" }],
+          right: [{ id: "R1", text: "雅各夢見天梯" }, { id: "R2", text: "亞當、夏娃犯罪" }, { id: "R3", text: "人要建造通天的塔" }, { id: "R4", text: "羅得居住的罪惡之城" }],
+          answer: {} },
+        { id: "mt3", stem: "人物與關鍵事件",
+          left: [{ id: "L1", text: "雅各" }, { id: "L2", text: "約瑟" }, { id: "L3", text: "亞伯" }, { id: "L4", text: "挪亞" }],
+          right: [{ id: "R1", text: "獻上頭生羊群蒙悅納" }, { id: "R2", text: "雅博渡口與神摔跤" }, { id: "R3", text: "被賣到埃及" }, { id: "R4", text: "遵命建造方舟" }],
+          answer: {} },
+        { id: "mt4", stem: "雅各臨終前的祝福與兒子",
+          left: [{ id: "L1", text: "出肥美的糧食" }, { id: "L2", text: "圭必不離、君王后裔" }, { id: "L3", text: "必追趕敵軍的腳跟" }, { id: "L4", text: "泉旁多結果子的枝條、得天與深淵之福" }, { id: "L5", text: "屈身臥在羊圈當中的強壯之驢" }],
+          right: [{ id: "R1", text: "亞設" }, { id: "R2", text: "猶大" }, { id: "R3", text: "迦得" }, { id: "R4", text: "約瑟" }, { id: "R5", text: "以薩迦" }],
+          answer: {} },
+        { id: "mt5", stem: "人物／概念與主題配對（一）",
+          left: [{ id: "L1", text: "挪亞" }, { id: "L2", text: "亞伯拉罕" }, { id: "L3", text: "麥基洗德" }, { id: "L4", text: "以撒" }, { id: "L5", text: "便雅憫" }, { id: "L6", text: "以實瑪利" }, { id: "L7", text: "撒拉" }, { id: "L8", text: "約瑟" }, { id: "L9", text: "迦南地" }, { id: "L10", text: "巴別塔" }],
+          right: [{ id: "R1", text: "祭司與王" }, { id: "R2", text: "應許流奶與蜜之地" }, { id: "R3", text: "囚犯至宰相之逆境得勝" }, { id: "R4", text: "亞伯拉罕的應許之子" }, { id: "R5", text: "妾夏甲所生之長子" }, { id: "R6", text: "耶和華立約之後裔源頭" }, { id: "R7", text: "洪水世代中的義人全家得救" }, { id: "R8", text: "雅各最小的第十二個兒子" }, { id: "R9", text: "亞伯拉罕的原配妻子" }, { id: "R10", text: "人類驕傲建造之塔" }],
+          answer: {} },
+        { id: "mt6", stem: "人物／概念與主題配對（二）",
+          left: [{ id: "L1", text: "為便雅憫在約瑟面前代求，願意代替弟弟留下" }, { id: "L2", text: "以撒的妻子，曾在井旁為僕人和駱駝打水" }, { id: "L3", text: "雅各所愛的妻子，約瑟的母親" }, { id: "L4", text: "埃及的君王，作了七隻肥牛和七隻瘦牛的夢" }, { id: "L5", text: "被該隱殺害的牧羊人" }, { id: "L6", text: "曾與神摔跤，後來被稱為以色列" }, { id: "L7", text: "亞伯拉罕的姪兒，曾住在所多瑪" }, { id: "L8", text: "上帝所造的第一個男人" }, { id: "L9", text: "第一個女人，亞當的妻子" }, { id: "L10", text: "殺害兄弟亞伯的哥哥" }],
+          right: [{ id: "R1", text: "亞當" }, { id: "R2", text: "夏娃" }, { id: "R3", text: "該隱" }, { id: "R4", text: "羅得" }, { id: "R5", text: "利百加" }, { id: "R6", text: "雅各" }, { id: "R7", text: "拉結" }, { id: "R8", text: "法老" }, { id: "R9", text: "猶大" }, { id: "R10", text: "亞伯" }],
+          answer: {} },
+        { id: "mt7", stem: "人物與綽號／別名／新名字",
+          left: [{ id: "L1", text: "亞伯蘭" }, { id: "L2", text: "撒萊" }, { id: "L3", text: "雅各" }, { id: "L4", text: "以掃" }],
+          right: [{ id: "R1", text: "以色列" }, { id: "R2", text: "亞伯拉罕" }, { id: "R3", text: "以東" }, { id: "R4", text: "撒拉" }],
+          answer: {} },
+        { id: "mt8", stem: "人物與壽命",
+          left: [{ id: "L1", text: "亞當" }, { id: "L2", text: "挪亞" }, { id: "L3", text: "亞伯拉罕" }, { id: "L4", text: "以諾" }, { id: "L5", text: "瑪土撒拉" }],
+          right: [{ id: "R1", text: "175歲" }, { id: "R2", text: "930歲" }, { id: "R3", text: "950歲" }, { id: "R4", text: "365歲" }, { id: "R5", text: "969歲" }],
+          answer: {} },
+        { id: "mt9", stem: "父與子",
+          left: [{ id: "L1", text: "挪亞" }, { id: "L2", text: "亞伯拉罕" }, { id: "L3", text: "希伯" }, { id: "L4", text: "雅各" }],
+          right: [{ id: "R1", text: "以實馬利" }, { id: "R2", text: "法勒" }, { id: "R3", text: "閃" }, { id: "R4", text: "約瑟" }],
+          answer: {} },
+        { id: "mt10", stem: "配偶",
+          left: [{ id: "L1", text: "利百加" }, { id: "L2", text: "撒拉" }, { id: "L3", text: "拉結" }, { id: "L4", text: "亞西納" }],
+          right: [{ id: "R1", text: "以撒" }, { id: "R2", text: "雅各" }, { id: "R3", text: "亞伯拉罕" }, { id: "R4", text: "約瑟" }],
+          answer: {} }
       ]
     },
     {
       id: "order", type: "ordering", title: "五、事件排序題", pointsPer: 1, targetCount: 10,
-      instruction: "共 10 小題，每小題將事件依聖經記載的時間先後排列，整題順序全對才得 1 分。",
+      instruction: "共 10 小題，把事件拖進作答區依聖經記載的時間先後排列，整題順序全對才得 1 分。（答案待補）",
       questions: [
-        {
-          id: "od1", stem: "（範例）救恩歷史事件排序",
-          items: [
-            { id: "E1", text: "出埃及" },
-            { id: "E2", text: "創造天地" },
-            { id: "E3", text: "挪亞洪水" },
-            { id: "E4", text: "巴別塔" },
-            { id: "E5", text: "亞伯拉罕蒙召" }
-          ],
-          answer: ["E2", "E3", "E4", "E5", "E1"]
-        }
+        { id: "od1", stem: "請依時間先後排列亞伯拉罕的生平事件",
+          items: [{ id: "E1", text: "亞伯蘭改名亞伯拉罕" }, { id: "E2", text: "羅得離開亞伯拉罕" }, { id: "E3", text: "神與亞伯蘭立約（割禮之約）" }, { id: "E4", text: "以撒出生" }],
+          answer: [] },
+        { id: "od2", stem: "請依時間先後排列雅各的生平事件",
+          items: [{ id: "E1", text: "騙取父親以撒的祝福" }, { id: "E2", text: "以紅豆湯換取長子名分" }, { id: "E3", text: "與利亞、拉結結婚" }, { id: "E4", text: "雅博渡口與神摔跤" }, { id: "E5", text: "伯特利夢見天梯" }],
+          answer: [] },
+        { id: "od3", stem: "請依時間先後排列約瑟的生平事件",
+          items: [{ id: "E1", text: "被弟兄賣到埃及" }, { id: "E2", text: "被波提乏妻子誣告下監" }, { id: "E3", text: "為酒政解夢，但酒政出獄後忘記約瑟" }, { id: "E4", text: "為法老解夢並被立為埃及宰相" }, { id: "E5", text: "雅各全家遷居埃及歌珊地" }],
+          answer: [] },
+        { id: "od4", stem: "請將下列創世記重大歷史事件按發生順序排列",
+          items: [{ id: "E1", text: "約瑟被賣到埃及" }, { id: "E2", text: "挪亞建方舟" }, { id: "E3", text: "亞伯拉罕與神立約" }, { id: "E4", text: "以撒的誕生" }, { id: "E5", text: "雅各得以撒的祝福" }],
+          answer: [] },
+        { id: "od5", stem: "上帝創造的次序",
+          items: [{ id: "E1", text: "造日、月、眾星" }, { id: "E2", text: "造人" }, { id: "E3", text: "造光" }, { id: "E4", text: "造旱地、海和植物" }, { id: "E5", text: "造天空" }, { id: "E6", text: "安息" }, { id: "E7", text: "造飛鳥、海中生物和地上的走獸" }],
+          answer: [] },
+        { id: "od6", stem: "創世記太古史重要事件排序",
+          items: [{ id: "E1", text: "巴別塔變亂口音" }, { id: "E2", text: "亞當夏娃被逐出伊甸園" }, { id: "E3", text: "挪亞出方舟築壇獻祭" }, { id: "E4", text: "該隱殺亞伯" }, { id: "E5", text: "洪水氾濫全地" }],
+          answer: [] },
+        { id: "od7", stem: "神與人立約的先後順序",
+          items: [{ id: "E1", text: "彩虹之約" }, { id: "E2", text: "割禮作為立約記號" }, { id: "E3", text: "女人後裔的應許" }, { id: "E4", text: "神應許亞伯蘭萬國得福" }],
+          answer: [] },
+        { id: "od8", stem: "創世記中家族的遷徙",
+          items: [{ id: "E1", text: "雅各全家下埃及" }, { id: "E2", text: "亞當夏娃離開伊甸園" }, { id: "E3", text: "亞伯拉罕離開本地本族父家" }, { id: "E4", text: "挪亞一家離開方舟" }],
+          answer: [] },
+        { id: "od9", stem: "創世記重要的文明事件",
+          items: [{ id: "E1", text: "建造方舟" }, { id: "E2", text: "發明樂器與鑄造銅鐵器" }, { id: "E3", text: "建造巴別塔" }, { id: "E4", text: "建造第一座城" }],
+          answer: [] },
+        { id: "od10", stem: "創世記中耶穌基督預表的出現順序",
+          items: [{ id: "E1", text: "上帝為亞當夏娃用皮子所剪裁出的衣服" }, { id: "E2", text: "挪亞造的方舟" }, { id: "E3", text: "替代以撒的公羊" }, { id: "E4", text: "雅各的天梯" }],
+          answer: [] }
       ]
     },
     {
       id: "short", type: "shortanswer", title: "六、簡答題", pointsPer: 10, targetCount: 3, grading: "manual",
-      instruction: "每題 10 分，請以完整句子作答；由管理員人工評分。",
+      instruction: "每題 10 分，請以完整句子作答；由管理員人工評分。（參考答案與評分要點待補）",
       questions: [
-        { id: "sa1",
-          stem: "（範例）請簡述「因信稱義」的意義，並舉一處經文佐證。",
-          referenceAnswer: "人不能靠行為在神面前被稱為義，乃是藉著信靠耶穌基督的救贖，白白得稱為義（羅3:23-24、弗2:8-9）。",
-          rubric: ["說明不靠行為／靠恩典（3分）", "說明藉信基督（4分）", "正確引用一處經文（3分）"],
-          maxPoints: 10 }
+        { id: "sa1", stem: "若從創世記50章就架構上分為兩大部分，各大部分下的結構及主題各為何，並請列出章數起迄？",
+          referenceAnswer: "", rubric: [], maxPoints: 10 },
+        { id: "sa2", stem: "創世記與以色列這個國家的關係如何──從其起源、歷史、身份……來看？",
+          referenceAnswer: "", rubric: [], maxPoints: 10 },
+        { id: "sa3", stem: "從基督教信仰的角度如何來詮釋創世記？",
+          referenceAnswer: "", rubric: [], maxPoints: 10 }
       ]
     }
   ]
@@ -158,38 +339,131 @@ const EXAM = {
 let MODE = "answer";                 // answer | edit
 const RESP = {};                     // 學生作答：RESP[questionId] = 值
 let scored = null;                   // 最近一次自動計分結果
+let started = false;                 // 已通過宣示、開始作答
+let submitted = false;              // 已送出（記錄以第一次為準，不可重作）
+let deadline = 0;                    // 作答截止時間戳（開始 + 75 分鐘）
+let timerId = null;
+let examinee = "（您的姓名）";       // 正式版由登入者姓名自動帶入
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const isLocked = () => MODE === "answer" && submitted;
 
 /* ------------------------------------------------------------------ 切換模式 */
 function setMode(m) {
   MODE = m;
-  $("#action-btn").textContent = m === "edit" ? "匯出 JSON" : "自動計分";
+  $("#action-btn").textContent = m === "edit" ? "匯出 JSON" : "送出答案";
+  $("#action-btn").disabled = m === "answer" && (!started || submitted);
   $("#json-out").hidden = true;
   $("#mode-note").textContent = m === "edit"
     ? "編輯模式：所有欄位可直接修改，可新增／刪除題目。改完按「匯出 JSON」取得題庫資料。"
-    : "作答模式：模擬學生填答。按「自動計分」立即批改一～五大題；第六大題標示為待人工評分。";
+    : "作答模式：需先通過測驗宣示才能作答；限時 75 分鐘，時間到自動送出；送出後鎖定不可重作。";
   render();
 }
 function primaryAction() {
   if (MODE === "edit") { collectEdits(); const o = $("#json-out"); o.hidden = false; o.textContent = JSON.stringify(EXAM, null, 2); return; }
-  scored = scoreExam(); render();
+  if (!started || submitted) return;
+  submitExam("manual");
+}
+
+/* ------------------------------------------------------------------ 宣示 gate ── 規則 1〜6 */
+function showPledge() {
+  const p = EXAM.pledge;
+  const ov = document.createElement("div");
+  ov.className = "pledge-overlay";
+  ov.id = "pledge-overlay";
+  ov.innerHTML = `<div class="pledge-panel">
+    <h3>✅ 速讀測驗宣示</h3>
+    <p class="pledge-open">${esc(p.openText)}</p>
+    <ol>${p.rules.map(r => `<li>${esc(r)}</li>`).join("")}</ol>
+    <div class="pledge-consent">
+      <input type="text" id="pledge-name" value="${esc(examinee)}" aria-label="姓名">
+      ${esc(p.consentTemplate.replace("{name}", "")).trim()}
+    </div>
+    <label class="pledge-agree"><input type="checkbox" id="pledge-agree"> 我已詳閱並同意以上全部規則，且了解送出後將以第一次記錄為準、不可重作。</label>
+    <button class="pledge-start" id="pledge-start" disabled>開始作答（75 分鐘）</button>
+  </div>`;
+  document.body.appendChild(ov);
+  const chk = ov.querySelector("#pledge-agree");
+  const nameEl = ov.querySelector("#pledge-name");
+  const btn = ov.querySelector("#pledge-start");
+  const sync = () => { btn.disabled = !(chk.checked && nameEl.value.trim() && nameEl.value.trim() !== "（您的姓名）"); };
+  chk.onchange = sync; nameEl.oninput = sync;
+  btn.onclick = () => { examinee = nameEl.value.trim(); startExam(); };
+}
+function hidePledge() { document.getElementById("pledge-overlay")?.remove(); }
+
+/* ------------------------------------------------------------------ 開始 / 計時 / 送出（規則 2、3）*/
+function startExam() {
+  started = true; submitted = false; scored = null;
+  deadline = Date.now() + EXAM.meta.durationMinutes * 60 * 1000;
+  hidePledge();
+  clearInterval(timerId);
+  timerId = setInterval(tick, 1000);
+  setMode("answer");
+}
+function tick() {
+  const left = Math.max(0, deadline - Date.now());
+  renderTimer(left);
+  if (left <= 0) submitExam("timeup");
+}
+function submitExam(reason) {
+  if (submitted) return;
+  submitted = true;
+  clearInterval(timerId);
+  scored = scoreExam();
+  scored.reason = reason;
+  setMode("answer");
+}
+function resetAttempt() {   // 僅供預覽：清空重來
+  started = false; submitted = false; scored = null; deadline = 0;
+  clearInterval(timerId);
+  Object.keys(RESP).forEach(k => delete RESP[k]);
+  $("#timer-slot").innerHTML = "";
+  setMode("answer");
+}
+function renderTimer(left) {
+  const slot = $("#timer-slot");
+  if (MODE !== "answer" || !started) { slot.innerHTML = ""; return; }
+  if (submitted) {
+    slot.innerHTML = `<div class="locked-banner">測驗已送出${scored?.reason === "timeup" ? "（時間到自動送出）" : ""}——
+      記錄以第一次為準，不可重作。以下為作答結果，簡答題由管理員後續人工評分。</div>`;
+    return;
+  }
+  const mm = String(Math.floor(left / 60000)).padStart(2, "0");
+  const ss = String(Math.floor(left % 60000 / 1000)).padStart(2, "0");
+  slot.innerHTML = `<div class="timer-bar${left < 5 * 60000 ? " low" : ""}">
+    <span>作答者：<strong>${esc(examinee)}</strong></span>
+    <span class="spacer" style="flex:1"></span>
+    <span>剩餘時間</span><span class="clock">${mm}:${ss}</span></div>`;
 }
 
 /* ------------------------------------------------------------------ 渲染 */
 function render() {
   const root = $("#exam-root");
+  if (MODE === "answer" && !started && !submitted) {
+    root.innerHTML = "";
+    $("#timer-slot").innerHTML = "";
+    if (!document.getElementById("pledge-overlay")) showPledge();
+    return;
+  }
+  hidePledge();
+  renderTimer(Math.max(0, deadline - Date.now()));
   root.innerHTML = "";
   if (scored && MODE === "answer") {
     const b = document.createElement("div");
     b.className = "q";
     b.innerHTML = `<span class="score-pill">自動計分：${scored.auto} / ${scored.autoMax} 分</span>
-      　簡答題 ${scored.manualMax} 分待人工評分　｜　自動部分明細見各題下方`;
+      　簡答題 ${scored.manualMax} 分待人工評分（滿分 ${EXAM.meta.totalPoints}）　｜　自動部分明細見各題下方`;
     root.appendChild(b);
   }
+  Object.keys(QINDEX).forEach(k => delete QINDEX[k]);
+  EXAM.sections.forEach(sec => sec.questions.forEach(q => { QINDEX[q.id] = q; }));
   EXAM.sections.forEach(sec => root.appendChild(renderSection(sec)));
+  if (isLocked()) root.querySelectorAll("input, select, textarea, button").forEach(e => e.disabled = true);
+  requestAnimationFrame(layoutAllMatchLines);
 }
+const QINDEX = {};
 
 function renderSection(sec) {
   const wrap = document.createElement("section");
@@ -284,64 +558,220 @@ function rMulti(sec, q, i) {
   return el;
 }
 
-/* ---- 四、連連看（每小題一組配對，整組全對得 1 分）---- */
+/* ---- 四、連連看（點左項再點右項拉線；左右一一對應、無干擾；整組全對得 1 分）---- */
 function rMatch(sec, q, i) {
   const el = div("q");
   if (MODE === "edit") {
+    const balanced = q.left.length === q.right.length;
     el.innerHTML = editHead(sec, q, i) + `
-      <label>左欄（每列 id|文字，4～10 列）</label>
+      <label>左欄（每列 id|文字）</label>
       <textarea class="form-control" rows="4" data-mf="left">${q.left.map(x => x.id + "|" + x.text).join("\n")}</textarea>
-      <label>右欄（每列 id|文字，可加干擾項）</label>
-      <textarea class="form-control" rows="5" data-mf="right">${q.right.map(x => x.id + "|" + x.text).join("\n")}</textarea>
-      <label>正解（每列 左id=右id）</label>
+      <label>右欄（每列 id|文字，數量須與左欄相等、無干擾項）</label>
+      <textarea class="form-control" rows="4" data-mf="right">${q.right.map(x => x.id + "|" + x.text).join("\n")}</textarea>
+      <label>正解（每列 左id=右id，需一一對應）</label>
       <textarea class="form-control" rows="4" data-mf="answer">${Object.entries(q.answer).map(([l, r]) => l + "=" + r).join("\n")}</textarea>
+      ${balanced ? "" : '<p class="match-hint" style="color:var(--color-danger)">⚠ 左欄 ' + q.left.length + ' 項、右欄 ' + q.right.length + ' 項，數量不一致</p>'}
       </div>`;
     bindDel(el, sec, i);
   } else {
-    const opts = q.right.map(r => `<option value="${esc(r.id)}">${esc(r.id)}. ${esc(r.text)}</option>`).join("");
-    const cur = RESP[q.id] || {};
-    el.innerHTML = `<p class="q-stem"><span class="n">${i + 1}.</span>${esc(q.stem)}</p>` +
-      q.left.map(l => `<div class="match-row">
-        <span>${esc(l.text)}</span><span>→</span>
-        <select data-l="${esc(l.id)}"><option value="">請選擇</option>${opts}</select>
-      </div>`).join("") + resultLine(q.id);
-    el.querySelectorAll("select").forEach(sel => {
-      if (cur[sel.dataset.l]) sel.value = cur[sel.dataset.l];
-      sel.onchange = () => { RESP[q.id] = RESP[q.id] || {}; RESP[q.id][sel.dataset.l] = sel.value; };
+    const cur = RESP[q.id] || (RESP[q.id] = {});
+    const node = (side, x) => `<button type="button" class="match-node" data-side="${side}" data-id="${esc(x.id)}"><span class="match-dot"></span><span class="match-label">${esc(x.text)}</span></button>`;
+    el.innerHTML = `<p class="q-stem"><span class="n">${i + 1}.</span>${esc(q.stem)}</p>
+      <p class="match-hint">點左邊項目，再點右邊項目即可連線；再點一次可取消。</p>
+      <div class="match-board" data-qid="${esc(q.id)}">
+        <div class="match-col match-col--left">${q.left.map(l => node("L", l)).join("")}</div>
+        <svg class="match-lines"></svg>
+        <div class="match-col match-col--right">${q.right.map(r => node("R", r)).join("")}</div>
+      </div>
+      <button type="button" class="match-clear">清除連線</button>
+      ${resultLine(q.id)}`;
+
+    const board = el.querySelector(".match-board");
+    let pending = null;
+    const paint = () => {
+      board.querySelectorAll(".match-node").forEach(n => {
+        const id = n.dataset.id, side = n.dataset.side;
+        const linked = side === "L" ? !!cur[id] : Object.values(cur).includes(id);
+        n.classList.toggle("is-linked", linked);
+        n.classList.toggle("is-active", side === "L" && pending === id);
+      });
+      layoutAllMatchLines();
+    };
+    board.addEventListener("click", ev => {
+      if (isLocked()) return;
+      const n = ev.target.closest(".match-node"); if (!n) return;
+      const id = n.dataset.id;
+      if (n.dataset.side === "L") {
+        // 點左項＝拿起（可重新配對）；再點同一項＝放下
+        pending = (pending === id) ? null : id;
+      } else {
+        const usedBy = Object.keys(cur).find(l => cur[l] === id);
+        if (pending) {
+          if (cur[pending] === id) delete cur[pending];        // 點回原本連到的右項＝取消該連線
+          else { if (usedBy) delete cur[usedBy]; cur[pending] = id; }
+          pending = null;
+        } else if (usedBy) {
+          delete cur[usedBy];                                   // 沒有拿起時點右項＝斷開該連線
+        }
+      }
+      paint();
     });
+    el.querySelector(".match-clear").addEventListener("click", () => {
+      if (isLocked()) return;
+      Object.keys(cur).forEach(k => delete cur[k]); pending = null; paint();
+    });
+    paint();
   }
   return el;
 }
 
-/* ---- 五、事件排序題（每小題排 4～6 事件，整題順序全對得 1 分）---- */
+/* 依 RESP 在每個 .match-board 上畫連線；批改後正確=綠、錯誤=紅、未連或連錯處以灰色虛線補上正解 */
+function layoutAllMatchLines() {
+  document.querySelectorAll(".match-board").forEach(board => {
+    const qid = board.dataset.qid, q = QINDEX[qid];
+    const svg = board.querySelector(".match-lines");
+    if (!q || !svg) return;
+    const br = board.getBoundingClientRect();
+    const dot = (side, id) => board.querySelector(`.match-node[data-side="${side}"][data-id="${cssAttr(id)}"] .match-dot`);
+    const center = elm => { const r = elm.getBoundingClientRect(); return [r.left + r.width / 2 - br.left, r.top + r.height / 2 - br.top]; };
+    const graded = scored && scored.detail[qid] !== undefined;
+    const pairs = RESP[qid] || {};
+    let out = "";
+    const seg = (a, b, stroke, dash) => {
+      const la = dot("L", a), rb = dot("R", b); if (!la || !rb) return;
+      const [x1, y1] = center(la), [x2, y2] = center(rb);
+      out += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round"${dash ? ' stroke-dasharray="5 5"' : ""}></line>`;
+    };
+    Object.entries(pairs).forEach(([l, r]) => seg(l, r, graded ? (q.answer[l] === r ? "var(--color-success)" : "var(--color-danger)") : "var(--color-brand)"));
+    if (graded) Object.entries(q.answer).forEach(([l, r]) => { if (pairs[l] !== r) seg(l, r, "var(--text-muted)", true); });
+    svg.innerHTML = out;
+  });
+}
+function cssAttr(v) { return String(v).replace(/["\\]/g, "\\$&"); }
+
+/* ---- 五、事件排序題：把事件像積木拖進「作答區」排序（每小題整題全對得 1 分）---- */
 function rOrder(sec, q, i) {
   const el = div("q");
   if (MODE === "edit") {
     el.innerHTML = editHead(sec, q, i) + `
-      <label>事件（每列 id|文字＝呈現順序，4～6 列）</label>
+      <label>事件（每列 id|文字＝待排序區呈現順序，4～6 列）</label>
       <textarea class="form-control" rows="6" data-of="items">${q.items.map(x => x.id + "|" + x.text).join("\n")}</textarea>
       <label>正確順序（id 以逗號分隔）</label>
       <input class="form-control" data-of="answer" value="${esc(q.answer.join(","))}">
       </div>`;
     bindDel(el, sec, i);
-  } else {
-    const order = RESP[q.id] ? RESP[q.id].slice() : q.items.map(x => x.id);
-    RESP[q.id] = order;
-    const byId = Object.fromEntries(q.items.map(x => [x.id, x.text]));
-    el.innerHTML = `<p class="q-stem"><span class="n">${i + 1}.</span>${esc(q.stem)}</p>` +
-      order.map((id, k) => `<div class="order-item"><span class="grip">≡</span><span>${k + 1}. ${esc(byId[id])}</span>
-        <span class="ord-btns"><button data-up="${k}">↑</button><button data-down="${k}">↓</button></span></div>`).join("") +
-      resultLine(q.id);
-    el.querySelectorAll("[data-up]").forEach(b => b.onclick = () => move(q.id, +b.dataset.up, -1));
-    el.querySelectorAll("[data-down]").forEach(b => b.onclick = () => move(q.id, +b.dataset.down, 1));
+    return el;
   }
+  const placed = RESP[q.id] || (RESP[q.id] = []);
+  const byId = Object.fromEntries(q.items.map(x => [x.id, x.text]));
+  const pool = q.items.map(x => x.id).filter(id => !placed.includes(id));
+  const graded = scored && scored.detail[q.id] !== undefined;
+  const chip = (id, inAnswer, k) => {
+    let cls = "order-chip";
+    if (inAnswer && graded) cls += (q.answer[k] === id ? " chip-correct" : " chip-wrong");
+    return `<div class="${cls}" data-id="${esc(id)}">${inAnswer ? `<span class="order-num">${k + 1}</span>` : `<span class="chip-grip">⠿</span>`}<span class="chip-text">${esc(byId[id])}</span>${inAnswer ? '<button type="button" class="chip-remove" aria-label="移回待排序">✕</button>' : ""}</div>`;
+  };
+  el.innerHTML = `<p class="q-stem"><span class="n">${i + 1}.</span>${esc(q.stem)}</p>
+    <p class="order-hint">把下方事件拖進「作答區」，並在作答區內拖動調整順序（點一下事件也可直接加入）。</p>
+    <div class="order-answer" data-qid="${esc(q.id)}" data-zone="answer">
+      ${placed.length ? placed.map((id, k) => chip(id, true, k)).join("") : '<span class="order-empty">拖曳事件到這裡排序</span>'}
+    </div>
+    <p class="order-sub">待排序事件</p>
+    <div class="order-pool" data-qid="${esc(q.id)}" data-zone="pool">
+      ${pool.length ? pool.map(id => chip(id, false)).join("") : '<span class="order-empty">已全部放入作答區</span>'}
+    </div>
+    ${resultLine(q.id)}`;
+  if (!isLocked()) initOrderDrag(el, q);
   return el;
 }
-function move(qid, idx, dir) {
-  const a = RESP[qid]; const j = idx + dir;
-  if (j < 0 || j >= a.length) return;
-  [a[idx], a[j]] = [a[j], a[idx]];
-  render();
+
+/* 指標式拖曳（滑鼠＋觸控通用）：從 pool 拖到 answer、在 answer 內重排、拖回 pool 移除 */
+function initOrderDrag(root, q) {
+  const list = RESP[q.id];
+  let drag = null;
+
+  const zoneAt = (x, y) => {
+    const t = document.elementFromPoint(x, y);
+    return t && t.closest(".order-answer, .order-pool");
+  };
+  const answerIndexAt = (zone, y, skipId) => {
+    const chips = [...zone.querySelectorAll(".order-chip")].filter(c => c.dataset.id !== skipId);
+    for (let k = 0; k < chips.length; k++) {
+      const r = chips[k].getBoundingClientRect();
+      if (y < r.top + r.height / 2) return k;
+    }
+    return chips.length;
+  };
+  const clearIndicator = () => root.querySelectorAll(".order-indicator").forEach(n => n.remove());
+  const showIndicator = (zone, idx) => {
+    clearIndicator();
+    const ind = document.createElement("div");
+    ind.className = "order-indicator";
+    const chips = [...zone.querySelectorAll(".order-chip")].filter(c => c.dataset.id !== drag.id);
+    if (idx >= chips.length) zone.appendChild(ind); else zone.insertBefore(ind, chips[idx]);
+  };
+
+  root.querySelectorAll(".order-chip").forEach(chipEl => {
+    chipEl.addEventListener("pointerdown", ev => {
+      if (isLocked() || ev.target.closest(".chip-remove")) return;
+      ev.preventDefault();
+      const rect = chipEl.getBoundingClientRect();
+      drag = {
+        id: chipEl.dataset.id, startX: ev.clientX, startY: ev.clientY, moved: false,
+        fromZone: chipEl.closest("[data-zone]").dataset.zone,
+        ghost: null, dx: ev.clientX - rect.left, dy: ev.clientY - rect.top, w: rect.width
+      };
+      try { chipEl.setPointerCapture(ev.pointerId); } catch (_) {}
+    });
+    chipEl.addEventListener("pointermove", ev => {
+      if (!drag || drag.id !== chipEl.dataset.id) return;
+      const dist = Math.hypot(ev.clientX - drag.startX, ev.clientY - drag.startY);
+      if (!drag.moved && dist < 6) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        const g = chipEl.cloneNode(true);
+        g.classList.remove("is-placeholder"); g.classList.add("ghost"); g.style.width = drag.w + "px";
+        document.body.appendChild(g); drag.ghost = g;
+        chipEl.classList.add("is-placeholder");
+      }
+      drag.ghost.style.left = (ev.clientX - drag.dx) + "px";
+      drag.ghost.style.top = (ev.clientY - drag.dy) + "px";
+      const zone = zoneAt(ev.clientX, ev.clientY);
+      root.querySelectorAll(".order-answer, .order-pool").forEach(z => z.classList.toggle("drop-hot", z === zone));
+      if (zone && zone.dataset.zone === "answer") showIndicator(zone, answerIndexAt(zone, ev.clientY, drag.id));
+      else clearIndicator();
+    });
+    const finish = ev => {
+      if (!drag || drag.id !== chipEl.dataset.id) return;
+      const id = drag.id, cur = list.indexOf(id);
+      if (!drag.moved) {                       // 點一下：pool → 追加到作答區
+        if (drag.fromZone === "pool") list.push(id);
+      } else {
+        const zone = zoneAt(ev.clientX, ev.clientY);
+        if (zone && zone.dataset.zone === "answer") {
+          let idx = answerIndexAt(zone, ev.clientY, id);
+          if (cur !== -1) { list.splice(cur, 1); if (cur < idx) idx--; }
+          list.splice(idx, 0, id);
+        } else if (zone && zone.dataset.zone === "pool") {
+          if (cur !== -1) list.splice(cur, 1);
+        }
+      }
+      if (drag.ghost) drag.ghost.remove();
+      clearIndicator();
+      drag = null;
+      render();
+    };
+    chipEl.addEventListener("pointerup", finish);
+    chipEl.addEventListener("pointercancel", finish);
+  });
+
+  root.querySelectorAll(".chip-remove").forEach(btn => btn.addEventListener("click", ev => {
+    ev.stopPropagation();
+    if (isLocked()) return;
+    const id = btn.closest(".order-chip").dataset.id;
+    const k = list.indexOf(id); if (k !== -1) list.splice(k, 1);
+    render();
+  }));
 }
 
 /* ---- 六、簡答題 ---- */
@@ -375,15 +805,15 @@ function scoreExam() {
       if (sec.type === "shortanswer") { manualMax += q.maxPoints; return; }
       autoMax += sec.pointsPer;
       let good = false;
-      if (sec.type === "truefalse") good = RESP[q.id] === String(q.answer);
-      else if (sec.type === "single") good = Number(RESP[q.id]) === q.answer;
-      else if (sec.type === "multiple") good = JSON.stringify(RESP[q.id] || []) === JSON.stringify(q.answers.slice().sort((a, b) => a - b));
+      if (sec.type === "truefalse") good = typeof q.answer === "boolean" && RESP[q.id] === String(q.answer);
+      else if (sec.type === "single") good = q.answer != null && Number(RESP[q.id]) === q.answer;
+      else if (sec.type === "multiple") good = Array.isArray(q.answers) && q.answers.length > 0 && JSON.stringify(RESP[q.id] || []) === JSON.stringify(q.answers.slice().sort((a, b) => a - b));
       else if (sec.type === "matching") {
-        const r = RESP[q.id] || {};
-        good = q.left.every(l => r[l.id] === q.answer[l.id]);
+        const r = RESP[q.id] || {}, ans = q.answer || {};
+        good = Object.keys(ans).length === q.left.length && q.left.every(l => r[l.id] === ans[l.id]);
       } else if (sec.type === "ordering") {
-        const got = RESP[q.id] || q.items.map(x => x.id);
-        good = got.join(",") === q.answer.join(",");
+        const got = RESP[q.id] || [], ans = q.answer || [];
+        good = ans.length > 0 && got.length === ans.length && got.join(",") === ans.join(",");
       }
       detail[q.id] = good;
       if (good) auto += sec.pointsPer;
@@ -438,12 +868,13 @@ function blankQuestion(type) {
   if (type === "truefalse") return { id, stem: "", answer: true };
   if (type === "single") return { id, stem: "", options: ["", "", "", ""], answer: 0 };
   if (type === "multiple") return { id, stem: "", options: ["", "", "", ""], answers: [] };
-  if (type === "matching") return { id, stem: "", left: [{ id: "L1", text: "" }, { id: "L2", text: "" }, { id: "L3", text: "" }], right: [{ id: "甲", text: "" }, { id: "乙", text: "" }, { id: "丙", text: "" }], answer: {} };
+  if (type === "matching") return { id, stem: "", left: [{ id: "L1", text: "" }, { id: "L2", text: "" }, { id: "L3", text: "" }, { id: "L4", text: "" }], right: [{ id: "R1", text: "" }, { id: "R2", text: "" }, { id: "R3", text: "" }, { id: "R4", text: "" }], answer: { L1: "R1", L2: "R2", L3: "R3", L4: "R4" } };
   if (type === "ordering") return { id, stem: "", items: [{ id: "E1", text: "" }, { id: "E2", text: "" }, { id: "E3", text: "" }, { id: "E4", text: "" }], answer: [] };
   if (type === "shortanswer") return { id, stem: "", referenceAnswer: "", rubric: [], maxPoints: 10 };
   return { id, stem: "" };
 }
 
+window.addEventListener("resize", layoutAllMatchLines);
 setMode("answer");
 </script>
 </body>
