@@ -3238,6 +3238,7 @@ const db = {
       exam_reset_live_forbidden: "正式測驗不可清除作答紀錄。如需重置請由工程人員處理。",
       exam_mode_locked: "已發佈的卷不能切換模式。請先「關閉測驗 → 改回草稿」再切。",
       exam_push_source_not_test: "只有測試卷可以「推上正式版」。",
+      exam_tester_user_not_found: "找不到這個 email 對應的使用者（對方要先登入過一次）。",
       exam_window_invalid: "請先設定正確的開放起訖時間。",
       exam_section_count_mismatch: "各大題題數與設定不符。",
       exam_answer_key_incomplete: "還有題目未填答案。",
@@ -3309,6 +3310,15 @@ const db = {
   },
   async resetExamAttempts(paperId) {
     return this._callExamRpc("exam_reset_attempts", { p_paper_id: paperId });
+  },
+  async getExamPaperTesters(paperId) {
+    return this._callExamRpc("exam_get_paper_testers", { p_paper_id: paperId });
+  },
+  async addExamTester(paperId, email) {
+    return this._callExamRpc("exam_add_tester", { p_paper_id: paperId, p_email: email });
+  },
+  async removeExamTester(paperId, userId) {
+    return this._callExamRpc("exam_remove_tester", { p_paper_id: paperId, p_user_id: userId });
   },
 
   // 首頁 8/30 宣示 banner（一般會友；功能關閉 / 無已發預告試卷回 null）

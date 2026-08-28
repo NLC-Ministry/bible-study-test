@@ -239,6 +239,14 @@ export async function renderExamPanel(root) {
       <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${isLive ? "brand" : "neutral"}">${isLive ? "正式版" : "測試版"}</span>　<span class="stat-badge stat-badge--${badge}">${esc(statusLabel)}</span>${hasNotice ? annBadge : ""}</p>
       <div class="exam-admin__actions">${actions.join("")}</div>
       ${actionHint ? `<p class="exam-admin__meta">${esc(actionHint)}</p>` : ""}
+      ${isTest ? `<details class="exam-admin__testers"><summary>測試名單（開放指定會友作答這份測試版）</summary>
+        <p class="exam-admin__meta">名單內的人即使不是管理員，也能用測試版連結進入作答（測試版須「已發佈」；不受開放時段限制）。</p>
+        <div class="exam-admin__tester-add">
+          <input type="email" class="form-control" id="exam-tester-email" placeholder="輸入對方的 email">
+          <button type="button" class="secondary-btn" id="exam-tester-add-btn">加入</button>
+        </div>
+        <div id="exam-tester-list" class="exam-admin__tester-list"></div>
+      </details>` : ""}
     </div>
     <nav class="exam-admin__subnav">
       ${hasNotice ? `<button type="button" data-exam-sub="notice" class="${examAdminSubview === "notice" ? "active" : ""}">預告文</button>` : ""}
@@ -250,6 +258,41 @@ export async function renderExamPanel(root) {
     <div id="exam-admin-sub"></div>`;
 
   wirePicker();
+
+  // ── 測試名單（只有測試版有）──
+  if (isTest) {
+    const listEl = body.querySelector("#exam-tester-list");
+    const paintTesters = async () => {
+      if (!listEl) return;
+      const res = await db.getExamPaperTesters(paper.id);
+      const rows = res.success && Array.isArray(res.data) ? res.data : [];
+      listEl.innerHTML = rows.length
+        ? rows.map((r) => `<div class="exam-admin__tester-row">
+            <span>${esc(r.name || "（未命名）")}　<span class="exam-admin__meta">${esc(r.email || "")}</span></span>
+            <button type="button" class="secondary-btn" data-tester-remove="${esc(r.userId)}">移除</button>
+          </div>`).join("")
+        : '<p class="exam-admin__meta">目前沒有加入任何人。</p>';
+      listEl.querySelectorAll("[data-tester-remove]").forEach((btn) => btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        const r = await db.removeExamTester(paper.id, btn.dataset.testerRemove);
+        if (!r.success) { toast(r.message || "移除失敗"); btn.disabled = false; return; }
+        paintTesters();
+      }));
+    };
+    body.querySelector("#exam-tester-add-btn")?.addEventListener("click", async (e) => {
+      const inp = body.querySelector("#exam-tester-email");
+      const email = (inp?.value || "").trim();
+      if (!email) { toast("請先輸入 email"); return; }
+      e.target.disabled = true;
+      const r = await db.addExamTester(paper.id, email);
+      e.target.disabled = false;
+      if (!r.success) { toast(r.message || "加入失敗"); return; }
+      if (inp) inp.value = "";
+      toast(`已加入 ${r.data?.name || email}`);
+      paintTesters();
+    });
+    paintTesters();
+  }
 
   // 子分頁切換：只換 #exam-admin-sub 這一塊 + 切 nav 的 active，不整塊重繪、不重打 API
   const renderSub = () => {
