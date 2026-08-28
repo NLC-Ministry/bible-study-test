@@ -726,10 +726,10 @@ async function calculateAndRenderPersonalRankings() {
     const rankSkeleton = typeof ComponentSkeletonLoader !== "undefined"
       ? ComponentSkeletonLoader.getHtml("inline", { width: "5.5rem", height: "1.4rem" })
       : "—";
-    rankGroupEl.innerHTML = rankSkeleton;
-    rankZoneEl.innerHTML = rankSkeleton;
-    rankRegionEl.innerHTML = rankSkeleton;
-    rankChurchEl.innerHTML = rankSkeleton;
+    if (firstPaint(rankGroupEl)) rankGroupEl.innerHTML = rankSkeleton;
+    if (firstPaint(rankZoneEl)) rankZoneEl.innerHTML = rankSkeleton;
+    if (firstPaint(rankRegionEl)) rankRegionEl.innerHTML = rankSkeleton;
+    if (firstPaint(rankChurchEl)) rankChurchEl.innerHTML = rankSkeleton;
 
     const rankings = await db.getUserRankings();
     if (rankings) {
@@ -880,9 +880,11 @@ async function renderPastoralZoneRankingList() {
     return;
   }
 
-  rankingContainer.innerHTML = typeof ComponentSkeletonLoader !== "undefined"
-    ? ComponentSkeletonLoader.getHtml("ranking", { count: 5 })
-    : "";
+  if (firstPaint(rankingContainer)) {
+    rankingContainer.innerHTML = typeof ComponentSkeletonLoader !== "undefined"
+      ? ComponentSkeletonLoader.getHtml("ranking", { count: 5 })
+      : "";
+  }
 
   let pastoralStats = [];
   if (state.isSupabaseMode && state.supabase) {
@@ -1200,9 +1202,11 @@ async function renderTodayGroupProgress() {
     return;
   }
 
-  listEl.innerHTML = typeof ComponentSkeletonLoader !== "undefined"
-    ? ComponentSkeletonLoader.getHtml("member-progress", { count: 4 })
-    : "";
+  if (firstPaint(listEl)) {
+    listEl.innerHTML = typeof ComponentSkeletonLoader !== "undefined"
+      ? ComponentSkeletonLoader.getHtml("member-progress", { count: 4 })
+      : "";
+  }
 
   const cardEl = listEl.closest('.glass-card');
   if (cardEl) {

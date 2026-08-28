@@ -4153,7 +4153,7 @@ async function renderAdminPlanManagement() {
   const tableBody = document.getElementById("admin-plans-table-body");
   if (!tableBody) return;
 
-  tableBody.innerHTML = typeof ComponentSkeletonLoader !== "undefined"
+  if (firstPaint(tableBody)) tableBody.innerHTML = typeof ComponentSkeletonLoader !== "undefined"
     ? `<tr><td colspan="3">${ComponentSkeletonLoader.getHtml("table-rows", { count: 3, cols: 3 })}</td></tr>`
     : "";
 
@@ -6120,12 +6120,12 @@ async function renderMyPersonalRankings() {
   const elRankZone = document.getElementById("my-rank-zone");
   const elRankZoneTotal = document.getElementById("my-rank-zone-total");
 
-  if (elRankAll) elRankAll.innerHTML = rankSkeleton;
-  if (elRankAllTotal) elRankAllTotal.innerHTML = ComponentSkeletonLoader
+  if (elRankAll && firstPaint(elRankAll)) elRankAll.innerHTML = rankSkeleton;
+  if (elRankAllTotal && firstPaint(elRankAllTotal)) elRankAllTotal.innerHTML = ComponentSkeletonLoader
     ? ComponentSkeletonLoader.getHtml("inline", { width: "3rem", height: "0.8rem" })
     : "—";
-  if (elRankZone) elRankZone.innerHTML = rankSkeleton;
-  if (elRankZoneTotal) elRankZoneTotal.innerHTML = ComponentSkeletonLoader
+  if (elRankZone && firstPaint(elRankZone)) elRankZone.innerHTML = rankSkeleton;
+  if (elRankZoneTotal && firstPaint(elRankZoneTotal)) elRankZoneTotal.innerHTML = ComponentSkeletonLoader
     ? ComponentSkeletonLoader.getHtml("inline", { width: "3rem", height: "0.8rem" })
     : "—";
 
@@ -6196,7 +6196,7 @@ async function renderReadingTeamLeaderboards() {
   sections.forEach(section => {
     section.container.className = "bar-race-list reading-team-ranking-list";
     section.container.setAttribute("aria-busy", "true");
-    section.container.innerHTML = skeleton;
+    if (firstPaint(section.container)) section.container.innerHTML = skeleton;
     updateReadingTeamRankingSummary(section.division, "團隊排行榜載入中…");
   });
 
@@ -6399,7 +6399,7 @@ async function renderPlanRankingView() {
   if (header) header.style.display = "none";
   container.className = "bar-race-list";
   container.style.cssText = "";
-  container.innerHTML = typeof ComponentSkeletonLoader !== "undefined"
+  if (firstPaint(container)) container.innerHTML = typeof ComponentSkeletonLoader !== "undefined"
     ? ComponentSkeletonLoader.getHtml("bar-race", { count: 4 })
     : "";
 
@@ -6675,7 +6675,7 @@ async function renderGroupParticipantsRankingTable() {
 
   const listContainer = document.getElementById("ranking-participants-list");
   if (listContainer) {
-    listContainer.innerHTML = typeof ComponentSkeletonLoader !== "undefined"
+    if (firstPaint(listContainer)) listContainer.innerHTML = typeof ComponentSkeletonLoader !== "undefined"
       ? ComponentSkeletonLoader.getHtml("member-progress", { count: 5 })
       : "";
 

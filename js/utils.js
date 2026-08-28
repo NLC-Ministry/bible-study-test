@@ -2865,7 +2865,9 @@ if (typeof document !== "undefined") {
 //   renderInto(host, buildHtml(data));
 // ============================================================================
 function firstPaint(el) {
-  return !el || el.childElementCount === 0;
+  // 「還沒畫過」＝ 容器目前沒有任何實質內容（空的、或只有空白）。
+  // 已經有內容（含用 textContent 塞的純文字）就回 false → 重繪時別再閃成「載入中」。
+  return !el || (el.childElementCount === 0 && !String(el.textContent || "").trim());
 }
 
 function renderInto(el, html, opts) {

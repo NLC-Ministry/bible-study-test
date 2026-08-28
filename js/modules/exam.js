@@ -141,7 +141,7 @@ export async function renderExamPanel(root) {
   }
 
   const isLive = paper.mode === "live";
-  const who = isLive ? "全體會友" : "僅系統管理員（測試模式）";
+  const who = "全體會友";   // 預告文 banner 不分模式，都會對全體會友顯示
   const hasShortSection = !!examSectionCfg(paper).shortanswer;   // 沒選「簡答題」→ 隱藏批改分頁
   if (examAdminSubview === "grade" && !hasShortSection) examAdminSubview = "bank";
   const annPub = paper.announcement_published === true;
@@ -177,16 +177,13 @@ export async function renderExamPanel(root) {
   // ── 測驗本身（status）──
   if (paper.status === "draft") {
     if (annPub) {
-      actions.push(`<button type="button" class="primary-btn" data-exam-act="publish">${isLive ? "正式發佈測驗" : "開放測試作答"}</button>`);
-      hints.push(isLive
-        ? "題目都備妥、模式切成 live 後，按「正式發佈測驗」，開放時間內全體會友即可作答（發佈後題庫鎖定）。"
-        : "測試模式：按「開放測試作答」後只有系統管理員能進入作答，會友端看不到（發佈後題庫鎖定）。");
+      actions.push('<button type="button" class="primary-btn" data-exam-act="publish">發佈測驗</button>');
+      hints.push("按「發佈測驗」後，開放時間內即可作答（發佈後題庫鎖定）。測試 / 正式模式的作答規則相同，模式只用來在統計上區分演練用的作答。");
     }
   } else if (paper.status === "published") {
     actions.push(`<a class="primary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}" target="_blank" rel="noopener">${isLive ? "正式作答" : "測試作答"}</a>`);
     actions.push('<button type="button" class="secondary-btn" data-exam-act="close">關閉測驗</button>');
-    hints.push((isLive ? "測驗進行中，會友可於開放時間內作答。" : "測試模式進行中，僅系統管理員可作答。")
-      + " 要改題目，請先按「關閉測驗」再改回草稿。");
+    hints.push("測驗進行中，開放時間內即可作答。要改題目，請先按「關閉測驗」再改回草稿。");
   } else if (paper.status === "closed") {
     if (canRevert) actions.push('<button type="button" class="secondary-btn" data-exam-act="reopen">改回草稿</button>');
     hints.push(isLive && !canRevert
@@ -243,14 +240,9 @@ export async function renderExamPanel(root) {
   }));
   body.querySelectorAll("[data-exam-act]").forEach((b) => b.addEventListener("click", async () => {
     const act = b.dataset.examAct;
-    const live = paper.mode === "live";
     if (act === "setmode-test" || act === "setmode-live") {
       const target = act === "setmode-live" ? "live" : "test";
-      if (paper.status !== "draft" && !confirm(
-        target === "live"
-          ? "切成「正式 live」後，若已發佈預告文／測驗，會友首頁就會看到這份卷。確定？"
-          : "切成「測試 test」後，會友首頁會立刻看不到這份卷（管理員仍看得到）。確定？"
-      )) return;
+      if (target === paper.mode) return;
       b.disabled = true;
       const r = await db.setExamMode(paper.id, target);
       b.disabled = false;
@@ -259,9 +251,9 @@ export async function renderExamPanel(root) {
       rerender();
       return;
     }
-    if (act === "announce" && live && !confirm("將把這份預告文發佈到全體會友的首頁。確定？")) return;
+    if (act === "announce" && !confirm("將把這份預告文發佈到全體會友的首頁。確定？")) return;
     if (act === "unannounce" && !confirm("撤下後，會友首頁就不會再顯示這份測驗的預告區塊。確定？")) return;
-    if (act === "publish" && live && !confirm("將正式開放全體會友作答（開放時間內），發佈後題庫會鎖定。確定？")) return;
+    if (act === "publish" && !confirm("將開放作答（開放時間內全體會友可作答），發佈後題庫會鎖定。確定？")) return;
     if (act === "reopen" && !confirm("把已關閉的測驗改回草稿以便修改題目？（預告文仍保留在首頁）")) return;
     if (act === "reset" && !confirm(`確定清除這份測試卷的 ${attemptCount} 筆作答紀錄？（無法復原）`)) return;
     b.disabled = true;
@@ -283,9 +275,9 @@ export async function renderExamPanel(root) {
     b.disabled = false;
     if (!res.success) { toast(res.message || "操作失敗"); return; }
     toast(
-      act === "announce" ? (live ? "預告文已發佈到會友首頁" : "預告文已發佈（測試：僅管理員首頁）")
+      act === "announce" ? "預告文已發佈到會友首頁"
       : act === "unannounce" ? "已撤下預告文"
-      : act === "publish" ? (live ? "測驗已正式發佈，會友可作答" : "已開放測試作答（僅管理員）")
+      : act === "publish" ? "測驗已發佈，開放時間內可作答"
       : act === "close" ? "測驗已關閉"
       : act === "reset" ? `已清除 ${res.data?.deletedAttempts ?? ""} 筆作答紀錄`
       : "已改回草稿"

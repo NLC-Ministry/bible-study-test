@@ -164,10 +164,12 @@ function renderMemberHubOrgPlacement() {
     if (!el) return;
     if (pending) {
       el.setAttribute("aria-busy", "true");
-      if (typeof ComponentSkeletonLoader !== "undefined") {
-        ComponentSkeletonLoader.fill("placement-value", el);
-      } else {
-        el.innerHTML = '<span class="skeleton-shimmer" style="display:inline-block;height:1rem;width:4.5rem;border-radius:4px;"></span>';
+      if (firstPaint(el)) {
+        if (typeof ComponentSkeletonLoader !== "undefined") {
+          ComponentSkeletonLoader.fill("placement-value", el);
+        } else {
+          el.innerHTML = '<span class="skeleton-shimmer" style="display:inline-block;height:1rem;width:4.5rem;border-radius:4px;"></span>';
+        }
       }
       return;
     }

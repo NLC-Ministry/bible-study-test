@@ -17,7 +17,7 @@ import {
 } from "./export-time.mjs";
 // Keep the ?v= in sync with any change to exam.js so a deploy isn't masked by a
 // Service Worker that cached /modules/exam.js at its bare (unversioned) URL.
-import { renderExamPanel } from "./exam.js?v=20260828_exam_p4g";
+import { renderExamPanel } from "./exam.js?v=20260828_exam_p4k";
 
 function updatePastoralWallControl(enabled, options = {}) {
   const toggle = document.getElementById("admin-pastoral-wall-toggle");
@@ -697,7 +697,7 @@ export async function renderAdminUserDirectory() {
   if (nameReviewFilter) nameReviewFilter.disabled = true;
   orgFiltersRoot.setAttribute("aria-disabled", "true");
   count.textContent = "讀取中…";
-  list.innerHTML = '<div class="admin-user-directory__empty">正在載入使用者資料…</div>';
+  if (firstPaint(list)) list.innerHTML = '<div class="admin-user-directory__empty">正在載入使用者資料…</div>';
   const result = await db.fetchAdminUserProfiles();
   if (result.error) {
     count.textContent = "0 人";
@@ -854,7 +854,7 @@ export async function renderAdminManagedScopes() {
   if (!isAdmin) return;
   setManagedScopeFeedback("");
   profileSelect.disabled = true;
-  optionsRoot.innerHTML = '<div class="admin-managed-scopes__empty">正在載入管理範圍…</div>';
+  if (firstPaint(optionsRoot)) optionsRoot.innerHTML = '<div class="admin-managed-scopes__empty">正在載入管理範圍…</div>';
 
   if (!Array.isArray(state.orgStructure.rawRegions) || state.orgStructure.rawRegions.length === 0) {
     await db.loadOrgStructure();
@@ -940,7 +940,7 @@ export async function renderAdminOrgPermissionsOverview() {
   if (!isAdmin) return;
 
   count.textContent = "讀取中…";
-  tree.innerHTML = '<div class="admin-user-directory__empty">正在載入組織架構…</div>';
+  if (firstPaint(tree)) tree.innerHTML = '<div class="admin-user-directory__empty">正在載入組織架構…</div>';
 
   if (!Array.isArray(state.orgStructure.regions) || state.orgStructure.regions.length === 0) {
     await db.loadOrgStructure();
@@ -1239,7 +1239,7 @@ async function loadAdminRegistrationStatistics(globalPlanId) {
   adminRegistrationStatistics = null;
   exportButton.disabled = true;
   if (sheetSyncButton) sheetSyncButton.disabled = true;
-  content.innerHTML = '<div class="admin-registration-statistics__empty">讀取統計資料中…</div>';
+  if (firstPaint(content)) content.innerHTML = '<div class="admin-registration-statistics__empty">讀取統計資料中…</div>';
 
   const result = await db.getAdminRegistrationStatistics(globalPlanId);
   if (!result || !result.success) {
@@ -2209,7 +2209,7 @@ async function renderAdminDailyQuizManagement(forceRefresh = false, requestedDat
   let result = prefetchedResult;
   if (!result && !forceRefresh) result = adminDailyQuizDashboardCache.get(cacheKey) || null;
   if (!result) {
-    root.innerHTML = '<div class="admin-user-directory__empty">正在載入小測驗資料…</div>';
+    if (firstPaint(root)) root.innerHTML = '<div class="admin-user-directory__empty">正在載入小測驗資料…</div>';
     result = await db.getDailyQuizDashboard(state.activePlan, quizDate);
   }
   adminDailyQuizDashboardCache.set(cacheKey, result);
@@ -2595,7 +2595,7 @@ async function renderAdminUnjoinedPlanMembers(forceRefresh = false) {
     count.textContent = "讀取中";
     inviteAllButton.disabled = true;
     inviteAllButton.textContent = "讀取中…";
-    container.innerHTML = '<div class="admin-unjoined-plan-empty">讀取尚未加入的人員中...</div>';
+    if (firstPaint(container)) container.innerHTML = '<div class="admin-unjoined-plan-empty">讀取尚未加入的人員中...</div>';
 
     const result = await db.getUnjoinedPlanMembers(plan);
     if (requestId !== unjoinedPlanRequestId) return;
@@ -2751,7 +2751,7 @@ async function renderAdminJoinedPlanMembers(forceRefresh = false) {
     cachedJoinedPlanKey = cacheKey;
     cachedJoinedPlanMembers = [];
     count.textContent = "讀取中";
-    container.innerHTML = '<div class="admin-unjoined-plan-empty">讀取已加入計畫的人員中...</div>';
+    if (firstPaint(container)) container.innerHTML = '<div class="admin-unjoined-plan-empty">讀取已加入計畫的人員中...</div>';
 
     const result = await db.getJoinedPlanMembers(plan);
     if (requestId !== joinedPlanRequestId) return;
@@ -3043,7 +3043,7 @@ export async function renderAdminTeamPlacementLookup(selectedPlan, forceRefresh 
     return;
   }
 
-  contentEl.innerHTML = '<div class="admin-user-directory__empty">正在載入尚未加入團隊的人員…</div>';
+  if (firstPaint(contentEl)) contentEl.innerHTML = '<div class="admin-user-directory__empty">正在載入尚未加入團隊的人員…</div>';
 
   const res = await db.getAdminMemberTeamPlacements(selectedPlan);
   if (!res.success) {
