@@ -3237,6 +3237,7 @@ const db = {
       exam_announcement_locked: "測驗已正式發佈，預告文無法再修改。",
       exam_reset_live_forbidden: "正式測驗不可清除作答紀錄。如需重置請由工程人員處理。",
       exam_mode_locked: "已發佈的卷不能切換模式。請先「關閉測驗 → 改回草稿」再切。",
+      exam_push_source_not_test: "只有測試卷可以「推上正式版」。",
       exam_window_invalid: "請先設定正確的開放起訖時間。",
       exam_section_count_mismatch: "各大題題數與設定不符。",
       exam_answer_key_incomplete: "還有題目未填答案。",
@@ -3302,6 +3303,9 @@ const db = {
   },
   async setExamMode(paperId, mode) {
     return this._callExamRpc("exam_set_mode", { p_paper_id: paperId, p_mode: mode });
+  },
+  async pushExamToLive(testPaperId) {
+    return this._callExamRpc("exam_push_to_live", { p_test_paper_id: testPaperId });
   },
   async resetExamAttempts(paperId) {
     return this._callExamRpc("exam_reset_attempts", { p_paper_id: paperId });

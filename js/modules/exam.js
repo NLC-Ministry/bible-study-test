@@ -141,14 +141,20 @@ export async function renderExamPanel(root) {
   }
 
   const isLive = paper.mode === "live";
-  const who = "全體會友";   // 預告文 banner 不分模式，都會對全體會友顯示
+  const isTest = !isLive;
+  const who = isLive ? "全體會友" : "僅系統管理員（演練用，不會出現在會友端）";
   const hasShortSection = !!examSectionCfg(paper).shortanswer;   // 沒選「簡答題」→ 隱藏批改分頁
+  const canEditPaper = isTest;   // 正式版不提供編輯，題目與設定一律由測試版「推上正式版」
+  const hasNotice = isLive;      // 測試版不用預告文（預告文只給會友端的正式版）
   if (examAdminSubview === "grade" && !hasShortSection) examAdminSubview = "bank";
+  if (!canEditPaper && (examAdminSubview === "bank" || examAdminSubview === "meta")) examAdminSubview = "notice";
+  if (!hasNotice && examAdminSubview === "notice") examAdminSubview = "bank";
   const annPub = paper.announcement_published === true;
   const noticeReady = !!((paper.announcement || {}).headline || "").trim() && !!((paper.announcement || {}).body || "").trim();
 
   const badge = paper.status === "published" ? "success" : "neutral";
   const statusLabel = { draft: "草稿（可編輯）", published: "測驗進行中", closed: "已關閉" }[paper.status] || paper.status;
+  const modeBadge = `　<span class="stat-badge stat-badge--${isLive ? "brand" : "neutral"}">${isLive ? "正式版" : "測試版"}</span>`;
   const annBadge = annPub
     ? '　<span class="stat-badge stat-badge--brand">預告文已發佈</span>'
     : '　<span class="stat-badge stat-badge--neutral">預告文未發佈</span>';
@@ -158,27 +164,33 @@ export async function renderExamPanel(root) {
   ];
   const hints = [];
 
-  // ── 預告文（獨立於 status，不鎖題庫）──
-  if (!annPub && paper.status !== "closed") {
-    if (noticeReady) {
-      actions.push('<button type="button" class="primary-btn" data-exam-act="announce">發佈預告文</button>');
-      hints.push(`發佈預告文後，${who}的首頁會出現預告區塊；試卷仍可留在草稿繼續改題、切換模式。`);
-    } else {
-      hints.push("在「預告文」分頁填好標題與內容後，這裡才會出現「發佈預告文」按鈕。");
+  // ── 預告文（只有正式版有；獨立於 status，不鎖題庫）──
+  if (hasNotice) {
+    if (!annPub && paper.status !== "closed") {
+      if (noticeReady) {
+        actions.push('<button type="button" class="primary-btn" data-exam-act="announce">發佈預告文</button>');
+        hints.push(`發佈預告文後，${who}的首頁會出現預告區塊。`);
+      } else {
+        hints.push("在「預告文」分頁填好標題與內容後，這裡才會出現「發佈預告文」按鈕。");
+      }
+    } else if (annPub) {
+      actions.push('<button type="button" class="secondary-btn" data-exam-act="unannounce">撤下預告文</button>');
     }
-  } else if (annPub) {
-    actions.push('<button type="button" class="secondary-btn" data-exam-act="unannounce">撤下預告文</button>');
   }
 
   // 「改回草稿」只在「已關閉」狀態才出現（測驗進行中不提供——要改題請先按「關閉測驗」）；
   // 且正式卷若已有作答紀錄仍不給（避免動到已計分結果），測試卷則不限。
   const canRevert = paper.status === "closed" && (paper.mode === "test" || attemptCount === 0);
 
-  // ── 測驗本身（status）──
+  // ── 測驗本身（status）── 正式版要先發預告文才能發佈；測試版直接發佈
   if (paper.status === "draft") {
-    if (annPub) {
-      actions.push('<button type="button" class="primary-btn" data-exam-act="publish">發佈測驗</button>');
-      hints.push("按「發佈測驗」後，開放時間內即可作答（發佈後題庫鎖定）。測試 / 正式模式的作答規則相同，模式只用來在統計上區分演練用的作答。");
+    if (isTest || annPub) {
+      actions.push(`<button type="button" class="primary-btn" data-exam-act="publish">${isTest ? "發佈（開放測試作答）" : "發佈測驗"}</button>`);
+      hints.push(isTest
+        ? "測試版發佈後，管理員可從「測試作答」走完整流程；不會出現在會友端。"
+        : "按「發佈測驗」後，開放時間內全體會友即可作答（發佈後題庫鎖定）。");
+    } else {
+      hints.push("正式版要先「發佈預告文」才能發佈測驗。");
     }
   } else if (paper.status === "published") {
     actions.push(`<a class="primary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}" target="_blank" rel="noopener">${isLive ? "正式作答" : "測試作答"}</a>`);
@@ -192,29 +204,31 @@ export async function renderExamPanel(root) {
   }
 
   // 清除作答紀錄：只有測試卷、且有紀錄時提供（獨立於「改回草稿」，方便不改題目直接重測）
-  if (paper.mode === "test" && attemptCount > 0) {
+  if (isTest && attemptCount > 0) {
     actions.push(`<button type="button" class="secondary-btn" data-exam-act="reset">清除作答紀錄（${attemptCount}）</button>`);
     hints.push("「清除作答紀錄」只作用在測試卷，清掉後可從宣示畫面重新測試（不影響題目與設定）。");
+  }
+
+  // 推上正式版：只有測試卷才有。把題目 + 試卷設定複製到對應的正式版。
+  if (isTest) {
+    actions.push('<button type="button" class="primary-btn" data-exam-act="push">推上正式版</button>');
+    hints.push("「推上正式版」會把這份測試卷的題目與試卷設定複製到對應的正式版（各自獨立、預告文與發佈狀態不受影響）；若正式版已發佈，會退回草稿要重新發佈。");
+  } else if (paper.pushed_from_id) {
+    hints.push("這份正式版的題目由對應的測試卷「推上正式版」而來。");
   }
   const actionHint = hints.join(" ");
 
   body.innerHTML = `
     ${pickerBar}
     <div class="exam-admin__paper">
-      <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${badge}">${esc(statusLabel)}</span>${annBadge}</p>
-      <div class="exam-admin__actions">
-        <span class="exam-admin__modeswitch" role="group" aria-label="模式">
-          <button type="button" data-exam-act="setmode-test" class="${isLive ? "" : "is-on"}" ${isLive ? "" : "disabled"}>測試 test</button>
-          <button type="button" data-exam-act="setmode-live" class="${isLive ? "is-on" : ""}" ${isLive ? "disabled" : ""}>正式 live</button>
-        </span>
-        ${actions.join("")}
-      </div>
+      <p><strong>${esc(paper.title)}</strong>${modeBadge}　<span class="stat-badge stat-badge--${badge}">${esc(statusLabel)}</span>${annBadge}</p>
+      <div class="exam-admin__actions">${actions.join("")}</div>
       ${actionHint ? `<p class="exam-admin__meta">${esc(actionHint)}</p>` : ""}
     </div>
     <nav class="exam-admin__subnav">
-      <button type="button" data-exam-sub="notice" class="${examAdminSubview === "notice" ? "active" : ""}">預告文</button>
-      <button type="button" data-exam-sub="bank" class="${examAdminSubview === "bank" ? "active" : ""}">題庫編輯</button>
-      <button type="button" data-exam-sub="meta" class="${examAdminSubview === "meta" ? "active" : ""}">試卷設定</button>
+      ${hasNotice ? `<button type="button" data-exam-sub="notice" class="${examAdminSubview === "notice" ? "active" : ""}">預告文</button>` : ""}
+      ${canEditPaper ? `<button type="button" data-exam-sub="bank" class="${examAdminSubview === "bank" ? "active" : ""}">題庫編輯</button>
+      <button type="button" data-exam-sub="meta" class="${examAdminSubview === "meta" ? "active" : ""}">試卷設定</button>` : ""}
       ${hasShortSection ? `<button type="button" data-exam-sub="grade" class="${examAdminSubview === "grade" ? "active" : ""}">簡答批改</button>` : ""}
       <button type="button" data-exam-sub="stats" class="${examAdminSubview === "stats" ? "active" : ""}">統計</button>
     </nav>
@@ -227,9 +241,10 @@ export async function renderExamPanel(root) {
     const sub = body.querySelector("#exam-admin-sub");
     if (!sub) return;
     if (examAdminSubview === "notice") renderExamNoticeForm(sub, paper, rerender);
-    else if (examAdminSubview === "meta") renderExamMetaForm(sub, paper, rerender);
     else if (examAdminSubview === "grade") renderExamGrading(sub, paper.id);
     else if (examAdminSubview === "stats") renderExamStats(sub, paper.id, hasShortSection);
+    else if (!canEditPaper) sub.innerHTML = '<div class="admin-user-directory__empty">正式版的題目與試卷設定不提供編輯，一律由對應的測試版按「推上正式版」維護。要查看題目請用上方「預覽試卷」。</div>';
+    else if (examAdminSubview === "meta") renderExamMetaForm(sub, paper, rerender);
     else renderExamQuestionBank(sub, paper, questions, rerender);
   };
   body.querySelectorAll("[data-exam-sub]").forEach((b) => b.addEventListener("click", () => {
@@ -240,14 +255,15 @@ export async function renderExamPanel(root) {
   }));
   body.querySelectorAll("[data-exam-act]").forEach((b) => b.addEventListener("click", async () => {
     const act = b.dataset.examAct;
-    if (act === "setmode-test" || act === "setmode-live") {
-      const target = act === "setmode-live" ? "live" : "test";
-      if (target === paper.mode) return;
+    if (act === "push") {
+      if (!confirm("把這份測試卷的題目與試卷設定複製到對應的正式版？\n（正式版的預告文與發佈狀態不受影響；若正式版已發佈會退回草稿。）")) return;
       b.disabled = true;
-      const r = await db.setExamMode(paper.id, target);
+      const r = await db.pushExamToLive(paper.id);
       b.disabled = false;
-      if (!r.success) { toast(r.message || "切換失敗"); return; }
-      toast(target === "live" ? "已切為正式 live" : "已切為測試 test");
+      if (!r.success) { toast(r.message || "推送失敗"); return; }
+      toast((r.data && r.data.created) ? "已建立正式版並帶入內容"
+        : (r.data && r.data.reverted) ? "正式版已更新，並退回草稿（請重新發佈）" : "正式版內容已更新");
+      if (r.data && r.data.livePaperId) examAdminPaperId = r.data.livePaperId;
       rerender();
       return;
     }
@@ -459,7 +475,7 @@ function renderExamMetaForm(host, paper, rerender) {
   host.innerHTML = `
     <div class="exam-admin__form">
       <label>標題<input class="form-control" data-f="title" value="${esc(p.title)}"></label>
-      <p class="exam-admin__meta">模式（測試 / 正式）改在上方切換。</p>
+      <p class="exam-admin__meta">測試版與正式版是兩份獨立的卷。測試版改好後，用上方「推上正式版」把題目與設定複製過去。</p>
       <div class="exam-admin__form-row">
         <label>開放起<input type="datetime-local" class="form-control" data-f="open_at" value="${esc(toLocalInput(p.open_at))}"></label>
         <label>開放迄<input type="datetime-local" class="form-control" data-f="close_at" value="${esc(toLocalInput(p.close_at))}"></label>
