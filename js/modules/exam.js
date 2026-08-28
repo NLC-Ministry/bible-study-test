@@ -67,20 +67,24 @@ const parseIdText = (arr) => arr.map((r) => {
 
 export async function renderExamPanel(root) {
   if (!root) return;
-  root.innerHTML = '<div class="admin-user-directory__empty">載入大測驗設定…</div>';
 
-  root.innerHTML = `
-    <section class="admin-management-section exam-admin">
-      <div class="exam-admin__row">
-        <div>
-          <h3 class="card-title" style="margin:0;">大測驗（速讀測驗）</h3>
-          <p class="exam-admin__hint">功能開關在「系統管理 → 功能開放設定」。這裡負責出題、發佈、批改與預覽。</p>
+  // 外殼只建一次；重繪時不清空整塊（避免整頁閃動），並記住捲動位置最後還原
+  let body = root.querySelector("#exam-admin-body");
+  if (!body) {
+    root.innerHTML = `
+      <section class="admin-management-section exam-admin">
+        <div class="exam-admin__row">
+          <div>
+            <h3 class="card-title" style="margin:0;">大測驗（速讀測驗）</h3>
+            <p class="exam-admin__hint">功能開關在「系統管理 → 功能開放設定」。這裡負責出題、發佈、批改與預覽。</p>
+          </div>
         </div>
-      </div>
-      <div id="exam-admin-body" style="margin-top:1rem;"></div>
-    </section>`;
-
-  const body = root.querySelector("#exam-admin-body");
+        <div id="exam-admin-body" style="margin-top:1rem;"><div class="admin-user-directory__empty">載入大測驗設定…</div></div>
+      </section>`;
+    body = root.querySelector("#exam-admin-body");
+  }
+  const _scrollY = window.scrollY;
+  const keepScroll = () => requestAnimationFrame(() => window.scrollTo(0, _scrollY));
 
   const feature = await db.getFeatureSetting("speed_reading_exam", false);
   if (feature.error || feature.enabled !== true) {
@@ -200,8 +204,14 @@ export async function renderExamPanel(root) {
   body.innerHTML = `
     ${pickerBar}
     <div class="exam-admin__paper">
-      <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${badge}">${esc(statusLabel)}</span>${annBadge}　<span class="exam-admin__meta">${esc(paper.mode === "live" ? "正式 live" : "測試 test")}</span></p>
-      <div class="exam-admin__actions">${actions.join("")}</div>
+      <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${badge}">${esc(statusLabel)}</span>${annBadge}</p>
+      <div class="exam-admin__actions">
+        <span class="exam-admin__modeswitch" role="group" aria-label="模式">
+          <button type="button" data-exam-act="setmode-test" class="${isLive ? "" : "is-on"}" ${isLive ? "" : "disabled"}>測試 test</button>
+          <button type="button" data-exam-act="setmode-live" class="${isLive ? "is-on" : ""}" ${isLive ? "disabled" : ""}>正式 live</button>
+        </span>
+        ${actions.join("")}
+      </div>
       ${actionHint ? `<p class="exam-admin__meta">${esc(actionHint)}</p>` : ""}
     </div>
     <nav class="exam-admin__subnav">
@@ -214,12 +224,41 @@ export async function renderExamPanel(root) {
     <div id="exam-admin-sub"></div>`;
 
   wirePicker();
+
+  // 子分頁切換：只換 #exam-admin-sub 這一塊 + 切 nav 的 active，不整塊重繪、不重打 API
+  const renderSub = () => {
+    const sub = body.querySelector("#exam-admin-sub");
+    if (!sub) return;
+    if (examAdminSubview === "notice") renderExamNoticeForm(sub, paper, rerender);
+    else if (examAdminSubview === "meta") renderExamMetaForm(sub, paper, rerender);
+    else if (examAdminSubview === "grade") renderExamGrading(sub, paper.id);
+    else if (examAdminSubview === "stats") renderExamStats(sub, paper.id, hasShortSection);
+    else renderExamQuestionBank(sub, paper, questions, rerender);
+  };
   body.querySelectorAll("[data-exam-sub]").forEach((b) => b.addEventListener("click", () => {
-    examAdminSubview = b.dataset.examSub; rerender();
+    if (examAdminSubview === b.dataset.examSub) return;
+    examAdminSubview = b.dataset.examSub;
+    body.querySelectorAll("[data-exam-sub]").forEach((x) => x.classList.toggle("active", x === b));
+    renderSub();
   }));
   body.querySelectorAll("[data-exam-act]").forEach((b) => b.addEventListener("click", async () => {
     const act = b.dataset.examAct;
     const live = paper.mode === "live";
+    if (act === "setmode-test" || act === "setmode-live") {
+      const target = act === "setmode-live" ? "live" : "test";
+      if (paper.status !== "draft" && !confirm(
+        target === "live"
+          ? "切成「正式 live」後，若已發佈預告文／測驗，會友首頁就會看到這份卷。確定？"
+          : "切成「測試 test」後，會友首頁會立刻看不到這份卷（管理員仍看得到）。確定？"
+      )) return;
+      b.disabled = true;
+      const r = await db.setExamMode(paper.id, target);
+      b.disabled = false;
+      if (!r.success) { toast(r.message || "切換失敗"); return; }
+      toast(target === "live" ? "已切為正式 live" : "已切為測試 test");
+      rerender();
+      return;
+    }
     if (act === "announce" && live && !confirm("將把這份預告文發佈到全體會友的首頁。確定？")) return;
     if (act === "unannounce" && !confirm("撤下後，會友首頁就不會再顯示這份測驗的預告區塊。確定？")) return;
     if (act === "publish" && live && !confirm("將正式開放全體會友作答（開放時間內），發佈後題庫會鎖定。確定？")) return;
@@ -254,12 +293,8 @@ export async function renderExamPanel(root) {
     rerender();
   }));
 
-  const sub = body.querySelector("#exam-admin-sub");
-  if (examAdminSubview === "notice") renderExamNoticeForm(sub, paper, rerender);
-  else if (examAdminSubview === "meta") renderExamMetaForm(sub, paper, rerender);
-  else if (examAdminSubview === "grade") renderExamGrading(sub, paper.id);
-  else if (examAdminSubview === "stats") renderExamStats(sub, paper.id, hasShortSection);
-  else renderExamQuestionBank(sub, paper, questions, rerender);
+  renderSub();
+  keepScroll();
 }
 
 // ── 預告文編輯（首頁 8/30 宣示 banner 的內容來源）──
@@ -432,11 +467,7 @@ function renderExamMetaForm(host, paper, rerender) {
   host.innerHTML = `
     <div class="exam-admin__form">
       <label>標題<input class="form-control" data-f="title" value="${esc(p.title)}"></label>
-      <label>模式
-        <select class="form-control" data-f="mode">
-          <option value="test" ${p.mode === "test" ? "selected" : ""}>test（測試，不會出現在會友端）</option>
-          <option value="live" ${p.mode === "live" ? "selected" : ""}>live（正式）</option>
-        </select></label>
+      <p class="exam-admin__meta">模式（測試 / 正式）改在上方切換。</p>
       <div class="exam-admin__form-row">
         <label>開放起<input type="datetime-local" class="form-control" data-f="open_at" value="${esc(toLocalInput(p.open_at))}"></label>
         <label>開放迄<input type="datetime-local" class="form-control" data-f="close_at" value="${esc(toLocalInput(p.close_at))}"></label>
@@ -484,7 +515,7 @@ function renderExamMetaForm(host, paper, rerender) {
     if (!sections.length) { toast("至少要有一個題型"); return; }
     e.target.disabled = true;
     const res = await db.upsertExamPaper({
-      id: p.id, title: g("title"), mode: g("mode"),
+      id: p.id, title: g("title"),
       open_at: fromLocalInput(g("open_at")), close_at: fromLocalInput(g("close_at")),
       duration_minutes: Number(g("duration_minutes")) || 75,
       sections,

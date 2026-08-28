@@ -2849,3 +2849,60 @@ if (typeof document !== "undefined") {
 
 
 
+
+// ============================================================================
+// renderInto / firstPaint —— 「重繪不閃」的共用工具
+//
+// 全站多數畫面靠 `el.innerHTML = htmlString` 整塊重建；每次資料變動都會
+// ①先塞「載入中…」→ 內容消失 ②await 後再塞回 → 內容重現，造成閃動＋捲動跳回頂端。
+//
+//   renderInto(el, html)      一次換掉，不留中間空白；換完還原捲動位置與焦點。
+//   firstPaint(el)            這個容器目前是不是「還沒畫過」（拿來決定要不要顯示 loading）。
+//
+// 用法：
+//   if (firstPaint(host)) host.innerHTML = '<div class="…">載入中…</div>';
+//   const data = await fetch();
+//   renderInto(host, buildHtml(data));
+// ============================================================================
+function firstPaint(el) {
+  return !el || el.childElementCount === 0;
+}
+
+function renderInto(el, html, opts) {
+  if (!el) return;
+  const o = opts || {};
+  const keepScroll = o.keepScroll !== false;
+  const keepFocus = o.keepFocus !== false;
+  const scroller = o.scroller || document.scrollingElement || document.documentElement;
+  const y = keepScroll && scroller ? scroller.scrollTop : 0;
+
+  let focusSel = null;
+  let selStart = null, selEnd = null;
+  try {
+    const a = document.activeElement;
+    if (keepFocus && a && a !== document.body && el.contains(a)) {
+      if (a.id) focusSel = "#" + (window.CSS && CSS.escape ? CSS.escape(a.id) : a.id);
+      else if (a.name) focusSel = "[name=\"" + a.name.replace(/"/g, '\\"') + "\"]";
+      else if (a.dataset && a.dataset.focusKey) focusSel = "[data-focus-key=\"" + a.dataset.focusKey + "\"]";
+      if (focusSel && typeof a.selectionStart === "number") { selStart = a.selectionStart; selEnd = a.selectionEnd; }
+    }
+  } catch (_) {}
+
+  el.innerHTML = typeof html === "function" ? html() : html;
+
+  if (focusSel) {
+    const t = el.querySelector(focusSel);
+    if (t) {
+      try { t.focus({ preventScroll: true }); } catch (_) { try { t.focus(); } catch (_) {} }
+      if (selStart != null && typeof t.setSelectionRange === "function") {
+        try { t.setSelectionRange(selStart, selEnd); } catch (_) {}
+      }
+    }
+  }
+  if (keepScroll && scroller) requestAnimationFrame(() => { try { scroller.scrollTop = y; } catch (_) {} });
+}
+
+if (typeof window !== "undefined") {
+  window.firstPaint = firstPaint;
+  window.renderInto = renderInto;
+}

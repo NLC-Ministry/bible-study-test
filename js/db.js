@@ -3299,6 +3299,9 @@ const db = {
   async setExamStatus(paperId, status) {
     return this._callExamRpc("exam_set_status", { p_paper_id: paperId, p_status: status });
   },
+  async setExamMode(paperId, mode) {
+    return this._callExamRpc("exam_set_mode", { p_paper_id: paperId, p_mode: mode });
+  },
   async resetExamAttempts(paperId) {
     return this._callExamRpc("exam_reset_attempts", { p_paper_id: paperId });
   },
