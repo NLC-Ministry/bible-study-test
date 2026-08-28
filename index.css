@@ -14908,6 +14908,15 @@ textarea::placeholder {
 }
 .exam-admin__modeswitch button + button { border-left: 1px solid var(--border-card); }
 .exam-admin__modeswitch button.is-on { background: var(--color-brand); color: #fff; cursor: default; }
+
+.exam-admin__versions { display: inline-flex; border: 1px solid var(--border-card); border-radius: 8px; overflow: hidden; margin-bottom: 0.9rem; }
+.exam-admin__versions button {
+  background: var(--bg-card); border: none; padding: 0.45rem 1rem; font-size: 0.9375rem;
+  color: var(--text-secondary); cursor: pointer; font-family: inherit;
+}
+.exam-admin__versions button + button { border-left: 1px solid var(--border-card); }
+.exam-admin__versions button.is-on { background: var(--color-brand); color: #fff; }
+.exam-admin__versions button:disabled:not(.is-on) { color: var(--text-muted); cursor: not-allowed; }
 .exam-admin__subnav { display: flex; gap: 0.25rem; margin: 1rem 0 0.75rem; border-bottom: 1px solid var(--border-card); }
 .exam-admin__subnav button { background: none; border: none; border-bottom: 2px solid transparent; padding: 0.5rem 0.85rem; font-size: 0.9375rem; color: var(--text-secondary); cursor: pointer; font-family: inherit; }
 .exam-admin__subnav button.active { color: var(--text-primary); border-bottom-color: var(--color-brand); font-weight: var(--type-weight-strong, 600); }

@@ -113,20 +113,32 @@ export async function renderExamPanel(root) {
     examAdminPaperId = res.data?.id || null;
     rerender();
   };
-  const statusZh = { draft: "草稿", published: "進行中", closed: "已關閉" };
+  // ── 架構：第 1 層＝「試卷」（用測試版的 id 當識別），第 2 層＝測試版 / 正式版 ──
+  // 「試卷」清單：每份測試版一列；以前沒有測試版來源的獨立正式版也各算一份試卷。
+  const examList = papers.filter((p) => p.mode === "test" || !p.pushedFromId);
+  // 目前這份卷屬於哪一份「試卷」
+  const examKey = paper ? ((paper.mode === "live" && paper.pushed_from_id) ? paper.pushed_from_id : paper.id) : null;
+  const testOf = examList.find((p) => p.id === examKey && p.mode === "test") || null;
+  const liveOf = examKey ? papers.find((p) => p.mode === "live" && p.pushedFromId === examKey) : null;
+  if (paper && !examList.some((p) => p.id === examKey)) examList.push({ id: examKey, title: paper.title });
+
   const pickerBar = `
     <div class="exam-admin__picker">
       <label>試卷
         <select class="form-control" id="exam-paper-picker">
-          ${papers.map((p) => `<option value="${esc(p.id)}" ${p.id === (paper && paper.id) ? "selected" : ""}>${p.mode === "live" ? "【正式】" : "【測試】"}${esc(p.title)}｜${esc(statusZh[p.status] || p.status)}｜${p.questionCount} 題${p.attemptCount ? "｜作答 " + p.attemptCount : ""}</option>`).join("")}
+          ${examList.map((p) => `<option value="${esc(p.id)}" ${p.id === examKey ? "selected" : ""}>${esc(p.title)}</option>`).join("")}
         </select>
       </label>
       <button type="button" class="secondary-btn" id="exam-create-paper">＋ 建立新試卷</button>
     </div>
-    <p class="exam-admin__meta">測試版 →（改好題目）→「推上正式版」→ 在上方下拉切到【正式】那份，才能編預告文、發佈給會友。</p>`;
+    ${paper && !(paper.mode === "live" && !paper.pushed_from_id) ? `
+    <div class="exam-admin__versions" role="group" aria-label="版本">
+      <button type="button" data-exam-act="ver-test" class="${paper.mode === "test" ? "is-on" : ""}" ${paper.mode === "test" || !testOf ? "disabled" : ""}>測試版</button>
+      <button type="button" data-exam-act="ver-live" class="${paper.mode === "live" ? "is-on" : ""}" ${paper.mode === "live" ? "disabled" : ""}>正式版${liveOf ? "" : "（尚未建立）"}</button>
+    </div>` : ""}`;
   const wirePicker = () => {
     body.querySelector("#exam-paper-picker")?.addEventListener("change", (e) => {
-      examAdminPaperId = e.target.value || null; rerender();
+      examAdminPaperId = e.target.value || null; examAdminSubview = "bank"; rerender();
     });
     body.querySelector("#exam-create-paper")?.addEventListener("click", createPaper);
   };
@@ -156,7 +168,6 @@ export async function renderExamPanel(root) {
 
   const badge = paper.status === "published" ? "success" : "neutral";
   const statusLabel = { draft: "草稿（可編輯）", published: "測驗進行中", closed: "已關閉" }[paper.status] || paper.status;
-  const modeBadge = `　<span class="stat-badge stat-badge--${isLive ? "brand" : "neutral"}">${isLive ? "正式版" : "測試版"}</span>`;
   const annBadge = annPub
     ? '　<span class="stat-badge stat-badge--brand">預告文已發佈</span>'
     : '　<span class="stat-badge stat-badge--neutral">預告文未發佈</span>';
@@ -211,24 +222,21 @@ export async function renderExamPanel(root) {
     hints.push("「清除作答紀錄」只作用在測試卷，清掉後可從宣示畫面重新測試（不影響題目與設定）。");
   }
 
-  // 推上正式版 / 前往對應的另一份。
-  const liveOf = isTest ? papers.find((p) => p.mode === "live" && p.pushedFromId === paper.id) : null;
-  if (isTest) {
-    actions.push('<button type="button" class="primary-btn" data-exam-act="push">推上正式版</button>');
-    if (liveOf) actions.push(`<button type="button" class="secondary-btn" data-exam-act="goto" data-goto="${esc(liveOf.id)}">前往正式版 →</button>`);
-    hints.push(liveOf
-      ? "「推上正式版」會把最新的題目與設定同步到正式版；正式版若已發佈會退回草稿要重新發佈。要編正式版的預告文 / 發佈給會友，按「前往正式版」。"
-      : "題目改好後按「推上正式版」，系統會自動建立對應的正式版，並切過去讓你編預告文、發佈給會友。");
-  } else if (paper.pushed_from_id) {
-    actions.push(`<button type="button" class="secondary-btn" data-exam-act="goto" data-goto="${esc(paper.pushed_from_id)}">← 前往測試版</button>`);
-    hints.push("這份正式版的題目由測試版「推上正式版」而來，只能在此編預告文與發佈；要改題請回測試版。");
+  // 測試版 → 同步到正式版（正式版已存在時才顯示；不存在時用上方「正式版（尚未建立）」按鈕建立）
+  if (isTest && liveOf) {
+    actions.push('<button type="button" class="primary-btn" data-exam-act="push">同步到正式版</button>');
+    hints.push("題目 / 設定改好後按「同步到正式版」把最新內容推過去；正式版若已發佈會退回草稿要重新發佈。");
+  } else if (isTest && !liveOf) {
+    hints.push("題目改好後，用上方「正式版（尚未建立）」建立正式版，再去編預告文、發佈給會友。");
+  } else if (isLive && paper.pushed_from_id) {
+    hints.push("正式版只能編預告文與發佈；題目 / 設定要改請切到「測試版」。");
   }
   const actionHint = hints.join(" ");
 
   body.innerHTML = `
     ${pickerBar}
     <div class="exam-admin__paper">
-      <p><strong>${esc(paper.title)}</strong>${modeBadge}　<span class="stat-badge stat-badge--${badge}">${esc(statusLabel)}</span>${annBadge}</p>
+      <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${isLive ? "brand" : "neutral"}">${isLive ? "正式版" : "測試版"}</span>　<span class="stat-badge stat-badge--${badge}">${esc(statusLabel)}</span>${hasNotice ? annBadge : ""}</p>
       <div class="exam-admin__actions">${actions.join("")}</div>
       ${actionHint ? `<p class="exam-admin__meta">${esc(actionHint)}</p>` : ""}
     </div>
@@ -262,21 +270,29 @@ export async function renderExamPanel(root) {
   }));
   body.querySelectorAll("[data-exam-act]").forEach((b) => b.addEventListener("click", async () => {
     const act = b.dataset.examAct;
-    if (act === "goto") {
-      examAdminPaperId = b.dataset.goto || null;
-      examAdminSubview = "bank";
+    if (act === "ver-test") {
+      examAdminPaperId = examKey; examAdminSubview = "bank"; rerender();
+      return;
+    }
+    if (act === "ver-live") {
+      if (liveOf) { examAdminPaperId = liveOf.id; examAdminSubview = "notice"; rerender(); return; }
+      if (!confirm("尚未建立正式版。要把這份測試版的題目與試卷設定推上正式版、建立一份正式版嗎？")) return;
+      b.disabled = true;
+      const r = await db.pushExamToLive(examKey);
+      b.disabled = false;
+      if (!r.success) { toast(r.message || "建立失敗"); return; }
+      toast("已建立正式版");
+      if (r.data && r.data.livePaperId) { examAdminPaperId = r.data.livePaperId; examAdminSubview = "notice"; }
       rerender();
       return;
     }
     if (act === "push") {
-      if (!confirm("把這份測試卷的題目與試卷設定複製到對應的正式版？\n（正式版的預告文與發佈狀態不受影響；若正式版已發佈會退回草稿。）")) return;
+      if (!confirm("把這份測試版的最新題目與設定同步到正式版？\n（正式版的預告文不受影響；若正式版已發佈會退回草稿。）")) return;
       b.disabled = true;
       const r = await db.pushExamToLive(paper.id);
       b.disabled = false;
       if (!r.success) { toast(r.message || "推送失敗"); return; }
-      toast((r.data && r.data.created) ? "已建立正式版並帶入內容"
-        : (r.data && r.data.reverted) ? "正式版已更新，並退回草稿（請重新發佈）" : "正式版內容已更新");
-      if (r.data && r.data.livePaperId) examAdminPaperId = r.data.livePaperId;
+      toast((r.data && r.data.reverted) ? "正式版已更新，並退回草稿（請重新發佈）" : "正式版內容已更新");
       rerender();
       return;
     }
