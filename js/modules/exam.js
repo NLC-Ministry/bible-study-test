@@ -730,6 +730,7 @@ class ExamRunner {
       else this.resync();
     };
     this._onPageShow = (e) => { if (!e || e.persisted || e.type !== "pageshow") this.resync(); };
+    this._onOnline = () => { this.flushSave(); this.resync(); };   // 斷線恢復：立刻補推 + 校時
     this._onBeforeUnload = (e) => {
       if (this.attempt && this.attempt.status === "in_progress" && !this.submitting) {
         e.preventDefault(); e.returnValue = ""; return "";
@@ -765,7 +766,8 @@ class ExamRunner {
 
     if (d.attempt) {
       this.attempt = d.attempt;
-      this.deadlineTs = Date.parse(this.attempt.deadlineAt) || (Date.now() + (this.attempt.secondsRemaining || 0) * 1000);
+      this.deadlineTs = 0;
+      this._anchorDeadline(this.attempt.secondsRemaining, this.attempt.deadlineAt);
       this.lsKey = "exam_resp_" + this.attempt.id;
       this.hydrateFromAttempt();
       this.mergeLocal();
@@ -791,6 +793,7 @@ class ExamRunner {
     document.addEventListener("visibilitychange", this._onVis);
     window.addEventListener("pageshow", this._onPageShow);
     window.addEventListener("beforeunload", this._onBeforeUnload);
+    window.addEventListener("online", this._onOnline);
     if (!this.saveTimer) this.saveTimer = setInterval(() => this.flushSave(), 15000);
     if (!this.persistTimer) this.persistTimer = setInterval(() => this.persistLocal(), 3000);
   }
@@ -798,9 +801,11 @@ class ExamRunner {
     document.removeEventListener("visibilitychange", this._onVis);
     window.removeEventListener("pageshow", this._onPageShow);
     window.removeEventListener("beforeunload", this._onBeforeUnload);
+    window.removeEventListener("online", this._onOnline);
     if (this._matchResize) { window.removeEventListener("resize", this._matchResize); this._matchResize = null; }
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     if (this.persistTimer) { clearInterval(this.persistTimer); this.persistTimer = null; }
+    if (this._timeoutRetry) { clearTimeout(this._timeoutRetry); this._timeoutRetry = null; }
     this.stopTimer();
   }
 
@@ -852,14 +857,14 @@ class ExamRunner {
         await this.renderResult();
         return;
       }
-      this.deadlineTs = Date.parse(a.deadlineAt) || this.deadlineTs;
+      this._anchorDeadline(a.secondsRemaining, a.deadlineAt);
       const saved = a.savedAnswers || {};
       let filled = false;
       Object.keys(saved).forEach((qid) => {
         if (this.RESP[qid] === undefined) { this.RESP[qid] = saved[qid]; filled = true; }
       });
       this.tickTimer();
-      if (Date.now() >= this.deadlineTs) { this.submit("timeout"); return; }
+      if (this.deadlineTs && Date.now() >= this.deadlineTs) { this.submit("timeout"); return; }
       if (filled) this.renderRunner();           // 有補回答案才整頁重繪
     } finally {
       this.resyncing = false;
@@ -1224,6 +1229,22 @@ class ExamRunner {
   }
 
   // ── 計時：以 server 的絕對截止時間為準（背景暫停 / 休眠回來仍正確） ──
+  // 倒數一律以「本機時鐘 + server 回報的剩餘秒數」為錨點：固定的裝置時鐘偏移在
+  // 開場就被吸收；只有偏移明顯（改時區 / 長時間背景凍結）才重新校正，避免每次
+  // floor 少 1 秒累積提前。server 沒回 secondsRemaining 時才退回用絕對 deadline。
+  _anchorDeadline(secondsRemaining, deadlineAtIso) {
+    const s = Number(secondsRemaining);
+    if (Number.isFinite(s) && s >= 0) {
+      const serverTs = Date.now() + s * 1000;
+      if (!this.deadlineTs || Math.abs(serverTs - this.deadlineTs) > 10000) this.deadlineTs = serverTs;
+      return;
+    }
+    if (!this.deadlineTs && deadlineAtIso) {
+      const t = Date.parse(deadlineAtIso);
+      if (t) this.deadlineTs = t;
+    }
+  }
+
   startTimer() {
     this.stopTimer();
     this.tickTimer();
@@ -1236,6 +1257,7 @@ class ExamRunner {
       document.body.appendChild(this.host);
       try { document.body.dataset.examOpen = "1"; document.body.style.overflow = "hidden"; } catch (_) {}
     }
+    if (!this.deadlineTs) return;   // 還沒錨定倒數（不該發生）→ 先不動作，等下次校時
     const left = Math.max(0, Math.round((this.deadlineTs - Date.now()) / 1000));
     if (this.timerEl) {
       const mm = String(Math.floor(left / 60)).padStart(2, "0");
@@ -1255,7 +1277,17 @@ class ExamRunner {
     if (!this.dirty || !this.attempt || this.attempt.status !== "in_progress" || this.submitting) return;
     this.dirty = false;
     const res = await db.saveExamProgress(this.attempt.id, this.collectAnswers());
-    if (!res.success && res.error) this.dirty = true;   // 下個週期重試
+    if (!res.success) {
+      this.dirty = true;   // 任何失敗（斷線 / 500 …）都留著下個週期重試
+      // 伺服器說作答已鎖 / 逾時：拉一次 resync 讓畫面切到正確狀態
+      if (res.error && /exam_attempt_locked|exam_time_up|exam_attempt_not_found/.test(String(res.error?.message || res.message || ""))) {
+        this.resync();
+      }
+      return;
+    }
+    // 用 server 回報的剩餘秒數校正倒數（每 15 秒一次，免得只靠切背景才校時）
+    this._anchorDeadline(res.data?.secondsRemaining, this.attempt.deadlineAt);
+    if (this.deadlineTs && Date.now() >= this.deadlineTs) this.submit("timeout");
   }
 
   collectAnswers() {
@@ -1288,10 +1320,19 @@ class ExamRunner {
     if (!res || !res.success) {
       this.submitting = false;
       if (btn) { btn.disabled = false; btn.textContent = "送出答案"; }
-      if (reason !== "manual") this.startTimer();   // 逾時自動送出失敗 → 恢復倒數，下次再試
+      if (reason !== "manual") {
+        // 逾時自動送出失敗（多半是斷線）→ 每 20 秒重試一次，不重開 1 秒倒數以免狂打
+        if (this._timeoutRetry) clearTimeout(this._timeoutRetry);
+        this._timeoutRetry = setTimeout(() => {
+          this._timeoutRetry = null;
+          if (this.attempt && this.attempt.status === "in_progress") this.submit("timeout");
+        }, 20000);
+        if (this.timerEl) { this.timerEl.hidden = false; this.timerEl.textContent = "時間到，送出中…"; }
+      }
       toast((res && res.message) || "送出失敗，請檢查網路後再試一次");
       return;
     }
+    if (this._timeoutRetry) { clearTimeout(this._timeoutRetry); this._timeoutRetry = null; }
     this.clearLocal();
     clearActiveExam();
     this.attempt.status = res.data?.status || "submitted";
