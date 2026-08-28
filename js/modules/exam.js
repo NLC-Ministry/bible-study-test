@@ -189,6 +189,12 @@ export async function renderExamPanel(root) {
       ? "正式測驗已結束，請在「簡答批改」「統計」分頁進行結算與成績公布。"
       : "測驗已關閉，不再接受作答。");
   }
+
+  // 清除作答紀錄：只有測試卷、且有紀錄時提供（獨立於「改回草稿」，方便不改題目直接重測）
+  if (paper.mode === "test" && attemptCount > 0) {
+    actions.push(`<button type="button" class="secondary-btn" data-exam-act="reset">清除作答紀錄（${attemptCount}）</button>`);
+    hints.push("「清除作答紀錄」只作用在測試卷，清掉後可從宣示畫面重新測試（不影響題目與設定）。");
+  }
   const actionHint = hints.join(" ");
 
   body.innerHTML = `
@@ -218,13 +224,23 @@ export async function renderExamPanel(root) {
     if (act === "unannounce" && !confirm("撤下後，會友首頁就不會再顯示這份測驗的預告區塊。確定？")) return;
     if (act === "publish" && live && !confirm("將正式開放全體會友作答（開放時間內），發佈後題庫會鎖定。確定？")) return;
     if (act === "reopen" && !confirm("改回草稿後，會友將無法再進入作答（預告文仍會保留在首頁）。確定？")) return;
+    if (act === "reset" && !confirm(`確定清除這份測試卷的 ${attemptCount} 筆作答紀錄？（無法復原）`)) return;
     b.disabled = true;
     let res;
     if (act === "announce") res = await db.publishExamAnnouncement(paper.id);
     else if (act === "unannounce") res = await db.unpublishExamAnnouncement(paper.id);
     else if (act === "publish") res = await db.publishExam(paper.id);
     else if (act === "close") res = await db.setExamStatus(paper.id, "closed");
-    else if (act === "reopen") res = await db.setExamStatus(paper.id, "draft");
+    else if (act === "reset") res = await db.resetExamAttempts(paper.id);
+    else if (act === "reopen") {
+      res = await db.setExamStatus(paper.id, "draft");
+      // 測試卷改回草稿後，順手問要不要一併清掉舊作答紀錄（題目一改，舊分數就對不上了）
+      if (res.success && paper.mode === "test" && attemptCount > 0
+          && confirm(`已改回草稿。要一併清除舊的 ${attemptCount} 筆作答紀錄嗎？（改完題目建議清除，否則新舊分數會混在一起）`)) {
+        const r2 = await db.resetExamAttempts(paper.id);
+        if (!r2.success) toast(r2.message || "作答紀錄清除失敗");
+      }
+    }
     b.disabled = false;
     if (!res.success) { toast(res.message || "操作失敗"); return; }
     toast(
@@ -232,6 +248,7 @@ export async function renderExamPanel(root) {
       : act === "unannounce" ? "已撤下預告文"
       : act === "publish" ? (live ? "測驗已正式發佈，會友可作答" : "已開放測試作答（僅管理員）")
       : act === "close" ? "測驗已關閉"
+      : act === "reset" ? `已清除 ${res.data?.deletedAttempts ?? ""} 筆作答紀錄`
       : "已改回草稿"
     );
     rerender();

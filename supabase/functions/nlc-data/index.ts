@@ -91,6 +91,7 @@ const EXAM_RPC_FUNCTIONS = new Set([
   "exam_unpublish_announcement",
   "exam_publish",
   "exam_set_status",
+  "exam_reset_attempts",
   "exam_home_banner",
   "exam_get_for_attempt",
   "exam_start_attempt",
@@ -113,6 +114,7 @@ const EXAM_ADMIN_RPC_FUNCTIONS = new Set([
   "exam_unpublish_announcement",
   "exam_publish",
   "exam_set_status",
+  "exam_reset_attempts",
   "exam_get_grading_queue",
   "exam_grade_answer",
   "exam_get_stats"

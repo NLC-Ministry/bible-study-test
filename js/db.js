@@ -3235,6 +3235,7 @@ const db = {
       exam_announcement_incomplete: "請先填寫預告文的標題與內容。",
       exam_announcement_already_published: "預告文已發佈。",
       exam_announcement_locked: "測驗已正式發佈，預告文無法再修改。",
+      exam_reset_live_forbidden: "正式測驗不可清除作答紀錄。如需重置請由工程人員處理。",
       exam_window_invalid: "請先設定正確的開放起訖時間。",
       exam_section_count_mismatch: "各大題題數與設定不符。",
       exam_answer_key_incomplete: "還有題目未填答案。",
@@ -3297,6 +3298,9 @@ const db = {
   },
   async setExamStatus(paperId, status) {
     return this._callExamRpc("exam_set_status", { p_paper_id: paperId, p_status: status });
+  },
+  async resetExamAttempts(paperId) {
+    return this._callExamRpc("exam_reset_attempts", { p_paper_id: paperId });
   },
 
   // 首頁 8/30 宣示 banner（一般會友；功能關閉 / 無已發預告試卷回 null）
