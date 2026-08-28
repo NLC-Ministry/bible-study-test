@@ -282,7 +282,9 @@ export async function renderExamPanel(root) {
     }
     if (act === "announce" && !confirm("將把這份預告文發佈到全體會友的首頁。確定？")) return;
     if (act === "unannounce" && !confirm("撤下後，會友首頁就不會再顯示這份測驗的預告區塊。確定？")) return;
-    if (act === "publish" && !confirm("將開放作答（開放時間內全體會友可作答），發佈後題庫會鎖定。確定？")) return;
+    if (act === "publish" && !confirm(isTest
+      ? "將開放「測試作答」——只有系統管理員能進入，不會出現在會友端。發佈後題庫會鎖定。確定？"
+      : "將開放作答（開放時間內全體會友可作答），發佈後題庫會鎖定。確定？")) return;
     if (act === "reopen" && !confirm("把已關閉的測驗改回草稿以便修改題目？（預告文仍保留在首頁）")) return;
     if (act === "reset" && !confirm(`確定清除這份測試卷的 ${attemptCount} 筆作答紀錄？（無法復原）`)) return;
     b.disabled = true;
@@ -306,7 +308,7 @@ export async function renderExamPanel(root) {
     toast(
       act === "announce" ? "預告文已發佈到會友首頁"
       : act === "unannounce" ? "已撤下預告文"
-      : act === "publish" ? "測驗已發佈，開放時間內可作答"
+      : act === "publish" ? (isTest ? "已開放測試作答（僅系統管理員）" : "測驗已發佈，開放時間內可作答")
       : act === "close" ? "測驗已關閉"
       : act === "reset" ? `已清除 ${res.data?.deletedAttempts ?? ""} 筆作答紀錄`
       : "已改回草稿"

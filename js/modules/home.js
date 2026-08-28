@@ -2705,12 +2705,34 @@ function bindQuizPledgeBanner() {
   }
 }
 
+let examHomeCountdownTimer = null;
+
+function stopExamHomeCountdown() {
+  if (examHomeCountdownTimer) { clearInterval(examHomeCountdownTimer); examHomeCountdownTimer = null; }
+}
+
+// 把毫秒差轉成「2 天 3 小時 4 分 5 秒」（0 的高位單位省略）
+function formatCountdown(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const parts = [];
+  if (d) parts.push(`${d} 天`);
+  if (d || h) parts.push(`${h} 小時`);
+  if (d || h || m) parts.push(`${m} 分`);
+  parts.push(`${sec} 秒`);
+  return parts.join(" ");
+}
+
 // 首頁「速讀大測驗」置頂區塊：內容全部由後台「預告文」分頁維護。
 // db.getExamHomeBanner() 在功能關閉 / 尚未發佈預告時回 null → 整塊隱藏。
 async function refreshExamHomeBanner() {
   const card = document.getElementById("quiz-announcement-banner");
   const host = document.getElementById("exam-home-banner");
   if (!card || !host) return;
+  stopExamHomeCountdown();
 
   let d = null;
   try {
@@ -2722,15 +2744,19 @@ async function refreshExamHomeBanner() {
 
   if (!d || !d.paperId) { card.classList.add("hidden"); host.innerHTML = ""; return; }
 
-  const now = Date.parse(d.serverNow) || Date.now();
+  const nowServer = Date.parse(d.serverNow) || Date.now();
+  const skew = nowServer - Date.now();                 // server 時間 − 本機時間
+  const serverNowFn = () => Date.now() + skew;
+  const openTs = Date.parse(d.openAt) || 0;
   const closeTs = Date.parse(d.closeAt) || 0;
   const my = d.myAttemptStatus || null;
-  const canEnter = d.canEnter === true;   // server 已判斷 mode/status/開放時間/角色
+  const canEnter = d.canEnter === true;   // server 已判斷 status/開放時間/角色
 
   let badge = "即將開放";
   let badgeKind = "warning";
   let note = d.body || "";
-  let action = null; // { kind:'enter'|'resume'|'result'|'pledge', label }
+  let action = null;       // { kind:'enter'|'resume'|'result'|'pledge', label }
+  let countdownTo = 0;     // >0 時在 banner 顯示倒數（倒數到這個時間戳）
 
   if (d.resultReady) {
     badge = "已公布成績"; badgeKind = "success";
@@ -2743,15 +2769,17 @@ async function refreshExamHomeBanner() {
     badge = "作答中"; badgeKind = "brand";
     note = "你有一份未完成的測驗，計時仍在進行。";
     action = { kind: "resume", label: "繼續作答" };
-  } else if (d.status === "closed" || (closeTs && now > closeTs)) {
+  } else if (d.status === "closed" || (closeTs && serverNowFn() > closeTs)) {
     badge = "已結束"; badgeKind = "neutral";
     note = d.body || "測驗已結束。";
   } else if (canEnter) {
     badge = "開放中"; badgeKind = "success";
     action = { kind: "enter", label: d.ctaLabel || "進入測驗" };
   } else {
+    // 尚未開放：不給「進入測驗」，改顯示倒數；「測驗宣示」按鈕保留讓人先讀規則
     badge = "即將開放"; badgeKind = "warning";
     action = { kind: "pledge", label: "測驗宣示" };
+    if (openTs && serverNowFn() < openTs) countdownTo = openTs;
   }
 
   const goExam = () => {
@@ -2767,6 +2795,7 @@ async function refreshExamHomeBanner() {
         <span class="stat-badge stat-badge--${badgeKind}">${escapeHTML(badge)}</span>
       </div>
       ${note ? `<p class="exam-home-banner__note">${escapeHTML(note)}</p>` : ""}
+      ${countdownTo ? `<p class="exam-home-banner__countdown">距離開放還有 <strong id="exam-home-countdown">${escapeHTML(formatCountdown(countdownTo - serverNowFn()))}</strong></p>` : ""}
     </div>
     ${action ? `<button type="button" class="primary-btn exam-home-banner__btn" id="exam-home-banner-action">${escapeHTML(action.label)}</button>` : ""}`;
 
@@ -2779,6 +2808,18 @@ async function refreshExamHomeBanner() {
       if (action.kind === "pledge") openQuizPledgeModal();
       else goExam();
     });
+  }
+
+  if (countdownTo) {
+    const el = host.querySelector("#exam-home-countdown");
+    examHomeCountdownTimer = setInterval(() => {
+      const left = countdownTo - serverNowFn();
+      const live = document.getElementById("exam-home-countdown");
+      if (!live) { stopExamHomeCountdown(); return; }
+      if (left <= 0) { stopExamHomeCountdown(); refreshExamHomeBanner(); return; }  // 時間到 → 重抓，換成「開放中」
+      live.textContent = formatCountdown(left);
+    }, 1000);
+    if (el) el.textContent = formatCountdown(countdownTo - serverNowFn());
   }
 }
 

@@ -10962,6 +10962,16 @@ body.dark-theme .plan-calendar .plan-day-cell.active .day-number, body.dark-them
   line-height: 1.5;
 }
 .exam-home-banner__btn { white-space: nowrap; }
+.exam-home-banner__countdown {
+  margin: 0.35rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+}
+.exam-home-banner__countdown strong {
+  font-weight: var(--type-weight-strong, 600);
+  color: var(--color-brand);
+  font-variant-numeric: tabular-nums;
+}
 
 /* 3. Border Beam Glow Animation */
 .bento-card::before {
