@@ -3208,7 +3208,7 @@ const db = {
   async fetchQuizNotifications() {
     const result = await this._callQuizRpc("get_quiz_notifications");
     return result.success
-      ? { data: Array.isArray(result.data) ? result.data : [], error: null }
+      ? { data: this._maskAdminSender(Array.isArray(result.data) ? result.data : []), error: null }
       : { data: [], error: result.error || new Error(result.message) };
   },
 
@@ -4927,6 +4927,20 @@ const db = {
     return { data: { key, enabled: normalized }, error: null };
   },
 
+  // 系統管理員發出的通知：一律遮成「系統管理員」，不外露本名。
+  _maskAdminSender(rows) {
+    if (!Array.isArray(rows)) return rows;
+    rows.forEach((row) => {
+      const s = row && row.sender;
+      const code = s && (s.role_definition?.code || s.role_definition?.[0]?.code);
+      if (code === "admin") {
+        s.name = "系統管理員";
+        if ("role_id" in s) s.role_id = null;
+      }
+    });
+    return rows;
+  },
+
   async fetchCareReminders() {
     const hostname = window.location.hostname;
     const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' ||
@@ -4970,7 +4984,7 @@ const db = {
           .eq("recipient_id", profileId)
           .eq("status", "unread")
           .order("created_at", { ascending: false });
-        return { data: data || [], error };
+        return { data: this._maskAdminSender(data || []), error };
       } catch (e) {
         return { data: [], error: e };
       }
@@ -5043,7 +5057,7 @@ const db = {
           .eq("recipient_id", profileId)
           .order("created_at", { ascending: false })
           .limit(20);
-        return { data: data || [], error };
+        return { data: this._maskAdminSender(data || []), error };
       } catch (e) {
         return { data: [], error: e };
       }
