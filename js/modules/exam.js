@@ -113,15 +113,17 @@ export async function renderExamPanel(root) {
     examAdminPaperId = res.data?.id || null;
     rerender();
   };
+  const statusZh = { draft: "草稿", published: "進行中", closed: "已關閉" };
   const pickerBar = `
     <div class="exam-admin__picker">
       <label>試卷
         <select class="form-control" id="exam-paper-picker">
-          ${papers.map((p) => `<option value="${esc(p.id)}" ${p.id === (paper && paper.id) ? "selected" : ""}>${esc(p.title)}｜${esc(p.status)}｜${esc(p.mode)}｜${p.questionCount} 題${p.attemptCount ? "｜作答 " + p.attemptCount : ""}</option>`).join("")}
+          ${papers.map((p) => `<option value="${esc(p.id)}" ${p.id === (paper && paper.id) ? "selected" : ""}>${p.mode === "live" ? "【正式】" : "【測試】"}${esc(p.title)}｜${esc(statusZh[p.status] || p.status)}｜${p.questionCount} 題${p.attemptCount ? "｜作答 " + p.attemptCount : ""}</option>`).join("")}
         </select>
       </label>
       <button type="button" class="secondary-btn" id="exam-create-paper">＋ 建立新試卷</button>
-    </div>`;
+    </div>
+    <p class="exam-admin__meta">測試版 →（改好題目）→「推上正式版」→ 在上方下拉切到【正式】那份，才能編預告文、發佈給會友。</p>`;
   const wirePicker = () => {
     body.querySelector("#exam-paper-picker")?.addEventListener("change", (e) => {
       examAdminPaperId = e.target.value || null; rerender();
@@ -209,12 +211,17 @@ export async function renderExamPanel(root) {
     hints.push("「清除作答紀錄」只作用在測試卷，清掉後可從宣示畫面重新測試（不影響題目與設定）。");
   }
 
-  // 推上正式版：只有測試卷才有。把題目 + 試卷設定複製到對應的正式版。
+  // 推上正式版 / 前往對應的另一份。
+  const liveOf = isTest ? papers.find((p) => p.mode === "live" && p.pushedFromId === paper.id) : null;
   if (isTest) {
     actions.push('<button type="button" class="primary-btn" data-exam-act="push">推上正式版</button>');
-    hints.push("「推上正式版」會把這份測試卷的題目與試卷設定複製到對應的正式版（各自獨立、預告文與發佈狀態不受影響）；若正式版已發佈，會退回草稿要重新發佈。");
+    if (liveOf) actions.push(`<button type="button" class="secondary-btn" data-exam-act="goto" data-goto="${esc(liveOf.id)}">前往正式版 →</button>`);
+    hints.push(liveOf
+      ? "「推上正式版」會把最新的題目與設定同步到正式版；正式版若已發佈會退回草稿要重新發佈。要編正式版的預告文 / 發佈給會友，按「前往正式版」。"
+      : "題目改好後按「推上正式版」，系統會自動建立對應的正式版，並切過去讓你編預告文、發佈給會友。");
   } else if (paper.pushed_from_id) {
-    hints.push("這份正式版的題目由對應的測試卷「推上正式版」而來。");
+    actions.push(`<button type="button" class="secondary-btn" data-exam-act="goto" data-goto="${esc(paper.pushed_from_id)}">← 前往測試版</button>`);
+    hints.push("這份正式版的題目由測試版「推上正式版」而來，只能在此編預告文與發佈；要改題請回測試版。");
   }
   const actionHint = hints.join(" ");
 
@@ -255,6 +262,12 @@ export async function renderExamPanel(root) {
   }));
   body.querySelectorAll("[data-exam-act]").forEach((b) => b.addEventListener("click", async () => {
     const act = b.dataset.examAct;
+    if (act === "goto") {
+      examAdminPaperId = b.dataset.goto || null;
+      examAdminSubview = "bank";
+      rerender();
+      return;
+    }
     if (act === "push") {
       if (!confirm("把這份測試卷的題目與試卷設定複製到對應的正式版？\n（正式版的預告文與發佈狀態不受影響；若正式版已發佈會退回草稿。）")) return;
       b.disabled = true;
