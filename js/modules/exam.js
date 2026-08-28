@@ -164,6 +164,10 @@ export async function renderExamPanel(root) {
     actions.push('<button type="button" class="secondary-btn" data-exam-act="unannounce">撤下預告文</button>');
   }
 
+  // 「改回草稿」只在安全時給：測試卷隨時可（本來就是沙盒）；正式卷只有「還沒有人作答」時可，
+  // 一旦正式測驗有作答紀錄就不再提供（避免影響已計分結果 / 會友作答中被撤）。
+  const canRevert = paper.status !== "draft" && (paper.mode === "test" || attemptCount === 0);
+
   // ── 測驗本身（status）──
   if (paper.status === "draft") {
     if (annPub) {
@@ -175,12 +179,15 @@ export async function renderExamPanel(root) {
   } else if (paper.status === "published") {
     actions.push(`<a class="primary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}" target="_blank" rel="noopener">實際作答（走完整流程）</a>`);
     actions.push('<button type="button" class="secondary-btn" data-exam-act="close">關閉測驗</button>');
-    actions.push('<button type="button" class="secondary-btn" data-exam-act="reopen">改回草稿</button>');
+    if (canRevert) actions.push('<button type="button" class="secondary-btn" data-exam-act="reopen">改回草稿</button>');
     hints.push((isLive ? "測驗進行中，會友可於開放時間內作答。" : "測試模式進行中，僅系統管理員可作答。")
       + " 「實際作答」會建立一筆真的作答紀錄且記錄以第一次為準；要重測請先清掉自己的紀錄（見說明）。");
+    if (isLive && !canRevert) hints.push("正式測驗已有人作答，已隱藏「改回草稿」；若真的需要修正題目，請由工程人員處理以免影響已計分結果。");
   } else if (paper.status === "closed") {
-    actions.push('<button type="button" class="secondary-btn" data-exam-act="reopen">改回草稿</button>');
-    hints.push("測驗已關閉，不再接受作答。");
+    if (canRevert) actions.push('<button type="button" class="secondary-btn" data-exam-act="reopen">改回草稿</button>');
+    hints.push(isLive && !canRevert
+      ? "正式測驗已結束，請在「簡答批改」「統計」分頁進行結算與成績公布。"
+      : "測驗已關閉，不再接受作答。");
   }
   const actionHint = hints.join(" ");
 
