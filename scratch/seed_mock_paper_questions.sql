@@ -98,7 +98,17 @@ BEGIN
        jsonb_build_object('id','E5','text','挪亞開了方舟的窗戶，放出一隻烏鴉'))),
      jsonb_build_array('E1','E2','E3','E4','E5','E6'));
 
-  RAISE NOTICE 'Inserted 10 questions (with answers) into paper %', v_paper;
+  -- 每題配分以「試卷設定 → 題型與配分」(exam_papers.sections[].pointsPer) 為準，
+  -- 不用上面 INSERT 寫死的 1。這樣自動計分才會跟你設定的配分一致。
+  UPDATE public.exam_questions q
+  SET points = COALESCE((
+    SELECT (e ->> 'pointsPer')::numeric
+    FROM public.exam_papers p, jsonb_array_elements(p.sections) e
+    WHERE p.id = q.paper_id AND e ->> 'type' = q.section
+  ), q.points)
+  WHERE q.paper_id = v_paper;
+
+  RAISE NOTICE 'Inserted 10 questions (with answers) into paper %; points synced from sections config', v_paper;
 END
 $seed$;
 

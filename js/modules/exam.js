@@ -138,6 +138,8 @@ export async function renderExamPanel(root) {
 
   const isLive = paper.mode === "live";
   const who = isLive ? "全體會友" : "僅系統管理員（測試模式）";
+  const hasShortSection = !!examSectionCfg(paper).shortanswer;   // 沒選「簡答題」→ 隱藏批改分頁
+  if (examAdminSubview === "grade" && !hasShortSection) examAdminSubview = "bank";
   const annPub = paper.announcement_published === true;
   const noticeReady = !!((paper.announcement || {}).headline || "").trim() && !!((paper.announcement || {}).body || "").trim();
 
@@ -206,7 +208,7 @@ export async function renderExamPanel(root) {
       <button type="button" data-exam-sub="notice" class="${examAdminSubview === "notice" ? "active" : ""}">預告文</button>
       <button type="button" data-exam-sub="bank" class="${examAdminSubview === "bank" ? "active" : ""}">題庫編輯</button>
       <button type="button" data-exam-sub="meta" class="${examAdminSubview === "meta" ? "active" : ""}">試卷設定</button>
-      <button type="button" data-exam-sub="grade" class="${examAdminSubview === "grade" ? "active" : ""}">簡答批改</button>
+      ${hasShortSection ? `<button type="button" data-exam-sub="grade" class="${examAdminSubview === "grade" ? "active" : ""}">簡答批改</button>` : ""}
       <button type="button" data-exam-sub="stats" class="${examAdminSubview === "stats" ? "active" : ""}">統計</button>
     </nav>
     <div id="exam-admin-sub"></div>`;
@@ -256,7 +258,7 @@ export async function renderExamPanel(root) {
   if (examAdminSubview === "notice") renderExamNoticeForm(sub, paper, rerender);
   else if (examAdminSubview === "meta") renderExamMetaForm(sub, paper, rerender);
   else if (examAdminSubview === "grade") renderExamGrading(sub, paper.id);
-  else if (examAdminSubview === "stats") renderExamStats(sub, paper.id);
+  else if (examAdminSubview === "stats") renderExamStats(sub, paper.id, hasShortSection);
   else renderExamQuestionBank(sub, paper, questions, rerender);
 }
 
@@ -299,7 +301,7 @@ function renderExamNoticeForm(host, paper, rerender) {
 }
 
 // ── 統計報表（整體 / 大區 / 牧區 / 小組 / 逐題正確率 / 名單）──
-async function renderExamStats(host, paperId) {
+async function renderExamStats(host, paperId, hasShort = true) {
   host.innerHTML = '<div class="admin-user-directory__empty">載入統計…</div>';
   const res = await db.getExamStats(paperId);
   if (!res.success) { host.innerHTML = `<div class="admin-user-directory__empty">${esc(res.message || "載入失敗")}</div>`; return; }
@@ -318,8 +320,8 @@ async function renderExamStats(host, paperId) {
       <div class="exam-stats__tile"><span>作答</span><strong>${num(o.submitted)}</strong></div>
       <div class="exam-stats__tile"><span>已批改</span><strong>${num(o.graded)}</strong></div>
       <div class="exam-stats__tile"><span>作答中</span><strong>${num(o.inProgress)}</strong></div>
-      <div class="exam-stats__tile"><span>平均（自動）</span><strong>${num(o.avgAuto)}</strong></div>
-      <div class="exam-stats__tile"><span>平均（總分）</span><strong>${num(o.avgTotal)}</strong></div>
+      ${hasShort ? `<div class="exam-stats__tile"><span>平均（自動）</span><strong>${num(o.avgAuto)}</strong></div>` : ""}
+      <div class="exam-stats__tile"><span>平均${hasShort ? "（總分）" : ""}</span><strong>${num(hasShort ? o.avgTotal : o.avgAuto)}</strong></div>
       <div class="exam-stats__tile"><span>最高／最低</span><strong>${num(o.maxTotal)} / ${num(o.minTotal)}</strong></div>
     </div>
 
@@ -353,7 +355,7 @@ async function renderExamStats(host, paperId) {
         { h: "總分和", f: (r) => num(r.totalSum) },
         { h: "最高／最低", f: (r) => `${num(r.maxTotal)} / ${num(r.minTotal)}` }])}
     </details>
-    <details class="exam-stats__sec"><summary>逐題正確率（一～五大題）</summary>
+    <details class="exam-stats__sec"><summary>逐題正確率（自動計分題）</summary>
       ${tbl(d.byQuestion || [], [
         { h: "大題", f: (r) => esc((SECTION_TITLE[r.section] || r.section).slice(0, 3)) },
         { h: "題", f: (r) => r.position },
@@ -368,20 +370,31 @@ async function renderExamStats(host, paperId) {
         { h: "牧區", f: (r) => esc(r.pastoralZone || "") },
         { h: "小組", f: (r) => esc(r.smallGroup || "") },
         { h: "組隊", f: (r) => esc(r.team || (r.teamDivision ? `${r.teamDivision} 人組` : "個人")) },
-        { h: "自動", f: (r) => num(r.autoScore) },
-        { h: "簡答", f: (r) => num(r.manualScore) },
-        { h: "總分", f: (r) => (r.status === "graded" ? `<strong>${num(r.totalScore)}</strong>` : "待批改") }])}</div>
+        ...(hasShort ? [
+          { h: "自動", f: (r) => num(r.autoScore) },
+          { h: "簡答", f: (r) => num(r.manualScore) },
+          { h: "總分", f: (r) => (r.status === "graded" ? `<strong>${num(r.totalScore)}</strong>` : "待批改") }
+        ] : [
+          { h: "分數", f: (r) => (r.status === "graded" ? `<strong>${num(r.totalScore ?? r.autoScore)}</strong>` : "計分中") }
+        ])])}</div>
     </details>`;
 
   host.querySelector("#exam-stats-csv")?.addEventListener("click", () => {
     const rows = d.roster || [];
-    const head = ["姓名", "大區", "牧區", "小組", "組隊", "組別", "狀態", "自動", "簡答", "總分", "送出時間"];
-    const csv = [head.join(",")].concat(rows.map((r) => [
+    const head = hasShort
+      ? ["姓名", "大區", "牧區", "小組", "組隊", "組別", "狀態", "自動", "簡答", "總分", "送出時間"]
+      : ["姓名", "大區", "牧區", "小組", "組隊", "組別", "狀態", "分數", "送出時間"];
+    const csv = [head.join(",")].concat(rows.map((r) => (hasShort ? [
       r.name, r.greatRegion, r.pastoralZone, r.smallGroup,
       r.team || (r.teamDivision ? `${r.teamDivision}人組` : "個人"),
       r.teamDivision ? `${r.teamDivision}人` : "個人",
       r.status, r.autoScore, r.manualScore, r.totalScore, r.submittedAt
-    ].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))).join("\r\n");
+    ] : [
+      r.name, r.greatRegion, r.pastoralZone, r.smallGroup,
+      r.team || (r.teamDivision ? `${r.teamDivision}人組` : "個人"),
+      r.teamDivision ? `${r.teamDivision}人` : "個人",
+      r.status, r.totalScore ?? r.autoScore, r.submittedAt
+    ]).map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))).join("\r\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1355,18 +1368,23 @@ class ExamRunner {
     });
 
     const wrongCount = answers.filter((a) => a.section !== "shortanswer" && a.autoCorrect === false).length;
+    const hasShort = answers.some((a) => a.section === "shortanswer");
+    const autoLabel = hasShort ? "自動計分（一～五大題）" : "得分";
 
     this.el.innerHTML = `
       <div class="glass-card" style="padding:1.4rem 1.5rem;">
         <h3 style="margin:0 0 .5rem;">${esc(this.paper.title)}</h3>
         <div class="exam-result__banner">
           測驗已送出，記錄以第一次為準、不可重作。<br>
-          自動計分（一～五大題）：<strong>${auto}</strong> 分
-          ${graded ? `　｜　簡答題：<strong>${d.manualScore ?? "—"}</strong> 分　｜　總分：<strong>${total ?? "—"}</strong> 分`
-                   : "<br>簡答題（第六大題）待管理員人工評分，成績公布後即可在此查看完整解答與正解。"}
+          ${esc(autoLabel)}：<strong>${auto}</strong> 分
+          ${!graded
+            ? "<br>簡答題（第六大題）待管理員人工評分，成績公布後即可在此查看完整解答與正解。"
+            : hasShort
+              ? `　｜　簡答題：<strong>${d.manualScore ?? "—"}</strong> 分　｜　總分：<strong>${total ?? "—"}</strong> 分`
+              : ""}
         </div>
         ${!answers.length ? "" : graded ? `
-          <p class="exam-result__hint">成績已公布。一～五大題答錯 ${wrongCount} 題，點開可看題目、你的作答與正解。</p>
+          <p class="exam-result__hint">成績已公布。${hasShort ? "一～五大題" : ""}答錯 ${wrongCount} 題，點開可看題目、你的作答與正解。</p>
           <details open>
             <summary class="exam-result__summary">逐題檢討（依大題順序）</summary>
             <div class="exam-result__list">${answers.map((a) => examResultRow(a, true)).join("")}</div>
