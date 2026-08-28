@@ -179,7 +179,7 @@ export async function renderExamPanel(root) {
         : "測試模式：按「開放測試作答」後只有系統管理員能進入作答，會友端看不到（發佈後題庫鎖定）。");
     }
   } else if (paper.status === "published") {
-    actions.push(`<a class="primary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}" target="_blank" rel="noopener">實際作答（走完整流程）</a>`);
+    actions.push(`<a class="primary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}" target="_blank" rel="noopener">${isLive ? "正式作答" : "測試作答"}</a>`);
     actions.push('<button type="button" class="secondary-btn" data-exam-act="close">關閉測驗</button>');
     hints.push((isLive ? "測驗進行中，會友可於開放時間內作答。" : "測試模式進行中，僅系統管理員可作答。")
       + " 要改題目，請先按「關閉測驗」再改回草稿。");
