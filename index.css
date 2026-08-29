@@ -14893,6 +14893,7 @@ textarea::placeholder {
 .exam-result__k { color: var(--text-muted); }
 .exam-ok { color: var(--color-success-foreground); }
 .exam-bad { color: var(--color-danger-foreground); }
+.exam-result__pending { color: var(--text-muted); }
 .exam-closed-card { padding: 1.25rem; }
 .exam-closed-card h3 { margin: 0 0 0.4rem; }
 .exam-closed-card p { margin: 0; font-size: 0.9375rem; color: var(--text-secondary); }

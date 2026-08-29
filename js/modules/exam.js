@@ -1670,27 +1670,28 @@ class ExamRunner {
     const wrongCount = answers.filter((a) => a.section !== "shortanswer" && a.autoCorrect === false).length;
     const hasShort = answers.some((a) => a.section === "shortanswer");
     const autoLabel = hasShort ? "自動計分（一～五大題）" : "得分";
+    // 成績未公布時不顯示暫定分數（可能是尚未定稿正解算出的、會誤導）
+    const showAuto = graded && auto !== "—" && auto !== null && auto !== undefined;
 
     this.el.innerHTML = `
       <div class="glass-card" style="padding:1.4rem 1.5rem;">
         <h3 style="margin:0 0 .5rem;">${esc(this.paper.title)}</h3>
         <div class="exam-result__banner">
           測驗已送出，記錄以第一次為準、不可重作。<br>
-          ${esc(autoLabel)}：<strong>${auto}</strong> 分
-          ${!graded
-            ? "<br>簡答題（第六大題）待管理員人工評分，成績公布後即可在此查看完整解答與正解。"
-            : hasShort
-              ? `　｜　簡答題：<strong>${d.manualScore ?? "—"}</strong> 分　｜　總分：<strong>${total ?? "—"}</strong> 分`
-              : ""}
+          ${showAuto
+            ? `${esc(autoLabel)}：<strong>${auto}</strong> 分${hasShort
+                ? `　｜　簡答題：<strong>${d.manualScore ?? "—"}</strong> 分　｜　總分：<strong>${total ?? "—"}</strong> 分`
+                : ""}`
+            : "成績尚未公布，管理員完成評分後會通知你，屆時可在此查看分數、完整解答與正解。"}
         </div>
-        ${!answers.length ? "" : graded ? `
+        ${!answers.length ? "" : graded && showAuto ? `
           <p class="exam-result__hint">成績已公布。${hasShort ? "一～五大題" : ""}答錯 ${wrongCount} 題，點開可看題目、你的作答與正解。</p>
           <details open>
             <summary class="exam-result__summary">逐題檢討（依大題順序）</summary>
             <div class="exam-result__list">${answers.map((a) => examResultRow(a, true)).join("")}</div>
           </details>` : `
           <details>
-            <summary class="exam-result__summary">先看一～五大題對錯</summary>
+            <summary class="exam-result__summary">先確認你的作答已收到</summary>
             <div class="exam-result__list">${answers.map((a) => examResultRow(a, false)).join("")}</div>
           </details>`}
         <button type="button" class="secondary-btn" id="exam-result-close" style="margin-top:1rem;">關閉</button>
@@ -1748,6 +1749,15 @@ function examResultRow(a, graded) {
   }
 
   const ok = a.autoCorrect === true;
+  const scored = a.autoCorrect === true || a.autoCorrect === false;   // null = 尚未計分
+  if (!scored) {
+    // 還沒判定對錯（自動評分關閉 / 尚未重新計分）——不要顯示「答錯」
+    const answered = a.response !== null && a.response !== undefined
+      && !(Array.isArray(a.response) && a.response.length === 0)
+      && !(typeof a.response === "object" && !Array.isArray(a.response) && Object.keys(a.response).length === 0);
+    return `<div class="exam-result__row"><span class="exam-result__q-inline">${head}：</span>${
+      answered ? '<span class="exam-result__pending">已作答，待計分</span>' : '<span class="exam-bad">未作答</span>'}</div>`;
+  }
   if (!graded || ok) {
     return `<div class="exam-result__row"><span class="exam-result__q-inline">${head}：</span>${
       ok ? '<span class="exam-ok">✓ 答對</span>' : '<span class="exam-bad">✗ 答錯</span>'}</div>`;
