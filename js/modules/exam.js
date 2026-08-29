@@ -1374,6 +1374,7 @@ class ExamRunner {
     if (this._practiceSaveDebounce) { clearTimeout(this._practiceSaveDebounce); this._practiceSaveDebounce = null; }
     if (this._timeoutRetry) { clearTimeout(this._timeoutRetry); this._timeoutRetry = null; }
     if (this._autoLeaveTimer) { clearTimeout(this._autoLeaveTimer); this._autoLeaveTimer = null; }
+    if (this._resultMatchResize) { window.removeEventListener("resize", this._resultMatchResize); this._resultMatchResize = null; }
     this.stopTimer();
   }
 
@@ -2143,6 +2144,16 @@ class ExamRunner {
         <button type="button" class="secondary-btn" id="exam-result-close" style="margin-top:1rem;">關閉</button>
       </div>`;
     this.el.querySelector("#exam-result-close")?.addEventListener("click", () => this.destroy());
+
+    // 連連看：畫線（等排版完成；收合的 <details> 展開時再補畫；視窗縮放重畫）
+    const redrawMatch = () => drawResultMatchLines(this.el);
+    requestAnimationFrame(redrawMatch);
+    this.el.querySelectorAll("details").forEach((d) => d.addEventListener("toggle", () => {
+      if (d.open) requestAnimationFrame(redrawMatch);
+    }));
+    if (this._resultMatchResize) window.removeEventListener("resize", this._resultMatchResize);
+    this._resultMatchResize = redrawMatch;
+    window.addEventListener("resize", this._resultMatchResize);
   }
 }
 
@@ -2152,26 +2163,34 @@ function describeExamValue(section, payload, value) {
   if (value === undefined || value === null) return "（未作答）";
   if (section === "truefalse") return value === true ? "O（對）" : value === false ? "X（錯）" : "（未作答）";
   if (section === "single") {
-    const t = (p.options || [])[value];
-    return t == null ? "（未作答）" : esc(t);
+    const n = Number(value);
+    return Number.isFinite(n) ? String(n + 1) : "（未作答）";
   }
   if (section === "multiple") {
     const arr = Array.isArray(value) ? value : [];
     if (!arr.length) return "（未作答）";
-    return arr.map((i) => esc((p.options || [])[i] ?? i)).join("、");
+    // 用選項編號（1、2、3…）呈現，比整段文字好讀
+    return [...arr].map(Number).filter((n) => Number.isFinite(n)).sort((a, b) => a - b)
+      .map((i) => i + 1).join("、");
   }
   if (section === "matching") {
-    const lt = Object.fromEntries((p.left || []).map((x) => [x.id, x.text]));
-    const rt = Object.fromEntries((p.right || []).map((x) => [x.id, x.text]));
+    const leftPos = Object.fromEntries((p.left || []).map((x, i) => [x.id, i + 1]));
+    const rightPos = Object.fromEntries((p.right || []).map((x, i) => [x.id, i + 1]));
     const ent = Object.entries(value || {});
     if (!ent.length) return "（未作答）";
-    return ent.map(([l, r]) => `${esc(lt[l] ?? l)} → ${esc(rt[r] ?? r)}`).join("；");
+    // 用左欄／右欄編號呈現：左1 → 右3（依左欄順序排）
+    return ent
+      .map(([l, r]) => ({ lp: leftPos[l] ?? 999, l, r }))
+      .sort((a, b) => a.lp - b.lp)
+      .map(({ l, r }) => `左${leftPos[l] ?? l} → 右${rightPos[r] ?? r}`)
+      .join("；");
   }
   if (section === "ordering") {
-    const it = Object.fromEntries((p.items || []).map((x) => [x.id, x.text]));
+    const pos = Object.fromEntries((p.items || []).map((x, i) => [x.id, i + 1]));
     const arr = Array.isArray(value) ? value : [];
     if (!arr.length) return "（未作答）";
-    return arr.map((id) => esc(it[id] ?? id)).join(" → ");
+    // 用「排序項目」清單的編號呈現：3 → 1 → 4 → 2
+    return arr.map((id) => pos[id] ?? id).join(" → ");
   }
   return esc(String(value)); // shortanswer：作答全文
 }
@@ -2183,15 +2202,50 @@ function examResultQuestionBody(a) {
     return `${stem}<ol class="exam-result__choices"><li>O（對）</li><li>X（錯）</li></ol>`;
   }
   if (a.section === "single" || a.section === "multiple") {
-    return `${stem}<ol class="exam-result__choices">${(p.options || []).map((option) => `<li>${esc(option)}</li>`).join("")}</ol>`;
+    const multi = a.section === "multiple";
+    const toIdx = (v) => Number(v);
+    const mine = multi
+      ? (Array.isArray(a.response) ? a.response.map(toIdx) : [])
+      : (a.response == null || a.response === "" ? [] : [toIdx(a.response)]);
+    const right = a.answerKey == null ? []
+      : (multi ? (Array.isArray(a.answerKey) ? a.answerKey.map(toIdx) : []) : [toIdx(a.answerKey)]);
+    return `${stem}<ol class="exam-result__choices exam-result__choices--marked">${(p.options || []).map((option, i) => {
+      const isMine = mine.includes(i);
+      const isRight = right.includes(i);
+      const cls = [isMine ? "is-mine" : "", isRight ? "is-right" : ""].filter(Boolean).join(" ");
+      const tags = `${isMine ? '<span class="exam-choice-tag exam-choice-tag--mine">你選的</span>' : ""}${isRight ? '<span class="exam-choice-tag exam-choice-tag--right">正解</span>' : ""}`;
+      return `<li${cls ? ` class="${cls}"` : ""}>${esc(option)}${tags ? "　" + tags : ""}</li>`;
+    }).join("")}</ol>`;
   }
   if (a.section === "matching") {
-    return `${stem}<div class="exam-result__matching"><div><strong>左欄</strong>${(p.left || []).map((item) => `<p>${esc(item.text)}</p>`).join("")}</div><div><strong>右欄</strong>${(p.right || []).map((item) => `<p>${esc(item.text)}</p>`).join("")}</div></div>`;
+    const left = p.left || [];
+    const right = p.right || [];
+    const respJson = esc(JSON.stringify(a.response && typeof a.response === "object" ? a.response : {}));
+    const keyJson = a.answerKey && typeof a.answerKey === "object" ? esc(JSON.stringify(a.answerKey)) : "";
+    const node = (side, item, n) => `<div class="exam-match-node" data-side="${side}" data-id="${esc(item.id)}">
+      <span class="exam-match-num">${n}</span><span class="exam-match-dot"></span>
+      <span class="exam-match-node__label">${esc(item.text)}</span></div>`;
+    return `${stem}
+      <div class="exam-match-board exam-result__match-board" data-resp="${respJson}" data-key="${keyJson}">
+        <div class="exam-match-col exam-match-col--left">${left.map((it, i) => node("L", it, i + 1)).join("")}</div>
+        <div class="exam-match-col exam-match-col--right">${right.map((it, i) => node("R", it, i + 1)).join("")}</div>
+      </div>
+      <p class="exam-result__match-legend"><span class="exam-legend-line exam-legend-line--user"></span>你連的${keyJson ? '　<span class="exam-legend-line exam-legend-line--fix"></span>正解（更正）' : ""}</p>`;
   }
   if (a.section === "ordering") {
     return `${stem}<p class="exam-result__k">排序項目：</p><ol class="exam-result__choices">${(p.items || []).map((item) => `<li>${esc(item.text)}</li>`).join("")}</ol>`;
   }
   return stem;
+}
+
+// 單選/複選：把 answerKey（選項索引）轉成選項文字，用「、」串
+function choiceAnswerText(a) {
+  const opts = (a.payload && a.payload.options) || [];
+  const idx = Array.isArray(a.answerKey)
+    ? a.answerKey
+    : (a.answerKey == null ? [] : [a.answerKey]);
+  const texts = idx.map((i) => opts[Number(i)]).filter((t) => t != null);
+  return texts.length ? texts.join("、") : "—";
 }
 
 function examResultRow(a, graded) {
@@ -2226,19 +2280,75 @@ function examResultRow(a, graded) {
         ? '<span class="exam-result__pending">已作答，尚未評分</span>'
         : '<span class="exam-bad">未作答</span>'}</p>
       ${questionBody}
-      <p class="exam-result__ln"><span class="exam-result__k">你的作答：</span>${describeExamValue(a.section, a.payload, a.response)}</p>
+      ${(a.section === "matching" || a.section === "single" || a.section === "multiple")
+        ? "" : `<p class="exam-result__ln"><span class="exam-result__k">你的作答：</span>${describeExamValue(a.section, a.payload, a.response)}</p>`}
     </div>`;
   }
+  // 連連看→畫線；單選/複選→選項用綠底標「你選的」；其餘（是非/排序）維持文字
+  const isMatch = a.section === "matching";
+  const isChoice = a.section === "single" || a.section === "multiple";
   return `<div class="exam-result__row ${ok ? "exam-result__row--correct" : "exam-result__row--wrong"}">
     <p class="exam-result__q">${head}（${a.points} 分）　${ok ? '<span class="exam-ok">✓ 答對</span>' : '<span class="exam-bad">✗ 答錯</span>'}</p>
     ${questionBody}
-    ${ok
-      ? `<p class="exam-result__ln"><span class="exam-result__k">你的作答：</span>${describeExamValue(a.section, a.payload, a.response)}</p>`
-      : graded
-        ? `<p class="exam-result__ln exam-result__corrected"><span class="exam-result__k">訂正答案：</span><strong>${describeExamValue(a.section, a.payload, a.answerKey)}</strong></p>`
-        : `<p class="exam-result__ln"><span class="exam-result__k">你的作答：</span>${describeExamValue(a.section, a.payload, a.response)}</p>`}
+    ${(isMatch || isChoice) ? "" : `<p class="exam-result__ln"><span class="exam-result__k">你的作答：</span>${describeExamValue(a.section, a.payload, a.response)}</p>`}
+    ${!ok && graded && !isMatch
+      ? `<p class="exam-result__ln exam-result__corrected"><span class="exam-result__k">正確答案：</span><strong>${
+          isChoice ? esc(choiceAnswerText(a)) : describeExamValue(a.section, a.payload, a.answerKey)
+        }</strong></p>`
+      : ""}
     <p class="exam-result__ln"><span class="exam-result__k">得　　分：</span><strong>${a.awardedPoints ?? (ok ? a.points : 0)} / ${a.points}</strong></p>
   </div>`;
+}
+
+// 成績檢討的連連看：把 data-resp / data-key 畫成線（綠＝你連的、紅虛線＝正解更正）
+function drawResultMatchLines(root) {
+  if (!root) return;
+  const NS = "http://www.w3.org/2000/svg";
+  root.querySelectorAll(".exam-result__match-board").forEach((board) => {
+    let resp = {};
+    let key = null;
+    try { resp = JSON.parse(board.dataset.resp || "{}") || {}; } catch (_) { resp = {}; }
+    try { key = board.dataset.key ? JSON.parse(board.dataset.key) : null; } catch (_) { key = null; }
+
+    let svg = board.querySelector(".match-lines");
+    if (!svg) {
+      svg = document.createElementNS(NS, "svg");
+      svg.setAttribute("class", "match-lines");
+      board.insertBefore(svg, board.firstChild);
+    }
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+    const br = board.getBoundingClientRect();
+    if (!br.width || !br.height) return;   // 還沒排版（<details> 收合中）→ 等展開再畫
+    const dot = (side, id) =>
+      board.querySelector(`.exam-match-node[data-side="${side}"][data-id="${cssAttr(id)}"] .exam-match-dot`);
+    const drawLine = (lid, rid, color, dashed) => {
+      const la = dot("L", lid);
+      const rb = dot("R", rid);
+      if (!la || !rb) return;
+      const a = la.getBoundingClientRect();
+      const b = rb.getBoundingClientRect();
+      const line = document.createElementNS(NS, "line");
+      line.setAttribute("x1", a.left + a.width / 2 - br.left);
+      line.setAttribute("y1", a.top + a.height / 2 - br.top);
+      line.setAttribute("x2", b.left + b.width / 2 - br.left);
+      line.setAttribute("y2", b.top + b.height / 2 - br.top);
+      line.setAttribute("stroke", color);
+      line.setAttribute("stroke-width", "2.5");
+      line.setAttribute("stroke-linecap", "round");
+      if (dashed) line.setAttribute("stroke-dasharray", "6 4");
+      svg.appendChild(line);
+    };
+
+    // 正解（更正）：紅虛線，只畫使用者連錯的那幾條
+    if (key) {
+      Object.entries(key).forEach(([l, r]) => {
+        if (String(resp[l]) !== String(r)) drawLine(l, r, "var(--color-danger-foreground, var(--color-danger))", true);
+      });
+    }
+    // 使用者原來的線：綠色
+    Object.entries(resp).forEach(([l, r]) => drawLine(l, r, "var(--color-success-foreground, var(--color-success))", false));
+  });
 }
 
 export default { renderExamPanel, mountExamRunner };

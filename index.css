@@ -14909,6 +14909,14 @@ textarea::placeholder {
 .exam-match-node.is-linked { border-color: var(--color-brand); }
 .exam-match-dot { width: 13px; height: 13px; border-radius: 50%; background: var(--bg-card); border: 2px solid var(--color-brand); flex-shrink: 0; }
 .exam-match-node.is-linked .exam-match-dot { background: var(--color-brand); }
+/* 成績檢討的靜態連連看板（畫線） */
+.exam-result__match-board { margin: 0.5rem 0 0.25rem; }
+.exam-result__match-board .exam-match-node { cursor: default; }
+.exam-match-num { font-weight: 500; color: var(--text-muted); min-width: 1.3em; text-align: center; flex-shrink: 0; }
+.exam-result__match-legend { font-size: 0.875rem; color: var(--text-secondary); margin: 0.35rem 0 0; display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
+.exam-legend-line { display: inline-block; width: 24px; border-top: 3px solid var(--text-muted); margin-right: 0.35rem; vertical-align: middle; }
+.exam-legend-line--user { border-top-color: var(--color-success-foreground, var(--color-success)); }
+.exam-legend-line--fix { border-top-style: dashed; border-top-color: var(--color-danger-foreground, var(--color-danger)); }
 .exam-match-clear { margin-top: 0.4rem; padding: 0.3rem 0.6rem; font-size: 0.875rem; }
 
 .exam-order-hint { font-size: 0.875rem; color: var(--text-muted); margin: 0.2rem 0; line-height: 1.6; }
@@ -14944,6 +14952,14 @@ textarea::placeholder {
 .exam-result__stem { margin: 0.35rem 0; color: var(--text-primary); }
 .exam-result__choices { margin: 0.35rem 0 0.5rem; padding-left: 1.5rem; color: var(--text-secondary); }
 .exam-result__choices li { margin: 0.15rem 0; }
+/* 單選/複選成績檢討：綠底＝你選的、紅底＝正解 */
+.exam-result__choices--marked li { margin: 0.25rem 0; padding: 0.2rem 0.45rem; border-radius: 6px; }
+.exam-result__choices--marked li.is-mine { background: color-mix(in srgb, var(--color-success) 16%, transparent); color: var(--text-primary); }
+.exam-result__choices--marked li.is-right { background: color-mix(in srgb, var(--color-danger) 14%, transparent); color: var(--text-primary); }
+.exam-result__choices--marked li.is-mine.is-right { background: color-mix(in srgb, var(--color-success) 18%, transparent); }
+.exam-choice-tag { font-size: 0.875rem; font-weight: 500; white-space: nowrap; }
+.exam-choice-tag--mine { color: var(--color-success-foreground, var(--color-success)); }
+.exam-choice-tag--right { color: var(--color-danger-foreground, var(--color-danger)); }
 .exam-result__matching { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0.75rem; margin: 0.35rem 0 0.5rem; }
 .exam-result__matching > div { border: 1px solid var(--border-card); border-radius: 8px; padding: 0.5rem; }
 .exam-result__matching p { margin: 0.2rem 0; color: var(--text-secondary); }
