@@ -4,7 +4,10 @@ import {
   sendBulkPlanInvitations,
   wasPlanInviteRemindedToday
 } from "./admin-bulk-plan-invite.mjs";
-import { buildAdminRegistrationStatisticsPlans } from "./admin-registration-plan-options.mjs";
+import {
+  buildAdminRegistrationStatisticsPlans,
+  selectDefaultAdminRegistrationStatisticsPlan
+} from "./admin-registration-plan-options.mjs";
 import { resolveAdminRegistrationSummary } from "./admin-registration-summary.mjs";
 import {
   ADMIN_ORG_UNASSIGNED,
@@ -1286,11 +1289,7 @@ export async function renderAdminRegistrationStatistics() {
   }
 
   plans.forEach(plan => planSelect.options.add(new Option(plan.name || "未命名計畫", String(plan.id))));
-  // Default to the first phase plan (containing "第一期" or "第1期" in name, or fallback to the oldest plan)
-  let defaultPlan = plans.find(plan => (plan.name || "").includes("第1階段") || (plan.name || "").includes("第一輪"));
-  if (!defaultPlan && plans.length > 0) {
-    defaultPlan = plans[plans.length - 1]; // plans is sorted descending by startDate, so the last is the oldest
-  }
+  const defaultPlan = selectDefaultAdminRegistrationStatisticsPlan(plans);
   if (defaultPlan && Array.from(planSelect.options).some(option => option.value === String(defaultPlan.id))) {
     planSelect.value = String(defaultPlan.id);
   }

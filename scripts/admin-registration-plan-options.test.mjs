@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   FIRST_STAGE_GLOBAL_PLAN_ID,
-  buildAdminRegistrationStatisticsPlans
+  buildAdminRegistrationStatisticsPlans,
+  selectDefaultAdminRegistrationStatisticsPlan
 } from "../js/modules/admin-registration-plan-options.mjs";
 
 describe("admin registration statistics plan options", () => {
@@ -39,5 +40,23 @@ describe("admin registration statistics plan options", () => {
     expect(plans.find(plan => plan.id === FIRST_STAGE_GLOBAL_PLAN_ID)?.name).toBe("資料庫第一階段");
     expect(plans.map(plan => plan.id)).toContain(otherId);
     expect(plans.some(plan => plan.plan_kind === "church_campaign")).toBe(false);
+  });
+
+  it("defaults to the plan currently running in Taiwan instead of matching its name", () => {
+    const plans = [
+      { id: "11111111-1111-4111-8111-111111111111", name: "第一輪舊計畫", startDate: "2026-08-01", endDate: "2026-08-20" },
+      { id: "22222222-2222-4222-8222-222222222222", name: "目前進行中的計畫", startDate: "2026-08-21", endDate: "2026-09-10" }
+    ];
+    expect(selectDefaultAdminRegistrationStatisticsPlan(plans, new Date("2026-08-30T04:00:00Z"))?.id)
+      .toBe("22222222-2222-4222-8222-222222222222");
+  });
+
+  it("falls back to the nearest upcoming plan when none is ongoing", () => {
+    const plans = [
+      { id: "11111111-1111-4111-8111-111111111111", startDate: "2026-09-20", endDate: "2026-09-30" },
+      { id: "22222222-2222-4222-8222-222222222222", startDate: "2026-09-05", endDate: "2026-09-15" }
+    ];
+    expect(selectDefaultAdminRegistrationStatisticsPlan(plans, new Date("2026-08-30T04:00:00Z"))?.id)
+      .toBe("22222222-2222-4222-8222-222222222222");
   });
 });
