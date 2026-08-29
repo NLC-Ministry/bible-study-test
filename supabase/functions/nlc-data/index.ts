@@ -108,6 +108,8 @@ const EXAM_RPC_FUNCTIONS = new Set([
   "exam_get_practice_records",
   "exam_get_practice_detail",
   "exam_home_banner",
+  "exam_home_exams",
+  "exam_my_papers",
   "exam_get_for_attempt",
   "exam_start_attempt",
   "exam_save_progress",

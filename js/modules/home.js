@@ -2726,39 +2726,12 @@ function formatCountdown(ms) {
   return parts.join(" ");
 }
 
-// 首頁「速讀大測驗」置頂區塊：內容全部由後台「預告文」分頁維護。
-// db.getExamHomeBanner() 在功能關閉 / 尚未發佈預告時回 null → 整塊隱藏。
-async function refreshExamHomeBanner() {
-  const card = document.getElementById("quiz-announcement-banner");
-  const host = document.getElementById("exam-home-banner");
-  if (!card || !host) return;
-  stopExamHomeCountdown();
-
-  let d = null;
-  try {
-    if (typeof db !== "undefined" && typeof db.getExamHomeBanner === "function") {
-      const res = await db.getExamHomeBanner();
-      d = res && res.data ? res.data : null;
-    }
-  } catch (_) { d = null; }
-
-  if (!d || !d.paperId) { card.classList.add("hidden"); host.innerHTML = ""; return; }
-
-  const nowServer = Date.parse(d.serverNow) || Date.now();
-  const skew = nowServer - Date.now();                 // server 時間 − 本機時間
-  const serverNowFn = () => Date.now() + skew;
+function getExamHomeCardState(d, serverNow) {
   const openTs = Date.parse(d.openAt) || 0;
   const closeTs = Date.parse(d.closeAt) || 0;
   const my = d.myAttemptStatus || null;
-  const canEnter = d.canEnter === true;   // server 已判斷 status/開放時間/角色
-
-  let badge = "即將開放";
-  let badgeKind = "warning";
-  let note = d.body || "";
-  let action = null;       // { kind:'enter'|'resume'|'result'|'pledge', label }
-  let practiceAction = null;
-  let countdownTo = 0;     // >0 時在 banner 顯示倒數（倒數到這個時間戳）
-
+  let badge = "即將開放", badgeKind = "warning", note = d.body || "", action = null, practiceAction = null;
+  let countdownTo = 0;
   if (d.resultReady) {
     badge = "已公布成績"; badgeKind = "success";
     note = d.myTotalScore != null ? `你的總分：${d.myTotalScore} 分` : "成績已公布。";
@@ -2771,73 +2744,89 @@ async function refreshExamHomeBanner() {
     badge = "作答中"; badgeKind = "brand";
     note = "你有一份未完成的測驗，計時仍在進行。";
     action = { kind: "resume", label: "繼續作答" };
-  } else if (d.status === "closed" || (closeTs && serverNowFn() > closeTs)) {
-    badge = "已結束"; badgeKind = "neutral";
-    note = d.body || "測驗已結束。";
-  } else if (canEnter) {
+  } else if (d.status === "closed" || (closeTs && serverNow > closeTs)) {
+    badge = "已結束"; badgeKind = "neutral"; note = d.body || "測驗已結束。";
+  } else if (d.canEnter === true) {
     badge = "開放中"; badgeKind = "success";
     action = { kind: "enter", label: d.ctaLabel || "進入測驗" };
   } else {
-    // 尚未開放：不給「進入測驗」，改顯示倒數；「測驗宣示」按鈕保留讓人先讀規則
-    badge = "即將開放"; badgeKind = "warning";
     action = { kind: "pledge", label: "測驗宣示" };
-    if (openTs && serverNowFn() < openTs) countdownTo = openTs;
+    if (openTs && serverNow < openTs) countdownTo = openTs;
   }
+  if (d.practiceAttemptStatus === "in_progress") practiceAction = { label: "繼續重作練習" };
+  else if (d.canPractice) practiceAction = { label: "開始重作練習" };
+  else if (d.practiceReviewReady) practiceAction = { label: "查看重作紀錄" };
+  return { badge, badgeKind, note, action, practiceAction, countdownTo };
+}
 
-  if (d.practiceAttemptStatus === "in_progress") {
-    practiceAction = { kind: "practice", label: "繼續重作練習" };
-  } else if (d.canPractice) {
-    practiceAction = { kind: "practice", label: "開始重作練習" };
-  } else if (d.practiceReviewReady) {
-    practiceAction = { kind: "practice", label: "查看重作紀錄" };
-  }
+// 首頁「速讀大測驗」置頂區塊：同時呈現所有已發預告試卷，每卷狀態完全獨立。
+async function refreshExamHomeBanner() {
+  const card = document.getElementById("quiz-announcement-banner");
+  const host = document.getElementById("exam-home-banner");
+  if (!card || !host) return;
+  stopExamHomeCountdown();
 
-  const goExam = () => {
-    const url = "exam.html?paper=" + encodeURIComponent(d.paperId) + "&return=" + encodeURIComponent(location.pathname + location.search);
-    try { location.assign(url); } catch (_) { location.href = url; }
-  };
-  const goPractice = () => {
-    const url = "exam.html?paper=" + encodeURIComponent(d.paperId) + "&attempt=practice&return=" + encodeURIComponent(location.pathname + location.search);
-    try { location.assign(url); } catch (_) { location.href = url; }
-  };
+  let exams = [];
+  try {
+    if (typeof db !== "undefined" && typeof db.getExamHomeExams === "function") {
+      const res = await db.getExamHomeExams();
+      exams = Array.isArray(res?.data) ? res.data : [];
+      if (res?.error && typeof db.getExamHomeBanner === "function") {
+        const legacy = await db.getExamHomeBanner();
+        exams = legacy?.data?.paperId ? [legacy.data] : [];
+      }
+    } else if (typeof db !== "undefined" && typeof db.getExamHomeBanner === "function") {
+      const res = await db.getExamHomeBanner();
+      exams = res?.data?.paperId ? [res.data] : [];
+    }
+  } catch (_) { exams = []; }
 
-  host.innerHTML = `
-    <span class="nlc-icon nlc-icon--hero exam-home-banner__icon" data-icon="megaphone" aria-hidden="true"></span>
-    <div class="exam-home-banner__main">
-      <div class="exam-home-banner__head">
-        <h3 class="card-title exam-home-banner__title">${escapeHTML(d.headline || d.title || "速讀大測驗")}</h3>
-        <span class="stat-badge stat-badge--${badgeKind}">${escapeHTML(badge)}</span>
+  exams = exams.filter(item => item?.paperId);
+  if (!exams.length) { card.classList.add("hidden"); host.innerHTML = ""; return; }
+
+  host.innerHTML = exams.map(d => {
+    const nowServer = Date.parse(d.serverNow) || Date.now();
+    const state = getExamHomeCardState(d, nowServer);
+    return `<article class="exam-home-banner__item" data-exam-paper-id="${escapeHTML(d.paperId)}" data-server-skew="${nowServer - Date.now()}" data-countdown-to="${state.countdownTo || 0}">
+      <span class="nlc-icon nlc-icon--hero exam-home-banner__icon" data-icon="megaphone" aria-hidden="true"></span>
+      <div class="exam-home-banner__main">
+        <div class="exam-home-banner__head">
+          <h3 class="card-title exam-home-banner__title">${escapeHTML(d.headline || d.title || "速讀大測驗")}</h3>
+          <span class="stat-badge stat-badge--${state.badgeKind}">${escapeHTML(state.badge)}</span>
+        </div>
+        ${state.note ? `<p class="exam-home-banner__note">${escapeHTML(state.note)}</p>` : ""}
+        ${state.countdownTo ? `<p class="exam-home-banner__countdown">距離開放還有 <strong data-exam-countdown>${escapeHTML(formatCountdown(state.countdownTo - nowServer))}</strong></p>` : ""}
       </div>
-      ${note ? `<p class="exam-home-banner__note">${escapeHTML(note)}</p>` : ""}
-      ${countdownTo ? `<p class="exam-home-banner__countdown">距離開放還有 <strong id="exam-home-countdown">${escapeHTML(formatCountdown(countdownTo - serverNowFn()))}</strong></p>` : ""}
-    </div>
-    <div class="exam-home-banner__actions">
-      ${action ? `<button type="button" class="primary-btn exam-home-banner__btn" id="exam-home-banner-action">${escapeHTML(action.label)}</button>` : ""}
-      ${practiceAction ? `<button type="button" class="secondary-btn exam-home-banner__btn" id="exam-home-practice-action">${escapeHTML(practiceAction.label)}</button>` : ""}
-    </div>`;
+      <div class="exam-home-banner__actions">
+        ${state.action ? `<button type="button" class="primary-btn exam-home-banner__btn" data-exam-primary="${escapeHTML(state.action.kind)}">${escapeHTML(state.action.label)}</button>` : ""}
+        ${state.practiceAction ? `<button type="button" class="secondary-btn exam-home-banner__btn" data-exam-practice>${escapeHTML(state.practiceAction.label)}</button>` : ""}
+      </div>
+    </article>`;
+  }).join("");
 
   card.classList.remove("hidden");
   if (typeof hydrateIcons === "function") hydrateIcons(host);
-
-  const btn = host.querySelector("#exam-home-banner-action");
-  if (btn && action) {
-    btn.addEventListener("click", () => {
-      if (action.kind === "pledge") openQuizPledgeModal();
-      else goExam();
+  host.querySelectorAll("[data-exam-paper-id]").forEach(item => {
+    const paperId = item.dataset.examPaperId;
+    const go = practice => {
+      const url = `exam.html?paper=${encodeURIComponent(paperId)}${practice ? "&attempt=practice" : ""}&return=${encodeURIComponent(location.pathname + location.search)}`;
+      try { location.assign(url); } catch (_) { location.href = url; }
+    };
+    item.querySelector("[data-exam-primary]")?.addEventListener("click", event => {
+      if (event.currentTarget.dataset.examPrimary === "pledge") openQuizPledgeModal(); else go(false);
     });
-  }
-  host.querySelector("#exam-home-practice-action")?.addEventListener("click", goPractice);
-
-  if (countdownTo) {
-    const el = host.querySelector("#exam-home-countdown");
+    item.querySelector("[data-exam-practice]")?.addEventListener("click", () => go(true));
+  });
+  if (host.querySelector("[data-exam-countdown]")) {
     examHomeCountdownTimer = setInterval(() => {
-      const left = countdownTo - serverNowFn();
-      const live = document.getElementById("exam-home-countdown");
-      if (!live) { stopExamHomeCountdown(); return; }
-      if (left <= 0) { stopExamHomeCountdown(); refreshExamHomeBanner(); return; }  // 時間到 → 重抓，換成「開放中」
-      live.textContent = formatCountdown(left);
+      let expired = false;
+      host.querySelectorAll("[data-exam-countdown]").forEach(el => {
+        const item = el.closest("[data-exam-paper-id]");
+        const left = Number(item?.dataset.countdownTo || 0) - (Date.now() + Number(item?.dataset.serverSkew || 0));
+        if (left <= 0) expired = true; else el.textContent = formatCountdown(left);
+      });
+      if (expired) { stopExamHomeCountdown(); refreshExamHomeBanner(); }
     }, 1000);
-    if (el) el.textContent = formatCountdown(countdownTo - serverNowFn());
   }
 }
 

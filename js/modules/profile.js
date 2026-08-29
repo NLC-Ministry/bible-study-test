@@ -525,6 +525,89 @@ export async function renderProfileView() {
   }
 
   await renderCareReminders();
+  if (document.querySelector('.profile-tab-trigger[data-profile-tab="exams"]')?.classList.contains("active")) {
+    await renderMyExamPapers();
+  }
+}
+
+function formatExamDateRange(openAt, closeAt) {
+  const format = value => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "未設定" : new Intl.DateTimeFormat("zh-TW", {
+      timeZone: "Asia/Taipei", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false
+    }).format(date);
+  };
+  return `${format(openAt)}－${format(closeAt)}`;
+}
+
+function getMyExamDisplay(item) {
+  const now = Date.parse(item.serverNow) || Date.now();
+  const closeAt = Date.parse(item.closeAt) || 0;
+  const official = item.myAttemptStatus || "";
+  if (item.resultReady) return { group: "published", badge: "成績已公布", kind: "success", primary: "查看正式成績" };
+  if (official === "in_progress") return { group: "active", badge: "正式作答中", kind: "brand", primary: "繼續正式作答" };
+  if (official === "submitted" || official === "graded") return { group: "waiting", badge: "等待公布", kind: "warning", primary: "查看我的作答" };
+  if (item.canEnter) return { group: "active", badge: "開放作答", kind: "success", primary: "開始正式作答" };
+  if (item.status === "closed" || (closeAt && now >= closeAt)) return { group: "history", badge: "活動已結束", kind: "neutral", primary: null };
+  return { group: "active", badge: "即將開放", kind: "warning", primary: null };
+}
+
+async function renderMyExamPapers() {
+  const host = document.getElementById("profile-exams-list");
+  if (!host) return;
+  if (!state.currentUser || state.offlineMode || typeof db === "undefined" || typeof db.getMyExamPapers !== "function") {
+    host.innerHTML = '<div class="profile-exams__empty">請先登入並連線，才能查看測驗紀錄。</div>';
+    return;
+  }
+  if (firstPaint(host)) host.innerHTML = '<div class="profile-exams__loading">正在整理你的測驗紀錄…</div>';
+  const result = await db.getMyExamPapers();
+  if (result.error) {
+    host.innerHTML = '<div class="profile-exams__empty">目前無法載入測驗紀錄，請稍後再試。</div>';
+    return;
+  }
+  const papers = Array.isArray(result.data) ? result.data.filter(item => item?.paperId) : [];
+  if (!papers.length) {
+    host.innerHTML = '<div class="profile-exams__empty">目前還沒有可參加或已完成的測驗。</div>';
+    return;
+  }
+  const labels = { active: "進行中", waiting: "等待公布", published: "已公布", history: "歷史測驗" };
+  const groups = { active: [], waiting: [], published: [], history: [] };
+  papers.forEach(item => groups[getMyExamDisplay(item).group].push(item));
+  host.innerHTML = Object.entries(groups).filter(([, items]) => items.length).map(([group, items]) => `
+    <section class="profile-exams__group">
+      <h4>${labels[group]} <span>${items.length}</span></h4>
+      ${items.map(item => {
+        const display = getMyExamDisplay(item);
+        const practiceLabel = item.practiceAttemptStatus === "in_progress" ? "繼續重作練習"
+          : item.canPractice ? "開始重作練習" : item.practiceAttemptId ? "查看重作紀錄" : "";
+        return `<article class="profile-exam-card" data-profile-exam-id="${escapeHTML(item.paperId)}">
+          <div class="profile-exam-card__head">
+            <div><h5>${escapeHTML(item.title || item.headline || "速讀大測驗")}</h5><p>${escapeHTML(formatExamDateRange(item.openAt, item.closeAt))}</p></div>
+            <span class="stat-badge stat-badge--${display.kind}">${display.badge}</span>
+          </div>
+          ${item.resultReady && item.myTotalScore != null ? `<div class="profile-exam-card__score"><span>正式成績</span><strong>${escapeHTML(String(item.myTotalScore))} 分</strong></div>` : ""}
+          <div class="profile-exam-card__records">
+            <span>正式作答：${item.officialAttemptId ? "已建立紀錄" : "尚未作答"}</span>
+            <span>重作練習：${item.practiceAttemptId ? "已有紀錄（不列入正式成績）" : "尚無紀錄"}</span>
+          </div>
+          <div class="profile-exam-card__actions">
+            ${display.primary ? `<button type="button" class="primary-btn" data-profile-exam-official>${display.primary}</button>` : ""}
+            ${practiceLabel ? `<button type="button" class="secondary-btn" data-profile-exam-practice>${practiceLabel}</button>` : ""}
+          </div>
+        </article>`;
+      }).join("")}
+    </section>`).join("");
+  if (typeof hydrateIcons === "function") hydrateIcons(host);
+  host.querySelectorAll("[data-profile-exam-id]").forEach(card => {
+    const paperId = card.dataset.profileExamId;
+    const go = practice => {
+      const returnTo = `${location.pathname}${location.search}#my-exams`;
+      const url = `exam.html?paper=${encodeURIComponent(paperId)}${practice ? "&attempt=practice" : ""}&return=${encodeURIComponent(returnTo)}`;
+      try { location.assign(url); } catch (_) { location.href = url; }
+    };
+    card.querySelector("[data-profile-exam-official]")?.addEventListener("click", () => go(false));
+    card.querySelector("[data-profile-exam-practice]")?.addEventListener("click", () => go(true));
+  });
 }
 
 async function renderCareReminders() {
@@ -692,8 +775,13 @@ export function init() {
       if (targetTab === "badges" && typeof window.renderBadgeWall === "function") {
         window.renderBadgeWall("badges-grid");
       }
+      if (targetTab === "exams") void renderMyExamPapers();
     };
   });
+
+  if (location.hash === "#my-exams") {
+    document.querySelector('.profile-tab-trigger[data-profile-tab="exams"]')?.click();
+  }
 
 
 
@@ -739,6 +827,7 @@ export function init() {
       await handleLogoutAndClearCache();
     });
   }
+  document.getElementById("profile-exams-refresh")?.addEventListener("click", () => renderMyExamPapers());
 
   const btnShareApp = document.getElementById("btn-share-app");
   if (btnShareApp && btnShareApp.dataset.bound !== "true") {

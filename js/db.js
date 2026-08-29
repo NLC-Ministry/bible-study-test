@@ -3377,6 +3377,16 @@ const db = {
       p_reading_team_id: readingTeamId || null
     });
   },
+  async getExamHomeExams() {
+    const result = await this._callExamRpc("exam_home_exams");
+    return result.success ? { data: Array.isArray(result.data) ? result.data : [], error: null }
+                          : { data: [], error: result.error || new Error(result.message) };
+  },
+  async getMyExamPapers() {
+    const result = await this._callExamRpc("exam_my_papers");
+    return result.success ? { data: Array.isArray(result.data) ? result.data : [], error: null }
+                          : { data: [], error: result.error || new Error(result.message) };
+  },
   async startExamPractice(paperId, acknowledged = false) {
     return this._callExamRpc("exam_start_practice", {
       p_paper_id: paperId,

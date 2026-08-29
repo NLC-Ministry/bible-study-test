@@ -10934,10 +10934,18 @@ body.dark-theme .plan-calendar .plan-day-cell.active .day-number, body.dark-them
 
 /* 首頁「速讀大測驗」置頂區塊：內容由後台預告文帶入（喇叭圖示 + 標題/說明 + 入口鈕）。 */
 .exam-home-banner {
+  display: grid;
+  gap: 0.85rem;
+}
+.exam-home-banner__item {
   display: flex;
   align-items: center;
   gap: 0.85rem;
   flex-wrap: wrap;
+}
+.exam-home-banner__item + .exam-home-banner__item {
+  border-top: 1px solid var(--border-card);
+  padding-top: 0.85rem;
 }
 .exam-home-banner__icon {
   color: var(--color-brand);
@@ -12284,6 +12292,7 @@ body.dark-theme .custom-confirm-overlay {
   padding: 3px;
   margin: 1rem 0 1.25rem 0;
   gap: 2px;
+  overflow-x: auto;
 }
 
 .profile-tab-trigger {
@@ -12299,6 +12308,7 @@ body.dark-theme .custom-confirm-overlay {
   color: var(--text-secondary);
   transition: var(--transition-smooth);
   outline: none;
+  min-width: max-content;
 }
 
 .profile-tab-trigger:hover {
@@ -12314,6 +12324,42 @@ body.dark-theme .custom-confirm-overlay {
 .profile-tab-content.hidden {
   display: none !important;
 }
+
+.profile-exams__header,
+.profile-exam-card__head,
+.profile-exam-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.profile-exams__header h3,
+.profile-exams__header p,
+.profile-exams__group h4,
+.profile-exam-card h5,
+.profile-exam-card p { margin: 0; }
+.profile-exams__header p,
+.profile-exam-card p,
+.profile-exam-card__records { color: var(--text-secondary); font-size: 0.875rem; }
+.profile-exams__list { display: grid; gap: 1.25rem; margin-top: 1rem; }
+.profile-exams__group { display: grid; gap: 0.65rem; }
+.profile-exams__group h4 { font-size: 0.9375rem; color: var(--text-primary); }
+.profile-exams__group h4 span { color: var(--text-muted); font-weight: 400; }
+.profile-exam-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+.profile-exam-card h5 { font-size: 1rem; color: var(--text-primary); }
+.profile-exam-card__records { display: grid; gap: 0.25rem; }
+.profile-exam-card__score { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
+.profile-exam-card__score strong { color: var(--color-brand); font-size: 1.125rem; }
+.profile-exams__empty,
+.profile-exams__loading { padding: 1.5rem; text-align: center; color: var(--text-secondary); font-size: 0.9375rem; }
 
 .profile-preferences-group {
   margin-bottom: 1rem;

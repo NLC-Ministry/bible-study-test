@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260828_exam_p5f" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260829_exam_p5g" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -1546,6 +1546,7 @@
               <!-- iOS/Shadcn-style Tab Switcher -->
               <div class="profile-tabs-list">
                 <button type="button" class="profile-tab-trigger active" data-profile-tab="settings">帳號設定</button>
+                <button type="button" class="profile-tab-trigger" data-profile-tab="exams">我的測驗</button>
                 <button type="button" class="profile-tab-trigger" data-profile-tab="preferences">偏好設定</button>
                 <button type="button" class="profile-tab-trigger" data-profile-tab="badges">我的徽章</button>
               </div>
@@ -1658,6 +1659,17 @@
                   </button>
                 </div>
               </div>
+              </div>
+
+              <div id="profile-tab-content-exams" class="profile-tab-content hidden">
+                <div class="profile-exams__header">
+                  <div>
+                    <h3>我的測驗</h3>
+                    <p>正式作答與重作練習分開保存；只有正式作答列入評分。</p>
+                  </div>
+                  <button type="button" class="secondary-btn" id="profile-exams-refresh">重新整理</button>
+                </div>
+                <div id="profile-exams-list" class="profile-exams__list" aria-live="polite"></div>
               </div>
 
               <!-- Tab Content 2: Preferences -->
@@ -2634,7 +2646,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260828_exam_p5f"></script>
+  <script type="module" src="js/app.js?v=20260829_exam_p5g"></script>
 </body>
 
 </html>
