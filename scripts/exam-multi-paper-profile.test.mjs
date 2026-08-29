@@ -59,4 +59,11 @@ describe("簡答分段批次批改", () => {
     expect(exam).toContain("db.gradeExamAnswersBatch(paperId, grades)");
     expect(exam).not.toContain("renderExamGrading(host, paperId, false, paperStatus)");
   });
+  it("未作答一鍵歸零只處理待批且空白的簡答", () => {
+    expect(exam).toContain("未作答全部給 0 分");
+    expect(exam).toContain('db.getExamGradingQueue(paperId, "pending")');
+    expect(exam).toContain('item.awardedPoints == null');
+    expect(exam).toContain('String(item.response).trim() === ""');
+    expect(exam).toContain('points: 0, comment: "未作答"');
+  });
 });

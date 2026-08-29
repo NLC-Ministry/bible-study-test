@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260830_exam_p5i" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260830_exam_p5k" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -836,6 +836,35 @@
                     style="font-size: 0.875rem; padding: 0.35rem 0.75rem;">儲存</button>
                 </div>
               </div>
+
+              <details id="admin-region-cohort" style="margin-bottom: 0.75rem; border: 1px solid var(--border-card); border-radius: 6px; padding: 0.5rem 0.75rem;">
+                <summary style="cursor: pointer; font-size: 0.9375rem;">大區延後梯次</summary>
+                <p style="font-size: 0.875rem; color: var(--text-muted); margin: 0.5rem 0;">
+                  某個大區整條計畫延後開跑時，為他們建立某階段的平行梯次計畫（只有該大區看得到、加得到）。同一大區同一階段重複送出＝更新日期／開放狀態。
+                </p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.5rem; font-size: 0.875rem;">
+                  <label style="display: flex; flex-direction: column; gap: 0.2rem;">大區
+                    <select id="cohort-region" class="form-control"></select></label>
+                  <label style="display: flex; flex-direction: column; gap: 0.2rem;">來源階段
+                    <select id="cohort-stage" class="form-control">
+                      <option value="1">第 1 階段</option><option value="2">第 2 階段</option>
+                      <option value="3">第 3 階段</option><option value="4">第 4 階段</option>
+                      <option value="5">第 5 階段</option><option value="6">第 6 階段</option>
+                      <option value="7">第 7 階段</option><option value="8">第 8 階段</option>
+                      <option value="9">第 9 階段</option><option value="10">第 10 階段</option>
+                    </select></label>
+                  <label style="display: flex; flex-direction: column; gap: 0.2rem;">起始日
+                    <input type="date" id="cohort-start" class="form-control"></label>
+                  <label style="display: flex; flex-direction: column; gap: 0.2rem;">結束日
+                    <input type="date" id="cohort-end" class="form-control"></label>
+                  <label style="display: flex; align-items: center; gap: 0.35rem; align-self: end;">
+                    <input type="checkbox" id="cohort-hidden" checked> 先隱藏（之後再開放）</label>
+                </div>
+                <div style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
+                  <button type="button" class="primary-btn" id="cohort-create-btn"
+                    style="font-size: 0.875rem; padding: 0.35rem 0.75rem;">建立 / 更新梯次</button>
+                </div>
+              </details>
 
               <div class="table-container"
                 style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border-card); border-radius: 6px;">
@@ -2646,7 +2675,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260830_exam_p5i"></script>
+  <script type="module" src="js/app.js?v=20260830_exam_p5l"></script>
 </body>
 
 </html>

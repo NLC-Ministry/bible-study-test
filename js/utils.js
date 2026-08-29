@@ -2320,7 +2320,9 @@ function isPlanHidden(plan) {
 }
 
 function isCampaignStageLocked(plan) {
-  return Boolean(plan && plan.planKind === "church_campaign_stage" && isPlanHidden(plan));
+  return Boolean(plan
+    && (plan.planKind === "church_campaign_stage" || plan.planKind === "church_campaign_stage_cohort")
+    && isPlanHidden(plan));
 }
 
 function canManageHiddenPlans() {
@@ -2329,8 +2331,17 @@ function canManageHiddenPlans() {
   return ['admin', 'pastor', 'great_zone_leader', 'zone_leader', 'group_leader'].includes(role);
 }
 
+// 延後大區梯次：audience_regions 非空的計畫只開給該大區（管理者例外）。
+function isPlanAudienceMatch(plan) {
+  const aud = plan && (plan.audienceRegions || plan.audience_regions);
+  if (!Array.isArray(aud) || aud.length === 0) return true;
+  if (canManageHiddenPlans()) return true;
+  const region = String((state.currentUser && state.currentUser.great_region) || "").trim();
+  return region !== "" && aud.map(String).includes(region);
+}
+
 function getVisiblePlans(plans) {
-  const list = plans || [];
+  const list = (plans || []).filter(isPlanAudienceMatch);
   if (canManageHiddenPlans()) return list;
   return list.filter(plan => !isPlanHidden(plan));
 }
@@ -2376,6 +2387,7 @@ window.selectMostRecentActivePlan = selectMostRecentActivePlan;
 window.calculateAllPlansProgress = calculateAllPlansProgress;
 window.isPlanHidden = isPlanHidden;
 window.isCampaignStageLocked = isCampaignStageLocked;
+window.isPlanAudienceMatch = isPlanAudienceMatch;
 window.canManageHiddenPlans = canManageHiddenPlans;
 window.getVisiblePlans = getVisiblePlans;
 window.updateAdminNavVisibility = updateAdminNavVisibility;

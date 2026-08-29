@@ -4149,9 +4149,46 @@ function initAdminPlanManagement() {
   };
 }
 
+// 延後大區梯次：後台小面板（migration 0126–0128 + db.createRegionStageCohort）
+function wireRegionCohortPanel() {
+  const box = document.getElementById("admin-region-cohort");
+  if (!box || box.dataset.wired === "1") return;
+  box.dataset.wired = "1";
+
+  const regionSel = document.getElementById("cohort-region");
+  if (regionSel) {
+    const regions = (state.orgStructure && state.orgStructure.regions) || [];
+    regionSel.innerHTML = regions.length
+      ? regions.map(r => `<option value="${escapeHTML(r)}">${escapeHTML(r)}</option>`).join("")
+      : `<option value="">（尚無大區資料）</option>`;
+  }
+
+  const btn = document.getElementById("cohort-create-btn");
+  btn?.addEventListener("click", async () => {
+    const greatRegion = (document.getElementById("cohort-region")?.value || "").trim();
+    const sourceStageNo = Number(document.getElementById("cohort-stage")?.value || 0);
+    const startDate = document.getElementById("cohort-start")?.value || "";
+    const endDate = document.getElementById("cohort-end")?.value || "";
+    const isHidden = document.getElementById("cohort-hidden")?.checked !== false;
+    if (!greatRegion) { showToast("請選擇大區"); return; }
+    if (!startDate || !endDate) { showToast("請填起訖日期"); return; }
+    if (endDate <= startDate) { showToast("結束日要晚於開始日"); return; }
+    btn.disabled = true;
+    const res = await db.createRegionStageCohort({ greatRegion, sourceStageNo, startDate, endDate, isHidden });
+    btn.disabled = false;
+    if (!res.success) { showToast(res.message || "建立失敗"); return; }
+    showToast(res.data?.created ? `已建立「${res.data.name}」` : `已更新「${res.data?.name || "梯次"}」`);
+    if (typeof db.loadGlobalPlans === "function") await db.loadGlobalPlans();
+    renderAdminPlanManagement();
+    if (typeof renderPresetPlansList === "function") renderPresetPlansList();
+  });
+}
+
 async function renderAdminPlanManagement() {
   const tableBody = document.getElementById("admin-plans-table-body");
   if (!tableBody) return;
+
+  wireRegionCohortPanel();
 
   if (firstPaint(tableBody)) tableBody.innerHTML = typeof ComponentSkeletonLoader !== "undefined"
     ? `<tr><td colspan="3">${ComponentSkeletonLoader.getHtml("table-rows", { count: 3, cols: 3 })}</td></tr>`

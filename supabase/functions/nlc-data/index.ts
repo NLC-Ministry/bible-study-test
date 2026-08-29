@@ -67,7 +67,8 @@ const PLAN_MANAGEMENT_RPC_FUNCTIONS = new Set([
 ]);
 const ADMIN_RPC_FUNCTIONS = new Set([
   "get_admin_registration_statistics",
-  "set_profile_managed_scopes"
+  "set_profile_managed_scopes",
+  "create_region_stage_cohort"
 ]);
 const QUIZ_RPC_FUNCTIONS = new Set([
   "get_daily_quiz_dashboard",
@@ -592,7 +593,8 @@ Deno.serve(async (req: Request) => {
         || TEAM_RPC_FUNCTIONS.has(functionName)
         || QUIZ_RPC_FUNCTIONS.has(functionName)
         || EXAM_RPC_FUNCTIONS.has(functionName)
-        || functionName === "get_admin_registration_statistics")
+        || functionName === "get_admin_registration_statistics"
+        || functionName === "create_region_stage_cohort")
         ? { ...(body.args || {}), p_actor_id: profile.id }
         : (body.args || {});
       const { data, error } = await supabaseAdmin.rpc(rpcName, rpcArgs);

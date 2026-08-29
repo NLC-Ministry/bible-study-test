@@ -172,6 +172,9 @@ function mapGlobalPlanRecord(dbPlan) {
   const isCampaignMaster = dbPlan.plan_kind === "church_campaign"
     || dbPlan.id === window.CHURCH_CAMPAIGN_ID;
   const isCampaignStage = dbPlan.plan_kind === "church_campaign_stage";
+  // 延後大區梯次：平行的階段計畫，內容比照 church_campaign_stage，但名稱 / 日期
+  // 用 DB 這一列的（往後挪過的），planKind 保持 cohort。
+  const isCohortStage = dbPlan.plan_kind === "church_campaign_stage_cohort";
   let campaignDefinition = null;
 
   if (isCampaignMaster) {
@@ -179,7 +182,7 @@ function mapGlobalPlanRecord(dbPlan) {
       ? dbPlan.rules
       : window.CHURCH_CAMPAIGN;
     campaignDefinition = window.cloneChurchCampaign(stored);
-  } else if (isCampaignStage) {
+  } else if (isCampaignStage || isCohortStage) {
     const storedStageNo = Number(dbPlan.rules && dbPlan.rules.stageNo)
       || Number(String(dbPlan.id || "").slice(-12));
     const stored = dbPlan.rules && Array.isArray(dbPlan.rules.stages) && Array.isArray(dbPlan.rules.segments)
@@ -187,6 +190,8 @@ function mapGlobalPlanRecord(dbPlan) {
       : window.getChurchCampaignStageDefinition(storedStageNo);
     if (stored) campaignDefinition = window.cloneChurchCampaign(stored);
   }
+  // cohort 用 DB 列的名稱 / 起訖（延後版），其餘（大題、獎項、階段序）沿用 campaignDefinition
+  const useCampaignSchedule = Boolean(campaignDefinition) && !isCohortStage;
 
   const campaignBooks = campaignDefinition
     ? Array.from(new Set(campaignDefinition.segments.flatMap(segment => segment.readings.map(reading => reading.book))))
@@ -195,16 +200,22 @@ function mapGlobalPlanRecord(dbPlan) {
     id: dbPlan.id,
     globalPlanId: dbPlan.id,
     parentCampaignId: campaignDefinition && campaignDefinition.parentCampaignId,
-    name: isCampaignMaster ? "教會階段規則設定" : (campaignDefinition ? campaignDefinition.name : dbPlan.name),
-    description: campaignDefinition ? campaignDefinition.description : dbPlan.description,
-    startDate: campaignDefinition ? campaignDefinition.startDate : dbPlan.start_date,
-    endDate: campaignDefinition ? campaignDefinition.endDate : dbPlan.end_date,
+    name: isCampaignMaster ? "教會階段規則設定" : (useCampaignSchedule ? campaignDefinition.name : dbPlan.name),
+    description: useCampaignSchedule ? campaignDefinition.description : dbPlan.description,
+    startDate: useCampaignSchedule ? campaignDefinition.startDate : dbPlan.start_date,
+    endDate: useCampaignSchedule ? campaignDefinition.endDate : dbPlan.end_date,
     books: Array.isArray(dbPlan.target_books) && dbPlan.target_books.length > 0 ? dbPlan.target_books : campaignBooks,
-    presetKey: campaignDefinition && campaignDefinition.presetKey ? campaignDefinition.presetKey : dbPlan.id,
+    presetKey: isCohortStage
+      ? ((dbPlan.rules && dbPlan.rules.presetKey) || dbPlan.id)
+      : (campaignDefinition && campaignDefinition.presetKey ? campaignDefinition.presetKey : dbPlan.id),
+    audienceRegions: Array.isArray(dbPlan.audience_regions) && dbPlan.audience_regions.length
+      ? dbPlan.audience_regions.slice() : null,
     isHidden: Boolean(dbPlan.is_hidden),
     isFixed: dbPlan.is_fixed !== false,
     is_fixed: dbPlan.is_fixed !== false,
-    planKind: isCampaignMaster ? "church_campaign" : (isCampaignStage ? "church_campaign_stage" : (dbPlan.plan_kind || "standard")),
+    planKind: isCampaignMaster ? "church_campaign"
+      : (isCampaignStage ? "church_campaign_stage"
+      : (isCohortStage ? "church_campaign_stage_cohort" : (dbPlan.plan_kind || "standard"))),
     stageNo: campaignDefinition && Number(campaignDefinition.stageNo),
     roundNo: campaignDefinition && Number(campaignDefinition.roundNo),
     phase: campaignDefinition && campaignDefinition.phase,
@@ -1181,7 +1192,7 @@ const db = {
         // 💡 效能優化：平行化載入 global_plans, profiles, reading_logs, reading_plans
         // 避開多個 sequential 網路請求產生的累積延遲與 cold start 問題！
         const [globalPlansResult, profileResult, logsResult, plansResult] = await Promise.all([
-          state.supabase.from("global_plans").select("id, name, description, start_date, end_date, target_books, is_hidden, is_fixed, plan_kind, rules, rule_version, published_at").order("start_date", { ascending: true }),
+          state.supabase.from("global_plans").select("id, name, description, start_date, end_date, target_books, is_hidden, is_fixed, plan_kind, rules, rule_version, published_at, audience_regions").order("start_date", { ascending: true }),
           state.supabase.from("profiles").select("id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, name_review_approved, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments, role_definition:role_definitions!profiles_role_definition_fkey(id, code, label, sort_order, is_assignable, can_manage_plans, can_manage_permissions, scope_type)").eq("id", user.id).maybeSingle(),
           window.readingLogRepository
             ? window.readingLogRepository.fetch({
@@ -4470,7 +4481,7 @@ const db = {
       try {
         const { data, error } = await state.supabase
           .from("global_plans")
-          .select("id, name, description, start_date, end_date, target_books, is_hidden, is_fixed, plan_kind, rules, rule_version, published_at")
+          .select("id, name, description, start_date, end_date, target_books, is_hidden, is_fixed, plan_kind, rules, rule_version, published_at, audience_regions")
           .order("start_date", { ascending: true });
 
         if (error) {
@@ -4718,6 +4729,37 @@ const db = {
     this._userDataPromise = null; // 💡 關鍵修復：清除資料加載快取以使快取失效
     await this.loadGlobalPlans();
     return true;
+  },
+
+  // 延後大區梯次：為某大區建立 / 更新某階段的平行梯次計畫（migration 0128）
+  async createRegionStageCohort({ greatRegion, sourceStageNo, startDate, endDate, isHidden = true }) {
+    if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) {
+      return { success: false, message: "此功能需要登入正式帳號。" };
+    }
+    try {
+      const { data, error } = await state.supabase.rpc("create_region_stage_cohort", {
+        p_great_region: greatRegion,
+        p_source_stage_no: Number(sourceStageNo),
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_is_hidden: isHidden !== false
+      });
+      if (error) {
+        const raw = String(error.message || error);
+        const msg = raw.includes("great_region_not_found") ? "找不到這個大區名稱。"
+          : raw.includes("source_stage_not_found") ? "找不到來源階段（正式階段計畫可能尚未建立）。"
+          : raw.includes("invalid_date_range") ? "起訖日期不正確（結束要晚於開始）。"
+          : raw.includes("invalid_stage_no") ? "階段序號要在 1～10。"
+          : raw.includes("permission_denied") ? "只有系統管理員可以建立延後梯次。"
+          : "建立失敗，請稍後再試。";
+        console.warn("[cohort] create_region_stage_cohort failed:", raw);
+        return { success: false, error, message: msg };
+      }
+      return { success: true, data };
+    } catch (error) {
+      console.warn("[cohort] create_region_stage_cohort threw:", String(error));
+      return { success: false, error, message: "建立失敗，請稍後再試。" };
+    }
   },
 
   async setGlobalPlanHidden(plan, isHidden) {

@@ -557,11 +557,12 @@ async function renderExamStats(host, paperId, hasShort = true) {
     { h: "隊名", f: (r) => esc(r.name || "") },
     { h: "完成", f: (r) => `${r.completed}/${size}` },
     { h: "隊伍總分", f: (r) => `<strong>${num(r.teamTotal)}</strong>` },
-    { h: "平均", f: (r) => num(r.avgTotal) }])
+    { h: `平均（總分÷${size}）`, f: (r) => num(r.avgTotal) }])
     : `<p class="exam-admin__meta">目前沒有${size} 人隊完成作答。</p>`;
 
   host.innerHTML = `
     ${scoped ? '<p class="exam-admin__meta exam-stats__scope">只顯示你負責範圍內的作答；隊伍總分也只計入範圍內成員。</p>' : ""}
+    <p class="exam-admin__meta">團隊平均固定以隊伍編制計算：3 人隊除以 3、6 人隊除以 6；未完成者按 0 分計。</p>
     <div class="exam-stats__tiles">
       <div class="exam-stats__tile"><span>作答</span><strong>${num(o.submitted)}</strong></div>
       <div class="exam-stats__tile"><span>已批改</span><strong>${num(o.graded)}</strong></div>
@@ -1020,6 +1021,7 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
       : "成績已公布並鎖定，批改結果不可再更改（僅供檢視）。"}</p>` : ""}
     <div class="exam-admin__grade-head">
       <span class="exam-admin__meta" data-grade-summary>待批 ${summary.pending ?? "?"}／已批 ${summary.graded ?? "?"}／共 ${summary.total ?? "?"}</span>
+      ${locked ? "" : '<button type="button" class="secondary-btn" data-grade-empty-zero>未作答全部給 0 分</button>'}
       <span class="exam-admin__filter">
         ${["pending", "graded", "all"].map((f) => `<button type="button" data-gf="${f}" class="${examAdminGradeFilter === f ? "active" : ""}">${{ pending: "待批", graded: "已批", all: "全部" }[f]}</button>`).join("")}
       </span>
@@ -1041,6 +1043,7 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
     return;
   }
   const saveButton = host.querySelector("[data-grade-batch-save]");
+  const emptyZeroButton = host.querySelector("[data-grade-empty-zero]");
   const dirtyLabel = host.querySelector("[data-grade-dirty-count]");
   const syncDirtyState = () => {
     const count = host.querySelectorAll(".exam-admin__grade-card.is-dirty").length;
@@ -1084,6 +1087,53 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
     if (summaryEl && nextSummary) summaryEl.textContent = `待批 ${nextSummary.pending ?? "?"}／已批 ${nextSummary.graded ?? "?"}／共 ${nextSummary.total ?? "?"}`;
     syncDirtyState();
     toast(`已儲存本次 ${r.data?.updated ?? grades.length} 筆修改，可繼續批改下一段`);
+  });
+  emptyZeroButton?.addEventListener("click", async () => {
+    const dirty = host.querySelectorAll(".exam-admin__grade-card.is-dirty").length;
+    if (dirty) { toast(`請先儲存目前 ${dirty} 筆修改，再執行未作答歸零`); return; }
+    emptyZeroButton.disabled = true;
+    emptyZeroButton.textContent = "檢查未作答…";
+    const pendingRes = await db.getExamGradingQueue(paperId, "pending");
+    if (!pendingRes.success) {
+      emptyZeroButton.disabled = false;
+      emptyZeroButton.textContent = "未作答全部給 0 分";
+      toast(pendingRes.message || "無法取得待批清單");
+      return;
+    }
+    const unanswered = (pendingRes.data?.items || []).filter((item) => item.awardedPoints == null
+      && (item.response == null || String(item.response).trim() === ""));
+    if (!unanswered.length) {
+      emptyZeroButton.disabled = false;
+      emptyZeroButton.textContent = "未作答全部給 0 分";
+      toast("目前沒有尚未批改的空白簡答題");
+      return;
+    }
+    if (!confirm(`確定將 ${unanswered.length} 筆「未作答」簡答題批次評為 0 分？\n已批改或有文字作答的題目不會變更。`)) {
+      emptyZeroButton.disabled = false;
+      emptyZeroButton.textContent = "未作答全部給 0 分";
+      return;
+    }
+    emptyZeroButton.textContent = `正在儲存 ${unanswered.length} 筆…`;
+    const grades = unanswered.map((item) => ({ answerId: item.answerId, points: 0, comment: "未作答" }));
+    const r = await db.gradeExamAnswersBatch(paperId, grades);
+    emptyZeroButton.disabled = false;
+    emptyZeroButton.textContent = "未作答全部給 0 分";
+    if (!r.success) { toast(r.message || "未作答歸零失敗，沒有資料被更改"); return; }
+    const ids = new Set(unanswered.map((item) => String(item.answerId)));
+    host.querySelectorAll(".exam-admin__grade-card").forEach((card) => {
+      if (!ids.has(String(card.dataset.answerId))) return;
+      card.dataset.wasGraded = "true";
+      const pointsInput = card.querySelector('[data-g="points"]');
+      const commentInput = card.querySelector('[data-g="comment"]');
+      const badge = card.querySelector("[data-grade-status]");
+      if (pointsInput) pointsInput.value = "0";
+      if (commentInput) commentInput.value = "未作答";
+      if (badge) { badge.className = "stat-badge stat-badge--success"; badge.textContent = "已批 0"; }
+    });
+    const nextSummary = r.data?.summary;
+    const summaryEl = host.querySelector("[data-grade-summary]");
+    if (summaryEl && nextSummary) summaryEl.textContent = `待批 ${nextSummary.pending ?? "?"}／已批 ${nextSummary.graded ?? "?"}／共 ${nextSummary.total ?? "?"}`;
+    toast(`已將 ${r.data?.updated ?? unanswered.length} 筆未作答簡答題評為 0 分`);
   });
 }
 
