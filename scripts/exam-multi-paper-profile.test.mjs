@@ -26,3 +26,20 @@ describe("多試卷首頁與個人紀錄", () => {
     expect(profile).toContain("不列入正式成績");
   });
 });
+
+describe("重作練習獨立寬限期", () => {
+  const sql = read("supabase/migrations/0124_exam_practice_grace_period.sql");
+  it("正式關閉只收 official，練習期限為活動結束後一天", () => {
+    expect(sql).toContain("attempt_kind='official' AND status='in_progress'");
+    expect(sql).toContain("close_at + INTERVAL '1 day'");
+    expect(sql).toContain("pr.status IN('published','closed')");
+    expect(sql).toContain("a.attempt_kind='practice' AND a.status='in_progress'");
+    expect(sql).toContain("a.attempt_kind='practice' AND a.submit_reason='auto_close'");
+  });
+  it("練習的開始、儲存與暫時完成都使用同一期限", () => {
+    expect(sql.match(/_exam_practice_close_at/g)?.length).toBeGreaterThanOrEqual(8);
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION public.exam_start_practice");
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION public.exam_save_progress");
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION public.exam_mark_practice_complete");
+  });
+});

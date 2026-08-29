@@ -540,6 +540,13 @@ function formatExamDateRange(openAt, closeAt) {
   return `${format(openAt)}－${format(closeAt)}`;
 }
 
+function formatExamSingleTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : new Intl.DateTimeFormat("zh-TW", {
+    timeZone: "Asia/Taipei", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false
+  }).format(date);
+}
+
 function getMyExamDisplay(item) {
   const now = Date.parse(item.serverNow) || Date.now();
   const closeAt = Date.parse(item.closeAt) || 0;
@@ -588,7 +595,7 @@ async function renderMyExamPapers() {
           ${item.resultReady && item.myTotalScore != null ? `<div class="profile-exam-card__score"><span>正式成績</span><strong>${escapeHTML(String(item.myTotalScore))} 分</strong></div>` : ""}
           <div class="profile-exam-card__records">
             <span>正式作答：${item.officialAttemptId ? "已建立紀錄" : "尚未作答"}</span>
-            <span>重作練習：${item.practiceAttemptId ? "已有紀錄（不列入正式成績）" : "尚無紀錄"}</span>
+            <span>重作練習：${item.practiceAttemptId ? "已有紀錄（不列入正式成績）" : "尚無紀錄"}${item.practiceCloseAt ? `・開放至 ${escapeHTML(formatExamSingleTime(item.practiceCloseAt))}` : ""}</span>
           </div>
           <div class="profile-exam-card__actions">
             ${display.primary ? `<button type="button" class="primary-btn" data-profile-exam-official>${display.primary}</button>` : ""}

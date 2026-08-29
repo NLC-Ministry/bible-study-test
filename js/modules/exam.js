@@ -401,7 +401,7 @@ export async function renderExamPanel(root) {
     }
     if (act === "practice-toggle") {
       const turnOn = !practiceEnabled;
-      if (!turnOn && !confirm("關閉後不再接受新的重作練習；已建立的練習仍可修改到活動結束。確定？")) return;
+      if (!turnOn && !confirm("關閉後不再接受新的重作練習；已建立的練習仍可修改到原活動結束時間後 24 小時。確定？")) return;
       b.disabled = true;
       const r = await db.setExamPracticeEnabled(paper.id, turnOn);
       b.disabled = false;
@@ -457,7 +457,7 @@ export async function renderExamPanel(root) {
     }
     if (act === "announce" && !confirm("將把這份預告文發佈到全體會友的首頁。確定？")) return;
     if (act === "unannounce" && !confirm("撤下後，會友首頁就不會再顯示這份測驗的預告區塊。確定？")) return;
-    if (act === "close" && !confirm("關閉後會立即收卷所有正式作答、鎖定所有重作練習，且不可再修改答案。若自動評分已開啟且正解完整，關閉後才會開始計分。確定提前關閉？")) return;
+    if (act === "close" && !confirm("關閉後會立即收卷並鎖定所有正式作答；重作練習不受影響，仍可修改至原活動結束時間後 24 小時。若自動評分已開啟且正解完整，關閉後才會開始計算正式成績。確定提前關閉？")) return;
     if (act === "publish" && !confirm(isTest
       ? "將開放「測試作答」——只有系統管理員能進入，不會出現在會友端。發佈後題庫會鎖定。確定？"
       : "將開放作答（開放時間內全體會友可作答），發佈後題庫會鎖定。確定？")) return;
@@ -1198,6 +1198,12 @@ class ExamRunner {
       this.lsKey = "exam_resp_" + this.attempt.id;
       this.hydrateFromAttempt();
       this.mergeLocal();
+      if (this.attemptKind === "practice" && this.openState === "closed") {
+        clearActiveExam();
+        this.detachLifecycle();
+        await this.renderResult();
+        return;
+      }
       if (this.attempt.status === "in_progress") {
         setActiveExam(this.paper.id, this.attemptKind); // 作答中 → 記住，app 重整後自動重開
         this.attachLifecycle();
@@ -1352,6 +1358,12 @@ class ExamRunner {
     try {
       const res = await db.getExamForAttempt(this.paperId, { attemptKind: this.attemptKind });
       if (!res.success || !res.data) return;
+      if (this.attemptKind === "practice" && res.data.state === "closed") {
+        clearActiveExam();
+        this.detachLifecycle();
+        await this.renderResult();
+        return;
+      }
       const a = res.data.attempt;
       if (!a) return;
       if (a.status !== "in_progress") {           // 已在別處送出 / 被自動收卷
@@ -1406,7 +1418,7 @@ class ExamRunner {
   // ── 重作練習 gate：與正式宣示分開，並留下「不列入成績」確認存證 ──
   renderPracticeGate() {
     if (this.timerEl) this.timerEl.hidden = true;
-    const closeText = this.paper?.closeAt ? new Date(this.paper.closeAt).toLocaleString("zh-TW") : "活動結束";
+    const closeText = this.paper?.practiceCloseAt ? new Date(this.paper.practiceCloseAt).toLocaleString("zh-TW") : "原活動結束後 24 小時";
     this.el.innerHTML = `
       <div class="glass-card exam-pledge exam-practice-gate">
         <span class="stat-badge stat-badge--warning">重作模式</span>
@@ -1414,7 +1426,7 @@ class ExamRunner {
         <ul class="exam-pledge__rules">
           <li>這次練習不列入正式成績、排名或團隊統計。</li>
           <li>不會覆蓋你的正式首考答案與成績。</li>
-          <li>沒有個人倒數，可修改至 ${esc(closeText)}；活動結束後自動鎖定。</li>
+          <li>沒有個人倒數，可修改至 ${esc(closeText)}；到期後自動鎖定。</li>
         </ul>
         <label class="exam-pledge__agree">
           <input type="checkbox" id="exam-practice-agree">
@@ -1508,7 +1520,7 @@ class ExamRunner {
          </div>`
       : this.attemptKind === "practice"
         ? `<div class="exam-submit-bar exam-submit-bar--practice">
-             <p class="exam-q__note">重作模式｜不列入正式成績。答案會自動儲存，活動結束前可再次進入修改。</p>
+             <p class="exam-q__note">重作模式｜不列入正式成績。答案會自動儲存，原活動結束後 24 小時內可再次進入修改。</p>
              <button type="button" id="exam-practice-finish" class="secondary-btn">暫時完成練習</button>
            </div>`
       : `<div class="exam-submit-bar">
@@ -1542,7 +1554,7 @@ class ExamRunner {
     if (this.dirty) { toast("答案尚未同步，請確認網路後再試一次"); return; }
     const res = await db.markExamPracticeComplete(this.attempt.id);
     if (!res.success) { toast(res.message || "練習儲存失敗"); return; }
-    toast("練習已儲存，活動結束前仍可回來修改");
+    toast("練習已儲存，原活動結束後 24 小時內仍可回來修改");
     this.destroy();
   }
 
@@ -1888,7 +1900,7 @@ class ExamRunner {
     if (!res.success) {
       this.dirty = true;   // 任何失敗（斷線 / 500 …）都留著下個週期重試
       // 伺服器說作答已鎖 / 逾時：拉一次 resync 讓畫面切到正確狀態
-      if (res.error && /exam_attempt_locked|exam_time_up|exam_attempt_not_found/.test(String(res.error?.message || res.message || ""))) {
+      if (res.error && /exam_attempt_locked|exam_time_up|exam_practice_locked|exam_attempt_not_found/.test(String(res.error?.message || res.message || ""))) {
         this.resync();
       }
       return;
