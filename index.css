@@ -14931,6 +14931,7 @@ textarea::placeholder {
 .exam-result__list { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
 .exam-result__row { font-size: 0.9375rem; border: 1px solid var(--border-card); border-radius: 8px; padding: 0.5rem 0.7rem; color: var(--text-primary); line-height: 1.7; }
 .exam-result__row--wrong { border-color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 6%, transparent); }
+.exam-result__row--correct { border-color: var(--color-success); background: color-mix(in srgb, var(--color-success) 5%, transparent); }
 .exam-result__summary { cursor: pointer; font-size: 0.9375rem; margin-top: 1rem; }
 .exam-result__hint { font-size: 0.9375rem; color: var(--text-secondary); margin: 0.75rem 0 0.25rem; line-height: 1.6; }
 .exam-result__q { margin: 0 0 0.3rem; font-weight: var(--type-weight-strong, 600); }
@@ -14940,6 +14941,14 @@ textarea::placeholder {
 .exam-ok { color: var(--color-success-foreground); }
 .exam-bad { color: var(--color-danger-foreground); }
 .exam-result__pending { color: var(--text-muted); }
+.exam-result__stem { margin: 0.35rem 0; color: var(--text-primary); }
+.exam-result__choices { margin: 0.35rem 0 0.5rem; padding-left: 1.5rem; color: var(--text-secondary); }
+.exam-result__choices li { margin: 0.15rem 0; }
+.exam-result__matching { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0.75rem; margin: 0.35rem 0 0.5rem; }
+.exam-result__matching > div { border: 1px solid var(--border-card); border-radius: 8px; padding: 0.5rem; }
+.exam-result__matching p { margin: 0.2rem 0; color: var(--text-secondary); }
+.exam-result__corrected { padding: 0.45rem 0.55rem; border-radius: 6px; background: color-mix(in srgb, var(--color-danger) 10%, transparent); color: var(--color-danger-foreground); }
+.exam-result__corrected .exam-result__k { color: inherit; }
 .exam-practice-banner { position: sticky; top: 0; z-index: var(--z-header); margin: 0 0 0.75rem; padding: 0.7rem 1rem; border: 1px solid var(--color-warning); border-radius: 10px; background: var(--bg-surface); color: var(--text-primary); text-align: center; font-size: 0.9375rem; }
 .exam-practice-gate .primary-btn { width: 100%; }
 .exam-submit-bar--practice { display: grid; gap: 0.5rem; }
@@ -15039,6 +15048,14 @@ textarea::placeholder {
 .exam-admin__grade-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
 .exam-admin__filter button, .exam-admin__grade-head .exam-admin__filter button { background: none; border: 1px solid var(--border-card); border-radius: 999px; padding: 0.25rem 0.7rem; font-size: 0.875rem; color: var(--text-secondary); cursor: pointer; margin-left: 0.3rem; font-family: inherit; }
 .exam-admin__filter button.active { border-color: var(--color-brand); color: var(--color-brand); }
+/* 批改清單依題號分組 */
+.exam-admin__grade-jump { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.75rem; }
+.exam-admin__grade-jump button { background: none; border: 1px solid var(--border-card); border-radius: 999px; padding: 0.25rem 0.7rem; font-size: 0.875rem; color: var(--text-secondary); cursor: pointer; font-family: inherit; }
+.exam-admin__grade-jump button.is-done { color: var(--text-muted); border-style: dashed; }
+.exam-admin__grade-group { border: 1px solid var(--border-card); border-radius: 12px; padding: 0.5rem 0.75rem; margin-bottom: 0.75rem; background: var(--bg-subtle, transparent); }
+.exam-admin__grade-group > summary { cursor: pointer; font-size: 0.9375rem; padding: 0.25rem 0; list-style: revert; }
+.exam-admin__grade-group[open] > summary { margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-card); padding-bottom: 0.4rem; }
+.exam-admin__grade-group-stem { font-size: 0.9375rem; color: var(--text-secondary); margin: 0 0 0.6rem; }
 .exam-admin__grade-card { border: 1px solid var(--border-card); border-radius: 12px; padding: 0.85rem 0.95rem; background: var(--bg-card); margin-bottom: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
 .exam-admin__grade-who { margin: 0; font-size: 0.9375rem; color: var(--text-primary); }
 .exam-admin__grade-stem { margin: 0; font-size: 0.9375rem; color: var(--text-primary); line-height: 1.6; }
