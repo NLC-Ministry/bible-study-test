@@ -117,6 +117,7 @@ const EXAM_RPC_FUNCTIONS = new Set([
   "exam_get_my_result",
   "exam_get_grading_queue",
   "exam_grade_answer",
+  "exam_grade_answers_batch",
   "exam_get_stats",
   "get_exam_notifications",
   "mark_exam_notifications_read"
@@ -144,7 +145,8 @@ const EXAM_ADMIN_RPC_FUNCTIONS = new Set([
   "exam_publish_results",
   "exam_finalize_expired",
   "exam_get_grading_queue",
-  "exam_grade_answer"
+  "exam_grade_answer",
+  "exam_grade_answers_batch"
   // exam_get_stats 不在此：它自己做角色 + 委派範圍檢查（migration 0121），
   // 開放給 great_zone_leader / zone_leader / group_leader 看自己範圍的統計。
 ]);

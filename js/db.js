@@ -3263,7 +3263,12 @@ const db = {
       exam_scoring_before_close: "請先關閉測驗，才能執行自動評分。",
       exam_grading_before_close: "請先關閉測驗，才能開始簡答批改。",
       exam_results_before_close: "請先關閉測驗，才能公布答案與成績。",
-      exam_auto_score_pending: "請先完成自動題計分，再開始簡答批改。"
+      exam_auto_score_pending: "請先完成自動題計分，再開始簡答批改。",
+      exam_batch_empty: "這一批沒有需要儲存的修改。",
+      exam_batch_invalid: "批改資料格式不正確，這一批沒有寫入。",
+      exam_batch_duplicate_answer: "同一題在這一批中重複出現，這一批沒有寫入。",
+      exam_batch_validation_failed: "部分題目或分數不符合目前試卷，這一批沒有寫入。",
+      exam_batch_too_large: "單次最多儲存 500 筆批改，請分段送出。"
     };
     const key = Object.keys(messages).find(code => raw.includes(code));
     return key ? messages[key] : "目前無法載入大測驗資料，請稍後再試。";
@@ -3428,6 +3433,12 @@ const db = {
   // 統計報表（admin/pastor）
   async getExamStats(paperId) {
     return this._callExamRpc("exam_get_stats", { p_paper_id: paperId });
+  },
+  async gradeExamAnswersBatch(paperId, grades = []) {
+    return this._callExamRpc("exam_grade_answers_batch", {
+      p_paper_id: paperId,
+      p_grades: Array.isArray(grades) ? grades : []
+    });
   },
   async getExamPracticeRecords(paperId) {
     return this._callExamRpc("exam_get_practice_records", { p_paper_id: paperId });

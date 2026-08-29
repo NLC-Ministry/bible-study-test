@@ -43,3 +43,20 @@ describe("重作練習獨立寬限期", () => {
     expect(sql).toContain("CREATE OR REPLACE FUNCTION public.exam_mark_practice_complete");
   });
 });
+
+describe("簡答分段批次批改", () => {
+  const sql = read("supabase/migrations/0125_exam_batch_grading.sql");
+  const exam = read("js/modules/exam.js");
+  it("資料庫整批驗證且只接受正式作答", () => {
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION public.exam_grade_answers_batch");
+    expect(sql).toContain("a.attempt_kind='official'");
+    expect(sql).toContain("exam_results_locked");
+    expect(sql).toContain("exam_batch_validation_failed");
+  });
+  it("畫面只送出本輪有修改的卡片且不整頁重繪", () => {
+    expect(exam).toContain('.exam-admin__grade-card.is-dirty');
+    expect(exam).toContain("儲存本次修改（${count}）");
+    expect(exam).toContain("db.gradeExamAnswersBatch(paperId, grades)");
+    expect(exam).not.toContain("renderExamGrading(host, paperId, false, paperStatus)");
+  });
+});

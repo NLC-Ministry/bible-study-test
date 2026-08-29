@@ -1019,14 +1019,20 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
       ? "測驗尚未關閉，依規則不得提前批改；時間到會自動關閉。"
       : "成績已公布並鎖定，批改結果不可再更改（僅供檢視）。"}</p>` : ""}
     <div class="exam-admin__grade-head">
-      <span class="exam-admin__meta">待批 ${summary.pending ?? "?"}／已批 ${summary.graded ?? "?"}／共 ${summary.total ?? "?"}</span>
+      <span class="exam-admin__meta" data-grade-summary>待批 ${summary.pending ?? "?"}／已批 ${summary.graded ?? "?"}／共 ${summary.total ?? "?"}</span>
       <span class="exam-admin__filter">
         ${["pending", "graded", "all"].map((f) => `<button type="button" data-gf="${f}" class="${examAdminGradeFilter === f ? "active" : ""}">${{ pending: "待批", graded: "已批", all: "全部" }[f]}</button>`).join("")}
       </span>
     </div>
-    ${items.length ? items.map(gradeCard).join("") : '<div class="admin-user-directory__empty">沒有符合的簡答作答。</div>'}`;
+    ${items.length ? items.map(gradeCard).join("") : '<div class="admin-user-directory__empty">沒有符合的簡答作答。</div>'}
+    ${items.length && !locked ? `<div class="exam-admin__grade-batch-bar">
+      <span class="exam-admin__meta" data-grade-dirty-count>目前沒有未儲存的修改</span>
+      <button type="button" class="primary-btn" data-grade-batch-save disabled>儲存本次修改（0）</button>
+    </div>` : ""}`;
 
   host.querySelectorAll("[data-gf]").forEach((b) => b.addEventListener("click", () => {
+    const dirty = host.querySelectorAll(".exam-admin__grade-card.is-dirty").length;
+    if (dirty && !confirm(`目前有 ${dirty} 筆修改尚未儲存，切換後會放棄這些修改。確定？`)) return;
     examAdminGradeFilter = b.dataset.gf; renderExamGrading(host, paperId, locked, paperStatus);
   }));
   if (locked) {
@@ -1034,18 +1040,50 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
       .forEach((el) => { el.disabled = true; });
     return;
   }
+  const saveButton = host.querySelector("[data-grade-batch-save]");
+  const dirtyLabel = host.querySelector("[data-grade-dirty-count]");
+  const syncDirtyState = () => {
+    const count = host.querySelectorAll(".exam-admin__grade-card.is-dirty").length;
+    if (dirtyLabel) dirtyLabel.textContent = count ? `尚未儲存 ${count} 筆，可先分段送出` : "目前沒有未儲存的修改";
+    if (saveButton) { saveButton.disabled = count === 0; saveButton.textContent = `儲存本次修改（${count}）`; }
+  };
   host.querySelectorAll(".exam-admin__grade-card").forEach((card) => {
-    card.querySelector("[data-grade-save]").addEventListener("click", async (e) => {
-      const pts = Number(card.querySelector('[data-g="points"]').value);
-      const cmt = card.querySelector('[data-g="comment"]').value;
-      if (isNaN(pts)) { toast("請輸入分數"); return; }
-      e.target.disabled = true;
-      const r = await db.gradeExamAnswer(card.dataset.answerId, pts, cmt);
-      e.target.disabled = false;
-      if (!r.success) { toast(r.message || "儲存失敗"); return; }
-      toast(r.data?.attemptFinalized ? "已批改，該生總分已結算" : "已儲存");
-      renderExamGrading(host, paperId, false, paperStatus);
+    card.querySelectorAll('[data-g="points"], [data-g="comment"]').forEach((input) => {
+      input.addEventListener("input", () => { card.classList.add("is-dirty"); syncDirtyState(); });
     });
+  });
+  saveButton?.addEventListener("click", async () => {
+    const cards = [...host.querySelectorAll(".exam-admin__grade-card.is-dirty")];
+    const grades = [];
+    for (const card of cards) {
+      const pointsInput = card.querySelector('[data-g="points"]');
+      const raw = String(pointsInput.value || "").trim();
+      const points = Number(raw);
+      const max = Number(pointsInput.max);
+      if (!raw || !Number.isFinite(points) || points < 0 || points > max) {
+        pointsInput.focus();
+        toast(`請輸入 0～${max} 分`);
+        return;
+      }
+      grades.push({ answerId: card.dataset.answerId, points, comment: card.querySelector('[data-g="comment"]').value || "" });
+    }
+    if (!grades.length) return;
+    saveButton.disabled = true;
+    saveButton.textContent = "整批儲存中…";
+    const r = await db.gradeExamAnswersBatch(paperId, grades);
+    if (!r.success) { syncDirtyState(); toast(r.message || "整批儲存失敗，這一批沒有任何資料被更改"); return; }
+    cards.forEach((card) => {
+      card.classList.remove("is-dirty");
+      card.dataset.wasGraded = "true";
+      const badge = card.querySelector("[data-grade-status]");
+      const points = card.querySelector('[data-g="points"]').value;
+      if (badge) { badge.className = "stat-badge stat-badge--success"; badge.textContent = `已批 ${points}`; }
+    });
+    const nextSummary = r.data?.summary;
+    const summaryEl = host.querySelector("[data-grade-summary]");
+    if (summaryEl && nextSummary) summaryEl.textContent = `待批 ${nextSummary.pending ?? "?"}／已批 ${nextSummary.graded ?? "?"}／共 ${nextSummary.total ?? "?"}`;
+    syncDirtyState();
+    toast(`已儲存本次 ${r.data?.updated ?? grades.length} 筆修改，可繼續批改下一段`);
   });
 }
 
@@ -1083,9 +1121,9 @@ async function renderExamPracticeRecords(host, paperId) {
 
 function gradeCard(it) {
   const who = [it.greatRegion, it.pastoralZone, it.smallGroup].filter(Boolean).join(" / ");
-  return `<div class="exam-admin__grade-card" data-answer-id="${esc(it.answerId)}">
+  return `<div class="exam-admin__grade-card" data-answer-id="${esc(it.answerId)}" data-was-graded="${it.awardedPoints != null}">
     <p class="exam-admin__grade-who"><strong>${esc(it.examineeName || "（未具名）")}</strong>${who ? `　<span class="exam-admin__meta">${esc(who)}</span>` : ""}
-      ${it.awardedPoints != null ? `　<span class="stat-badge stat-badge--success">已批 ${it.awardedPoints}</span>` : '　<span class="stat-badge stat-badge--warning">待批</span>'}</p>
+      ${it.awardedPoints != null ? `　<span class="stat-badge stat-badge--success" data-grade-status>已批 ${it.awardedPoints}</span>` : '　<span class="stat-badge stat-badge--warning" data-grade-status>待批</span>'}</p>
     <p class="exam-admin__grade-stem">第 ${it.position} 題（${it.points} 分）：${esc(it.stem || "")}</p>
     <details><summary class="exam-admin__link">參考答案／評分要點</summary>
       <p class="exam-admin__meta">${esc(it.referenceAnswer || "—")}</p>
@@ -1095,7 +1133,6 @@ function gradeCard(it) {
     <div class="exam-admin__grade-inputs">
       <label>分數（0～${it.points}）<input type="number" step="0.5" min="0" max="${it.points}" class="form-control" data-g="points" value="${it.awardedPoints ?? ""}"></label>
       <label>評語（會回饋給作答者）<textarea class="form-control" rows="2" data-g="comment">${esc(it.graderComment || "")}</textarea></label>
-      <button type="button" class="primary-btn" data-grade-save>儲存</button>
     </div>
   </div>`;
 }
