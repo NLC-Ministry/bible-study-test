@@ -178,7 +178,7 @@ export async function renderExamPanel(root) {
     : '　<span class="stat-badge stat-badge--neutral">預告文未發佈</span>';
 
   const actions = [
-    `<a class="secondary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}&preview=1" target="_blank" rel="noopener">預覽試卷</a>`
+    `<a class="secondary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}&preview=1&popup=1" target="_blank" rel="noopener">預覽試卷</a>`
   ];
   if (!resultsPublished) {
     actions.push(`<button type="button" class="secondary-btn" data-exam-act="autoscore">${autoScoreOn ? "關閉自動評分" : "開啟自動評分"}</button>`);
@@ -216,7 +216,7 @@ export async function renderExamPanel(root) {
       hints.push("正式版要先「發佈預告文」才能發佈測驗。");
     }
   } else if (paper.status === "published") {
-    actions.push(`<a class="primary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}" target="_blank" rel="noopener">${isLive ? "正式作答" : "測試作答"}</a>`);
+    actions.push(`<a class="primary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}&popup=1" target="_blank" rel="noopener">${isLive ? "正式作答" : "測試作答"}</a>`);
     actions.push('<button type="button" class="secondary-btn" data-exam-act="close">關閉測驗</button>');
     hints.push("測驗進行中，開放時間內即可作答。要改題目，請先按「關閉測驗」再改回草稿。");
   } else if (paper.status === "closed") {
@@ -1127,21 +1127,79 @@ class ExamRunner {
     if (this.standalone) this._leaveStandalone();
   }
 
-  // 關閉獨立測驗頁：優先「上一頁」回到進入前的分頁（bfcache 會原樣還原 SPA 狀態），
-  // 沒有可回的歷史才退而求其次用 ?return= 或首頁。不開新分頁、不強制回首頁。
+  // 關閉獨立測驗頁：優先「上一頁」回到進入前的分頁（/ 允許 bfcache 時會原樣瞬間還原
+  // SPA 狀態，見 docs/exam-close-ux-analysis.md O1），其次 ?return=。
+  // 都沒有時（target="_blank" 開的預覽 / 作答分頁）——不冷啟整個 app，改給收尾卡。
   _leaveStandalone() {
+    let ret = null;
+    let isPopup = false;
+    try {
+      const qs = new URLSearchParams(location.search);
+      ret = qs.get("return");
+      if (ret && !/^\/(?!\/)/.test(ret)) ret = null;
+      isPopup = qs.get("popup") === "1";
+    } catch (_) { ret = null; }
+
+    // 後台用新分頁開的預覽 / 作答（popup=1）：直接給收尾卡，不冷啟 app。
+    if (isPopup && !ret) {
+      try { window.close(); } catch (_) {}
+      this._renderStandaloneEndCard();
+      return;
+    }
+
     try {
       let internalRef = true;
       if (document.referrer) {
         try { internalRef = new URL(document.referrer).origin === location.origin; } catch (_) { internalRef = false; }
       }
-      if (window.history.length > 1 && internalRef) { window.history.back(); return; }
+      if (window.history.length > 1 && internalRef) {
+        this._paintLeaveOverlay("返回中…");
+        window.history.back();
+        return;
+      }
     } catch (_) {}
+
+    if (ret) {
+      this._paintLeaveOverlay("返回中…");
+      try { location.replace(ret); return; } catch (_) {}
+    }
+
+    // 新分頁、無處可回：best-effort 自動關閉，關不掉就給可手動離開的卡片。
+    try { window.close(); } catch (_) {}
+    this._renderStandaloneEndCard();
+  }
+
+  _paintLeaveOverlay(text) {
     try {
-      const ret = new URLSearchParams(location.search).get("return");
-      if (ret && /^\/(?!\/)/.test(ret)) { location.replace(ret); return; }
+      if (document.getElementById("exam-leave-overlay")) return;
+      const o = document.createElement("div");
+      o.id = "exam-leave-overlay";
+      o.className = "exam-leave-overlay";
+      o.textContent = text || "";
+      document.body.appendChild(o);
+      // 若此頁之後又被 bfcache「往前」還原，把殘留的過場清掉。
+      window.addEventListener("pageshow", () => { try { o.remove(); } catch (_) {} }, { once: true });
     } catch (_) {}
-    try { location.replace("/"); } catch (_) {}
+  }
+
+  _renderStandaloneEndCard() {
+    try {
+      document.getElementById("exam-leave-overlay")?.remove();
+      if (document.getElementById("exam-standalone-end")) return;
+      const card = document.createElement("div");
+      card.id = "exam-standalone-end";
+      card.className = "exam-leave-overlay";
+      card.innerHTML = `
+        <div class="exam-leave-card">
+          <p class="exam-leave-card__title">測驗已關閉</p>
+          <p class="exam-leave-card__note">可直接關閉此分頁。</p>
+          <button type="button" class="secondary-btn" id="exam-standalone-home">回首頁</button>
+        </div>`;
+      document.body.appendChild(card);
+      card.querySelector("#exam-standalone-home")?.addEventListener("click", () => {
+        try { location.assign("/"); } catch (_) {}
+      });
+    } catch (_) {}
   }
 
   requestExit() {
@@ -1672,6 +1730,7 @@ class ExamRunner {
     const autoLabel = hasShort ? "自動計分（一～五大題）" : "得分";
     // 成績未公布時不顯示暫定分數（可能是尚未定稿正解算出的、會誤導）
     const showAuto = graded && auto !== "—" && auto !== null && auto !== undefined;
+    const staffPreview = d.staffPreview === true;   // 管理員在「公布成績」前提前看到的預覽
 
     this.el.innerHTML = `
       <div class="glass-card" style="padding:1.4rem 1.5rem;">
@@ -1685,7 +1744,9 @@ class ExamRunner {
             : "成績尚未公布，管理員完成評分後會通知你，屆時可在此查看分數、完整解答與正解。"}
         </div>
         ${!answers.length ? "" : graded && showAuto ? `
-          <p class="exam-result__hint">成績已公布。${hasShort ? "一～五大題" : ""}答錯 ${wrongCount} 題，點開可看題目、你的作答與正解。</p>
+          <p class="exam-result__hint">${staffPreview
+            ? "（管理員預覽）此測驗成績<strong>尚未公布</strong>——會友目前看到的是「成績尚未公布」，按下「公布成績」後才會對會友開放。以下是完整批改結果供你核對。"
+            : `成績已公布。${hasShort ? "一～五大題" : ""}答錯 ${wrongCount} 題，點開可看題目、你的作答與正解。`}</p>
           <details open>
             <summary class="exam-result__summary">逐題檢討（依大題順序）</summary>
             <div class="exam-result__list">${answers.map((a) => examResultRow(a, true)).join("")}</div>

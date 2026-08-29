@@ -24,9 +24,19 @@ describe("vercel.json", () => {
     expect(cfg.rewrites).toContainEqual({ source: "/js/app.js", destination: "/app.js" });
   });
 
-  it("keeps entry HTML uncacheable", () => {
-    expect(headerFor("/")).toContain("no-store");
-    expect(headerFor("/index.html")).toContain("no-store");
+  it("keeps entry HTML always-revalidated but bfcache-eligible", () => {
+    // no-store disables the browser back/forward cache, turning every
+    // history.back() out of exam.html into a full cold reload of the SPA.
+    // no-cache + must-revalidate still forces a server revalidation on every
+    // load (never serves a stale shell) while allowing bfcache.
+    // See docs/exam-close-ux-analysis.md (O1).
+    for (const src of ["/", "/index.html"]) {
+      expect(headerFor(src)).toContain("no-cache");
+      expect(headerFor(src)).toContain("must-revalidate");
+      expect(headerFor(src)).not.toContain("no-store");
+      expect(headerFor(src)).not.toContain("immutable");
+    }
+    // /repair stays hard-uncacheable (recovery route, must never be reused)
     expect(headerFor("/repair")).toContain("no-store");
   });
 

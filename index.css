@@ -14898,6 +14898,18 @@ textarea::placeholder {
 .exam-closed-card h3 { margin: 0 0 0.4rem; }
 .exam-closed-card p { margin: 0; font-size: 0.9375rem; color: var(--text-secondary); }
 
+/* 關閉獨立測驗頁時的過場 / 收尾卡（docs/exam-close-ux-analysis.md O2/O3）：
+   導頁前鋪主題色，別讓 teardown 空檔變黑屏；_blank 分頁無處可回時給收尾卡。 */
+.exam-leave-overlay {
+  position: fixed; inset: 0; z-index: var(--z-critical);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-page); color: var(--text-secondary);
+  font-size: 0.9375rem; padding: 1.5rem; text-align: center;
+}
+.exam-leave-card { max-width: 320px; display: flex; flex-direction: column; gap: 0.6rem; align-items: center; }
+.exam-leave-card__title { margin: 0; font-size: 1.0625rem; font-weight: var(--type-weight-medium); color: var(--text-primary); }
+.exam-leave-card__note { margin: 0; font-size: 0.9375rem; color: var(--text-secondary); }
+
 /* 大測驗後台：試卷設定 / 題庫編輯 / 簡答批改 */
 .exam-admin__picker { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 0.9rem; }
 .exam-admin__picker label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.875rem; color: var(--text-secondary); flex: 1; min-width: 240px; }

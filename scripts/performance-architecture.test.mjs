@@ -50,8 +50,14 @@ describe("performance architecture contracts", () => {
 
   it("keeps static HTML and the service worker revalidated", () => {
     const bySource = new Map(vercel.headers.map(rule => [rule.source, rule.headers[0].value]));
-    expect(bySource.get("/")).toContain("no-store");
-    expect(bySource.get("/index.html")).toContain("no-store");
+    // Entry HTML: revalidate on every load, but NOT no-store — no-store would
+    // disable bfcache and make every history.back() from exam.html a full cold
+    // reload. See docs/exam-close-ux-analysis.md (O1).
+    for (const src of ["/", "/index.html"]) {
+      expect(bySource.get(src)).toContain("no-cache");
+      expect(bySource.get(src)).toContain("must-revalidate");
+      expect(bySource.get(src)).not.toContain("no-store");
+    }
     expect(bySource.get("/sw.js")).toContain("no-store");
   });
 });
