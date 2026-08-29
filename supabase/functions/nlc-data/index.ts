@@ -101,6 +101,7 @@ const EXAM_RPC_FUNCTIONS = new Set([
   "exam_recompute_scores",
   "exam_set_answer_key",
   "exam_publish_results",
+  "exam_finalize_expired",
   "exam_home_banner",
   "exam_get_for_attempt",
   "exam_start_attempt",
@@ -133,6 +134,7 @@ const EXAM_ADMIN_RPC_FUNCTIONS = new Set([
   "exam_recompute_scores",
   "exam_set_answer_key",
   "exam_publish_results",
+  "exam_finalize_expired",
   "exam_get_grading_queue",
   "exam_grade_answer",
   "exam_get_stats"

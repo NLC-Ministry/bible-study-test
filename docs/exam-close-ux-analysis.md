@@ -73,3 +73,36 @@ banner / 通知也用 `standalone:false`，`exam.html` 只留深連結 fallback�
 1. 已做：O1 + O2 + O3（互相獨立、可回退、對完整性／有效性／安全性零成本）。
 2. 部署後量測真機。仍慢 → O4。
 3. O5 僅在產品決定「測驗住在 app 內」時評估，且先過完整測驗完整性測試計畫。
+
+---
+
+# 逾時收卷卡住（2026-08-29，`20260828_exam_p5c` / migration `0120`）
+
+## 症狀
+倒數歸零後畫面跳不出去、要手動按關閉；首頁 banner 一直顯示「作答中」。→ 那筆 attempt 卡在 `in_progress` 沒被結算。
+
+## 根因
+`0096` 沒有任何**伺服器端逾時自動收卷**。`exam_save_progress` 只在 `deadline+120s` 後擋存檔、不結算；`exam_submit_attempt` 不檢查 deadline 但要**前端主動呼叫**。前端在逾時當下不在線 / 睡眠 / 背景節流 / 斷線後沒回來 → 永遠卡 `in_progress`。連鎖：banner 一直「作答中」、使用者看不到成績、`exam_publish_results`（0117）因為有非 `graded` 的 attempt 而卡住。
+
+## 修正
+
+### F1（伺服器，migration `0120`）— 逾時自動收卷
+- `_exam_sweep_expired(paper)` 內部：`status='in_progress' AND NOW() > deadline_at + 120s` 的 attempt，用**已存進 `exam_answers` 的作答**跑跟 `exam_submit_attempt` 相同的計分（含 `auto_score_enabled` 關閉時只存不計分的語意），`submit_reason='auto_close'`。`FOR UPDATE SKIP LOCKED` + `WHERE ... status='in_progress'` guard，和前端 submit 不會重複計分。**不吃前端輸入。**
+- `exam_finalize_expired(paper, actor)` — admin/pastor RPC（後台「收卷（結算逾時未交）」按鈕）。
+- 惰性掃描：`exam_home_banner`（會友一開首頁就自癒）、`exam_publish_results`（公布前先掃）進入時 `PERFORM _exam_sweep_expired`。沒有 pg_cron 也能自癒。
+- nlc-data：`exam_finalize_expired` 進兩個 allowlist，**需重部署**。
+
+### F2（前端）逾時送出成功後自動退出
+`submit('timeout')` 成功且 `standalone` → 結果卡顯示「5 秒後自動返回」倒數後 `destroy()`。`manual` 送出維持手動關。
+
+### F3（前端）手動關閉時收掉逾時的 attempt
+`requestExit()`：`in_progress` 且 `Date.now() >= deadlineTs` → 改呼叫 `submit('timeout')`（而非只 `flushSave()`）。
+
+### F4（前端）逾時但還沒送出成功 → 鎖住作答區
+`_lockForTimeout()`：disable `this.el` 內所有 input/textarea/select/button，`prepend` 一條「作答時間已結束，正在送出…可以離開此頁」。從 `tickTimer` 歸零、`resync` 過期分支、`submit` 失敗的非 manual 分支呼叫。
+
+### F5（banner）
+F1 的惰性掃描放進 `exam_home_banner` 後自然解決——banner 讀 `at` 之前先 sweep，過期的那筆已變 `submitted/graded`，`can_enter` / `myAttemptStatus` 就正確了。
+
+## 維持的完整性保證
+計分全在伺服器、來源是已存的 `exam_answers`；`exam_submit_attempt` 的 `status <> 'in_progress'` 冪等 → 前端 submit 與 sweep 不雙重計分；單次作答（`ON CONFLICT`）不動；`submit_reason='auto_close'` 可稽核。

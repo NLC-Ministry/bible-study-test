@@ -3327,6 +3327,10 @@ const db = {
   async publishExamResults(paperId) {
     return this._callExamRpc("exam_publish_results", { p_paper_id: paperId });
   },
+  // 逾時自動收卷：把作答時間過了、卻沒送出（裝置睡眠 / 斷線）的 attempt 依已存作答結算
+  async finalizeExpiredExam(paperId) {
+    return this._callExamRpc("exam_finalize_expired", { p_paper_id: paperId });
+  },
   async getExamPaperTesters(paperId) {
     return this._callExamRpc("exam_get_paper_testers", { p_paper_id: paperId });
   },

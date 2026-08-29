@@ -248,10 +248,15 @@ export async function renderExamPanel(root) {
     hints.push("正式版只能編預告文與發佈；題目 / 設定要改請切到「測試版」。");
   }
 
+  // 收卷：把作答時間已過、卻沒送出（裝置睡眠 / 斷線）而卡在「作答中」的作答依已存內容結算
+  if (isLive && attemptCount > 0 && !resultsPublished) {
+    actions.push('<button type="button" class="secondary-btn" data-exam-act="finalize">收卷（結算逾時未交）</button>');
+  }
+
   // 公布成績：正式版、已有作答、尚未公布 → 對外釋出並永久鎖定
   if (isLive && attemptCount > 0 && !resultsPublished) {
     actions.push('<button type="button" class="primary-btn" data-exam-act="publish-results">公布成績</button>');
-    hints.push("「公布成績」後，作答者才看得到分數與正解；公布後所有結算相關操作一律鎖定，不可再改。");
+    hints.push("「公布成績」前會先自動收掉逾時未交的作答；公布後作答者才看得到分數與正解，且所有結算操作一律鎖定。");
   }
   const actionHint = hints.join(" ");
 
@@ -317,14 +322,20 @@ export async function renderExamPanel(root) {
     paintTesters();
   }
 
+  // 進批改 / 統計前先收掉逾時未交的作答（惰性掃描；沒有的話伺服器端很快返回 0）
+  const sweepExpired = () =>
+    (isLive && attemptCount > 0 && !resultsPublished)
+      ? db.finalizeExpiredExam(paper.id).catch(() => {})
+      : Promise.resolve();
+
   // 子分頁切換：只換 #exam-admin-sub 這一塊 + 切 nav 的 active，不整塊重繪、不重打 API
-  const renderSub = () => {
+  const renderSub = async () => {
     const sub = body.querySelector("#exam-admin-sub");
     if (!sub) return;
     if (examAdminSubview === "notice") renderExamNoticeForm(sub, paper, rerender);
     else if (examAdminSubview === "answers") renderExamAnswerKeys(sub, paper, questions, rerender);
-    else if (examAdminSubview === "grade") renderExamGrading(sub, paper.id, resultsPublished);
-    else if (examAdminSubview === "stats") renderExamStats(sub, paper.id, hasShortSection);
+    else if (examAdminSubview === "grade") { sub.innerHTML = '<div class="admin-user-directory__empty">載入批改清單…</div>'; await sweepExpired(); renderExamGrading(sub, paper.id, resultsPublished); }
+    else if (examAdminSubview === "stats") { sub.innerHTML = '<div class="admin-user-directory__empty">載入統計…</div>'; await sweepExpired(); renderExamStats(sub, paper.id, hasShortSection); }
     else if (!canEditPaper) sub.innerHTML = '<div class="admin-user-directory__empty">正式版的題目與試卷設定不提供編輯，一律由對應的測試版按「推上正式版」維護。要查看題目請用上方「預覽試卷」。</div>';
     else if (examAdminSubview === "meta") renderExamMetaForm(sub, paper, rerender);
     else renderExamQuestionBank(sub, paper, questions, rerender);
@@ -366,6 +377,15 @@ export async function renderExamPanel(root) {
       if (!r.success) { toast(r.message || "建立失敗"); return; }
       toast("已建立正式版");
       if (r.data && r.data.livePaperId) { examAdminPaperId = r.data.livePaperId; examAdminSubview = "notice"; }
+      rerender();
+      return;
+    }
+    if (act === "finalize") {
+      b.disabled = true;
+      const r = await db.finalizeExpiredExam(paper.id);
+      b.disabled = false;
+      if (!r.success) { toast(r.message || "收卷失敗"); return; }
+      toast(r.data?.finalized ? `已收卷 ${r.data.finalized} 筆逾時未交的作答` : "沒有逾時未交的作答");
       rerender();
       return;
     }
@@ -1117,6 +1137,7 @@ class ExamRunner {
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     if (this.persistTimer) { clearInterval(this.persistTimer); this.persistTimer = null; }
     if (this._timeoutRetry) { clearTimeout(this._timeoutRetry); this._timeoutRetry = null; }
+    if (this._autoLeaveTimer) { clearTimeout(this._autoLeaveTimer); this._autoLeaveTimer = null; }
     this.stopTimer();
   }
 
@@ -1204,6 +1225,12 @@ class ExamRunner {
 
   requestExit() {
     if (this.attempt && this.attempt.status === "in_progress" && !this.submitting) {
+      // 時間已到 → 直接收卷，不能只存進度就走（否則這筆會卡在 in_progress）
+      if (this.deadlineTs && Date.now() >= this.deadlineTs) {
+        this._lockForTimeout();
+        this.submit("timeout");
+        return;
+      }
       if (!confirm("測驗仍在進行，計時不會停止。要先離開嗎？（稍後回來可從原處續作）")) return;
       this.persistLocal(); this.flushSave();
     }
@@ -1233,7 +1260,7 @@ class ExamRunner {
         if (this.RESP[qid] === undefined) { this.RESP[qid] = saved[qid]; filled = true; }
       });
       this.tickTimer();
-      if (this.deadlineTs && Date.now() >= this.deadlineTs) { this.submit("timeout"); return; }
+      if (this.deadlineTs && Date.now() >= this.deadlineTs) { this._lockForTimeout(); this.submit("timeout"); return; }
       if (filled) this.renderRunner();           // 有補回答案才整頁重繪
     } finally {
       this.resyncing = false;
@@ -1636,8 +1663,46 @@ class ExamRunner {
     }
     if (left <= 0 && this.attempt && this.attempt.status === "in_progress" && !this.submitting) {
       this.stopTimer();
+      this._lockForTimeout();
       this.submit("timeout");
     }
+  }
+
+  // 時間到但還沒送出成功：鎖住作答區，不讓再改，並顯示「送出中 / 可離開」
+  _lockForTimeout() {
+    if (this._timedOutLocked) return;
+    this._timedOutLocked = true;
+    try {
+      this.el.querySelectorAll("input, textarea, select, button").forEach((n) => { n.disabled = true; });
+      if (!this.el.querySelector("#exam-timeout-lock")) {
+        const bar = document.createElement("div");
+        bar.id = "exam-timeout-lock";
+        bar.className = "exam-timeout-lock";
+        bar.textContent = "作答時間已結束，正在送出你的作答。連線後會自動完成，也可以直接離開此頁。";
+        this.el.prepend(bar);
+      }
+      if (this.timerEl) { this.timerEl.hidden = false; this.timerEl.textContent = "時間到"; }
+    } catch (_) {}
+  }
+
+  // 逾時（非自願）送出成功後：短暫顯示結果再自動退出獨立頁
+  _autoLeaveAfterResult() {
+    if (!this.standalone) return;
+    let n = 5;
+    let note = null;
+    try {
+      note = document.createElement("p");
+      note.className = "exam-result__hint";
+      note.textContent = `${n} 秒後自動返回…`;
+      this.el.querySelector(".glass-card")?.appendChild(note);
+    } catch (_) {}
+    const tick = () => {
+      n -= 1;
+      if (n <= 0) { try { this.destroy(); } catch (_) {} return; }
+      if (note) note.textContent = `${n} 秒後自動返回…`;
+      this._autoLeaveTimer = setTimeout(tick, 1000);
+    };
+    this._autoLeaveTimer = setTimeout(tick, 1000);
   }
 
   // ── 暫存 ──
@@ -1690,7 +1755,8 @@ class ExamRunner {
       this.submitting = false;
       if (btn) { btn.disabled = false; btn.textContent = "送出答案"; }
       if (reason !== "manual") {
-        // 逾時自動送出失敗（多半是斷線）→ 每 20 秒重試一次，不重開 1 秒倒數以免狂打
+        // 逾時自動送出失敗（多半是斷線）→ 鎖住作答區、每 20 秒重試一次，不重開 1 秒倒數以免狂打
+        this._lockForTimeout();
         if (this._timeoutRetry) clearTimeout(this._timeoutRetry);
         this._timeoutRetry = setTimeout(() => {
           this._timeoutRetry = null;
@@ -1707,6 +1773,8 @@ class ExamRunner {
     this.attempt.status = res.data?.status || "submitted";
     this.detachLifecycle();
     await this.renderResult(res.data);
+    // 逾時（非自願）送出成功 → 短暫顯示結果後自動退出獨立頁；手動送出維持讓使用者自己關
+    if (reason !== "manual") this._autoLeaveAfterResult();
   }
 
   // ── 成績 / 已送出 ──

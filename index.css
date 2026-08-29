@@ -14910,6 +14910,14 @@ textarea::placeholder {
 .exam-leave-card__title { margin: 0; font-size: 1.0625rem; font-weight: var(--type-weight-medium); color: var(--text-primary); }
 .exam-leave-card__note { margin: 0; font-size: 0.9375rem; color: var(--text-secondary); }
 
+/* 時間到但還沒送出成功時的鎖定條（docs/exam-close-ux-analysis.md F4） */
+.exam-timeout-lock {
+  margin: 0 0 0.9rem; padding: 0.75rem 0.9rem; border-radius: 10px;
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  color: var(--text-primary); font-size: 0.9375rem; line-height: 1.5;
+}
+
 /* 大測驗後台：試卷設定 / 題庫編輯 / 簡答批改 */
 .exam-admin__picker { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 0.9rem; }
 .exam-admin__picker label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.875rem; color: var(--text-secondary); flex: 1; min-width: 240px; }
