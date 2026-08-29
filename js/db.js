@@ -3252,7 +3252,18 @@ const db = {
       exam_answer_not_gradable: "這一題不是可人工評分的題目。",
       exam_points_out_of_range: "分數超出配分範圍。",
       exam_results_locked: "成績已公布並鎖定，不可再更改答案、重新計分或批改。",
-      exam_results_incomplete: "還有作答尚未結算完成（作答中 / 待批 / 待重新計分），無法公布成績。"
+      exam_results_incomplete: "還有正式作答尚未結算完成（作答中 / 待批 / 待重新計分），無法公布成績。",
+      exam_attempt_kind_invalid: "無效的作答模式。",
+      exam_practice_ack_required: "請先確認這次是重作練習，且不列入正式成績。",
+      exam_practice_not_open: "目前未開放重作練習，或活動已經結束。",
+      exam_practice_requires_official_submission: "請先完成正式首考，才能開始重作練習。",
+      exam_practice_locked: "測驗活動已結束，重作練習已鎖定、不能再修改。",
+      exam_practice_no_submit: "重作練習不需要正式送出；答案會自動儲存到活動結束。",
+      exam_practice_not_gradable: "重作練習不列入正式簡答批改。",
+      exam_scoring_before_close: "請先關閉測驗，才能執行自動評分。",
+      exam_grading_before_close: "請先關閉測驗，才能開始簡答批改。",
+      exam_results_before_close: "請先關閉測驗，才能公布答案與成績。",
+      exam_auto_score_pending: "請先完成自動題計分，再開始簡答批改。"
     };
     const key = Object.keys(messages).find(code => raw.includes(code));
     return key ? messages[key] : "目前無法載入大測驗資料，請稍後再試。";
@@ -3318,6 +3329,9 @@ const db = {
   async setExamAutoScore(paperId, enabled) {
     return this._callExamRpc("exam_set_auto_score", { p_paper_id: paperId, p_enabled: !!enabled });
   },
+  async setExamPracticeEnabled(paperId, enabled) {
+    return this._callExamRpc("exam_set_practice_enabled", { p_paper_id: paperId, p_enabled: !!enabled });
+  },
   async recomputeExamScores(paperId) {
     return this._callExamRpc("exam_recompute_scores", { p_paper_id: paperId });
   },
@@ -3349,10 +3363,11 @@ const db = {
   },
 
   // 作答
-  async getExamForAttempt(paperId = null, { preview = false } = {}) {
+  async getExamForAttempt(paperId = null, { preview = false, attemptKind = "official" } = {}) {
     return this._callExamRpc("exam_get_for_attempt", {
       p_paper_id: paperId || null,
-      p_preview: !!preview
+      p_preview: !!preview,
+      p_attempt_kind: attemptKind === "practice" ? "practice" : "official"
     });
   },
   async startExamAttempt(paperId, pledgeName, readingTeamId = null) {
@@ -3361,6 +3376,15 @@ const db = {
       p_pledge_name: pledgeName,
       p_reading_team_id: readingTeamId || null
     });
+  },
+  async startExamPractice(paperId, acknowledged = false) {
+    return this._callExamRpc("exam_start_practice", {
+      p_paper_id: paperId,
+      p_acknowledged: !!acknowledged
+    });
+  },
+  async markExamPracticeComplete(attemptId) {
+    return this._callExamRpc("exam_mark_practice_complete", { p_attempt_id: attemptId });
   },
   async saveExamProgress(attemptId, answers) {
     return this._callExamRpc("exam_save_progress", { p_attempt_id: attemptId, p_answers: answers || {} });
@@ -3372,8 +3396,11 @@ const db = {
       p_reason: reason
     });
   },
-  async getMyExamResult(paperId) {
-    return this._callExamRpc("exam_get_my_result", { p_paper_id: paperId });
+  async getMyExamResult(paperId, attemptId = null) {
+    return this._callExamRpc("exam_get_my_result", {
+      p_paper_id: paperId,
+      p_attempt_id: attemptId || null
+    });
   },
 
   // 人工評分
@@ -3391,6 +3418,12 @@ const db = {
   // 統計報表（admin/pastor）
   async getExamStats(paperId) {
     return this._callExamRpc("exam_get_stats", { p_paper_id: paperId });
+  },
+  async getExamPracticeRecords(paperId) {
+    return this._callExamRpc("exam_get_practice_records", { p_paper_id: paperId });
+  },
+  async getExamPracticeDetail(attemptId) {
+    return this._callExamRpc("exam_get_practice_detail", { p_attempt_id: attemptId });
   },
 
   // 成績通知（合併進 app 的通知鈴）

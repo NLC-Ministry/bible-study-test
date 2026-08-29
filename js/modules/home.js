@@ -2756,15 +2756,17 @@ async function refreshExamHomeBanner() {
   let badgeKind = "warning";
   let note = d.body || "";
   let action = null;       // { kind:'enter'|'resume'|'result'|'pledge', label }
+  let practiceAction = null;
   let countdownTo = 0;     // >0 時在 banner 顯示倒數（倒數到這個時間戳）
 
   if (d.resultReady) {
     badge = "已公布成績"; badgeKind = "success";
     note = d.myTotalScore != null ? `你的總分：${d.myTotalScore} 分` : "成績已公布。";
     action = { kind: "result", label: "查看成績" };
-  } else if (my === "submitted") {
+  } else if (my === "submitted" || my === "graded") {
     badge = "已完成作答"; badgeKind = "brand";
-    note = "你已完成作答，成績公布後會在這裡顯示。";
+    note = "正式答案已鎖定；現在可查看自己的填答內容。";
+    action = { kind: "review", label: "查看我的作答" };
   } else if (my === "in_progress") {
     badge = "作答中"; badgeKind = "brand";
     note = "你有一份未完成的測驗，計時仍在進行。";
@@ -2782,8 +2784,20 @@ async function refreshExamHomeBanner() {
     if (openTs && serverNowFn() < openTs) countdownTo = openTs;
   }
 
+  if (d.practiceAttemptStatus === "in_progress") {
+    practiceAction = { kind: "practice", label: "繼續重作練習" };
+  } else if (d.canPractice) {
+    practiceAction = { kind: "practice", label: "開始重作練習" };
+  } else if (d.practiceReviewReady) {
+    practiceAction = { kind: "practice", label: "查看重作紀錄" };
+  }
+
   const goExam = () => {
     const url = "exam.html?paper=" + encodeURIComponent(d.paperId) + "&return=" + encodeURIComponent(location.pathname + location.search);
+    try { location.assign(url); } catch (_) { location.href = url; }
+  };
+  const goPractice = () => {
+    const url = "exam.html?paper=" + encodeURIComponent(d.paperId) + "&attempt=practice&return=" + encodeURIComponent(location.pathname + location.search);
     try { location.assign(url); } catch (_) { location.href = url; }
   };
 
@@ -2797,7 +2811,10 @@ async function refreshExamHomeBanner() {
       ${note ? `<p class="exam-home-banner__note">${escapeHTML(note)}</p>` : ""}
       ${countdownTo ? `<p class="exam-home-banner__countdown">距離開放還有 <strong id="exam-home-countdown">${escapeHTML(formatCountdown(countdownTo - serverNowFn()))}</strong></p>` : ""}
     </div>
-    ${action ? `<button type="button" class="primary-btn exam-home-banner__btn" id="exam-home-banner-action">${escapeHTML(action.label)}</button>` : ""}`;
+    <div class="exam-home-banner__actions">
+      ${action ? `<button type="button" class="primary-btn exam-home-banner__btn" id="exam-home-banner-action">${escapeHTML(action.label)}</button>` : ""}
+      ${practiceAction ? `<button type="button" class="secondary-btn exam-home-banner__btn" id="exam-home-practice-action">${escapeHTML(practiceAction.label)}</button>` : ""}
+    </div>`;
 
   card.classList.remove("hidden");
   if (typeof hydrateIcons === "function") hydrateIcons(host);
@@ -2809,6 +2826,7 @@ async function refreshExamHomeBanner() {
       else goExam();
     });
   }
+  host.querySelector("#exam-home-practice-action")?.addEventListener("click", goPractice);
 
   if (countdownTo) {
     const el = host.querySelector("#exam-home-countdown");

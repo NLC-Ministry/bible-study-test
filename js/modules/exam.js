@@ -33,16 +33,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 「目前有一份作答中的大測驗」的旗標 —— 讓 app 重整 / iOS 背景回收後能自動重開滿版頁
 const ACTIVE_KEY = "exam_active_paper";
-const setActiveExam = (id) => { try { localStorage.setItem(ACTIVE_KEY, String(id)); } catch (_) {} };
+const setActiveExam = (id, attemptKind = "official") => {
+  try { localStorage.setItem(ACTIVE_KEY, JSON.stringify({ paperId: String(id), attemptKind })); } catch (_) {}
+};
 const clearActiveExam = () => { try { localStorage.removeItem(ACTIVE_KEY); } catch (_) {} };
-const getActiveExam = () => { try { return localStorage.getItem(ACTIVE_KEY); } catch (_) { return null; } };
+const getActiveExam = () => {
+  try {
+    const raw = localStorage.getItem(ACTIVE_KEY);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (_) { return { paperId: raw, attemptKind: "official" }; }
+  } catch (_) { return null; }
+};
 
 // app 啟動 / 前景喚醒時呼叫：若有作答中的測驗且滿版頁不在，就自動重開
 export async function maybeResumeExam() {
   if (document.getElementById("exam-fullscreen")) return null;
-  const paperId = getActiveExam();
-  if (!paperId) return null;
-  return mountExamRunner({ paperId });
+  const active = getActiveExam();
+  if (!active?.paperId) return null;
+  return mountExamRunner({ paperId: active.paperId, attemptKind: active.attemptKind || "official" });
 }
 
 // ══════════════════════════════════════════════════════════════ 後台面板（P2：題庫編輯 + 批改）
@@ -122,6 +130,8 @@ export async function renderExamPanel(root) {
   const paper = paperRes.data && paperRes.data.paper;
   const questions = (paperRes.data && paperRes.data.questions) || [];
   const attemptCount = paperRes.data?.attemptCount || 0;
+  const officialAttemptCount = paperRes.data?.officialAttemptCount ?? attemptCount;
+  const practiceAttemptCount = paperRes.data?.practiceAttemptCount || 0;
   // 目前選中的試卷已被刪 → 退回最新那份
   if (examAdminPaperId && !paper) { examAdminPaperId = null; renderExamPanel(root); return; }
   if (paper) examAdminPaperId = paper.id;
@@ -183,12 +193,14 @@ export async function renderExamPanel(root) {
   // 「填答案」：題目鎖定但要能補正解（正式版；或已有作答的測試版）——考完才給答案的情境
   const canFillAnswers = !canEditPaper || attemptCount > 0;
   if (examAdminSubview === "grade" && !hasShortSection) examAdminSubview = "bank";
+  if (examAdminSubview === "practice" && !isLive) examAdminSubview = "bank";
   if (!canEditPaper && (examAdminSubview === "bank" || examAdminSubview === "meta")) examAdminSubview = canFillAnswers ? "answers" : "notice";
   if (!hasNotice && examAdminSubview === "notice") examAdminSubview = canEditPaper ? "bank" : "answers";
   if (examAdminSubview === "answers" && !canFillAnswers) examAdminSubview = "bank";
   const annPub = paper.announcement_published === true;
   const noticeReady = !!((paper.announcement || {}).headline || "").trim() && !!((paper.announcement || {}).body || "").trim();
   const autoScoreOn = paper.auto_score_enabled !== false;   // 預設開；答案未定稿時可先關
+  const practiceEnabled = paper.practice_retake_enabled !== false;
   const resultsPublished = !!paper.results_published_at;     // 成績已公布 → 全部鎖定不得再改
 
   const badge = paper.status === "published" ? "success" : "neutral";
@@ -203,9 +215,13 @@ export async function renderExamPanel(root) {
   if (!resultsPublished) {
     actions.push(`<button type="button" class="secondary-btn" data-exam-act="autoscore">${autoScoreOn ? "關閉自動評分" : "開啟自動評分"}</button>`);
   }
+  if (isLive && paper.status !== "closed" && !resultsPublished) {
+    actions.push(`<button type="button" class="secondary-btn" data-exam-act="practice-toggle">${practiceEnabled ? "關閉重作練習" : "開啟重作練習"}</button>`);
+  }
   const hints = [];
   if (resultsPublished) hints.push("成績已公布並鎖定：不可再修改正解、重新計分、批改或清除作答。");
-  else if (!autoScoreOn) hints.push("自動評分已關閉：作答只會存起來、不計分，狀態停在「待公布」；答案定稿後開回來並「重新計分」。");
+  else if (!autoScoreOn) hints.push("自動評分已關閉：關閉測驗後也不會自動計分；答案定稿後再開啟並重新計分。");
+  if (paper.status === "published") hints.push("測驗進行期間只保存答案，不會自動判分、簡答批改或公布正解；時間到會自動關閉。");
 
   // ── 預告文（只有正式版有；獨立於 status，不鎖題庫）──
   if (hasNotice) {
@@ -268,13 +284,8 @@ export async function renderExamPanel(root) {
     hints.push("正式版只能編預告文與發佈；題目 / 設定要改請切到「測試版」。");
   }
 
-  // 收卷：把作答時間已過、卻沒送出（裝置睡眠 / 斷線）而卡在「作答中」的作答依已存內容結算
-  if (isLive && attemptCount > 0 && !resultsPublished) {
-    actions.push('<button type="button" class="secondary-btn" data-exam-act="finalize">收卷（結算逾時未交）</button>');
-  }
-
   // 公布成績：正式版、已有作答、尚未公布 → 對外釋出並永久鎖定
-  if (isLive && attemptCount > 0 && !resultsPublished) {
+  if (isLive && officialAttemptCount > 0 && paper.status === "closed" && !resultsPublished) {
     actions.push('<button type="button" class="primary-btn" data-exam-act="publish-results">公布成績</button>');
     hints.push("「公布成績」前會先自動收掉逾時未交的作答；公布後作答者才看得到分數與正解，且所有結算操作一律鎖定。");
   }
@@ -301,6 +312,7 @@ export async function renderExamPanel(root) {
       <button type="button" data-exam-sub="meta" class="${examAdminSubview === "meta" ? "active" : ""}">試卷設定</button>` : ""}
       ${canFillAnswers ? `<button type="button" data-exam-sub="answers" class="${examAdminSubview === "answers" ? "active" : ""}">填答案</button>` : ""}
       ${hasShortSection ? `<button type="button" data-exam-sub="grade" class="${examAdminSubview === "grade" ? "active" : ""}">簡答批改</button>` : ""}
+      ${isLive ? `<button type="button" data-exam-sub="practice" class="${examAdminSubview === "practice" ? "active" : ""}">重作紀錄${practiceAttemptCount ? `（${practiceAttemptCount}）` : ""}</button>` : ""}
       <button type="button" data-exam-sub="stats" class="${examAdminSubview === "stats" ? "active" : ""}">統計</button>
     </nav>
     <div id="exam-admin-sub"></div>`;
@@ -354,7 +366,8 @@ export async function renderExamPanel(root) {
     if (!sub) return;
     if (examAdminSubview === "notice") renderExamNoticeForm(sub, paper, rerender);
     else if (examAdminSubview === "answers") renderExamAnswerKeys(sub, paper, questions, rerender);
-    else if (examAdminSubview === "grade") { sub.innerHTML = '<div class="admin-user-directory__empty">載入批改清單…</div>'; await sweepExpired(); renderExamGrading(sub, paper.id, resultsPublished); }
+    else if (examAdminSubview === "grade") { sub.innerHTML = '<div class="admin-user-directory__empty">載入批改清單…</div>'; await sweepExpired(); renderExamGrading(sub, paper.id, resultsPublished || paper.status !== "closed", paper.status); }
+    else if (examAdminSubview === "practice") renderExamPracticeRecords(sub, paper.id);
     else if (examAdminSubview === "stats") { sub.innerHTML = '<div class="admin-user-directory__empty">載入統計…</div>'; await sweepExpired(); renderExamStats(sub, paper.id, hasShortSection); }
     else if (!canEditPaper) sub.innerHTML = '<div class="admin-user-directory__empty">正式版的題目與試卷設定不提供編輯，一律由對應的測試版按「推上正式版」維護。要查看題目請用上方「預覽試卷」。</div>';
     else if (examAdminSubview === "meta") renderExamMetaForm(sub, paper, rerender);
@@ -370,17 +383,30 @@ export async function renderExamPanel(root) {
     const act = b.dataset.examAct;
     if (act === "autoscore") {
       const turnOn = !autoScoreOn;
-      if (!turnOn && !confirm("關閉自動評分後，之後送出的作答只會存起來、不計分，狀態停在「待公布」。確定？")) return;
+      if (!turnOn && !confirm("關閉自動評分後，關閉測驗時也不會自動計分；須在答案定稿後重新開啟並手動計分。確定？")) return;
       b.disabled = true;
       const r = await db.setExamAutoScore(paper.id, turnOn);
       b.disabled = false;
       if (!r.success) { toast(r.message || "切換失敗"); return; }
-      if (turnOn && confirm("已開啟自動評分。要立刻重新計分現有的所有作答嗎？")) {
+      if (turnOn && paper.status === "closed" && confirm("已開啟自動評分。要立刻重新計分現有的正式作答嗎？")) {
         const r2 = await db.recomputeExamScores(paper.id);
         toast(r2.success ? `已重新計分 ${r2.data?.recomputed ?? ""} 筆` : (r2.message || "重新計分失敗"));
       } else {
-        toast(turnOn ? "已開啟自動評分" : "已關閉自動評分");
+        toast(turnOn
+          ? (paper.status === "closed" ? "已開啟自動評分" : "已開啟；測驗關閉前仍不會提前評分")
+          : "已關閉自動評分");
       }
+      rerender();
+      return;
+    }
+    if (act === "practice-toggle") {
+      const turnOn = !practiceEnabled;
+      if (!turnOn && !confirm("關閉後不再接受新的重作練習；已建立的練習仍可修改到活動結束。確定？")) return;
+      b.disabled = true;
+      const r = await db.setExamPracticeEnabled(paper.id, turnOn);
+      b.disabled = false;
+      if (!r.success) { toast(r.message || "切換失敗"); return; }
+      toast(turnOn ? "已開放重作練習" : "已停止建立新的重作練習");
       rerender();
       return;
     }
@@ -431,6 +457,7 @@ export async function renderExamPanel(root) {
     }
     if (act === "announce" && !confirm("將把這份預告文發佈到全體會友的首頁。確定？")) return;
     if (act === "unannounce" && !confirm("撤下後，會友首頁就不會再顯示這份測驗的預告區塊。確定？")) return;
+    if (act === "close" && !confirm("關閉後會立即收卷所有正式作答、鎖定所有重作練習，且不可再修改答案。若自動評分已開啟且正解完整，關閉後才會開始計分。確定提前關閉？")) return;
     if (act === "publish" && !confirm(isTest
       ? "將開放「測試作答」——只有系統管理員能進入，不會出現在會友端。發佈後題庫會鎖定。確定？"
       : "將開放作答（開放時間內全體會友可作答），發佈後題庫會鎖定。確定？")) return;
@@ -952,8 +979,9 @@ function renderExamAnswerKeys(host, paper, questions, rerender) {
         <h4>${esc(SECTION_TITLE[s])}</h4>
         <div class="exam-admin__q-list">${bySec[s].map((q, i) => answerKeyCard(q, i + 1)).join("")}</div>
       </section>`).join("")}
+    ${paper.status !== "closed" ? '<p class="exam-admin__meta">測驗尚未關閉：可以先填正解，但不得提前自動評分；時間到會自動關閉。</p>' : ""}
     <div class="exam-admin__ak-foot">
-      <button type="button" class="primary-btn" id="exam-ak-recompute">重新計分（依目前正解）</button>
+      <button type="button" class="primary-btn" id="exam-ak-recompute" ${paper.status !== "closed" ? "disabled" : ""}>重新計分（依目前正解）</button>
     </div>`;
 
   host.querySelectorAll(".exam-admin__ak-card").forEach((card) => {
@@ -980,14 +1008,16 @@ function renderExamAnswerKeys(host, paper, questions, rerender) {
 }
 
 // ── 簡答批改佇列（分數 + 評語）──
-async function renderExamGrading(host, paperId, locked = false) {
+async function renderExamGrading(host, paperId, locked = false, paperStatus = "closed") {
   host.innerHTML = '<div class="admin-user-directory__empty">載入批改清單…</div>';
   const res = await db.getExamGradingQueue(paperId, examAdminGradeFilter);
   if (!res.success) { host.innerHTML = `<div class="admin-user-directory__empty">${esc(res.message || "載入失敗")}</div>`; return; }
   const { summary = {}, items = [] } = res.data || {};
 
   host.innerHTML = `
-    ${locked ? '<p class="exam-admin__meta">成績已公布並鎖定，批改結果不可再更改（僅供檢視）。</p>' : ""}
+    ${locked ? `<p class="exam-admin__meta">${paperStatus !== "closed"
+      ? "測驗尚未關閉，依規則不得提前批改；時間到會自動關閉。"
+      : "成績已公布並鎖定，批改結果不可再更改（僅供檢視）。"}</p>` : ""}
     <div class="exam-admin__grade-head">
       <span class="exam-admin__meta">待批 ${summary.pending ?? "?"}／已批 ${summary.graded ?? "?"}／共 ${summary.total ?? "?"}</span>
       <span class="exam-admin__filter">
@@ -997,7 +1027,7 @@ async function renderExamGrading(host, paperId, locked = false) {
     ${items.length ? items.map(gradeCard).join("") : '<div class="admin-user-directory__empty">沒有符合的簡答作答。</div>'}`;
 
   host.querySelectorAll("[data-gf]").forEach((b) => b.addEventListener("click", () => {
-    examAdminGradeFilter = b.dataset.gf; renderExamGrading(host, paperId, locked);
+    examAdminGradeFilter = b.dataset.gf; renderExamGrading(host, paperId, locked, paperStatus);
   }));
   if (locked) {
     host.querySelectorAll(".exam-admin__grade-card [data-g], .exam-admin__grade-card [data-grade-save]")
@@ -1014,9 +1044,41 @@ async function renderExamGrading(host, paperId, locked = false) {
       e.target.disabled = false;
       if (!r.success) { toast(r.message || "儲存失敗"); return; }
       toast(r.data?.attemptFinalized ? "已批改，該生總分已結算" : "已儲存");
-      renderExamGrading(host, paperId);
+      renderExamGrading(host, paperId, false, paperStatus);
     });
   });
+}
+
+async function renderExamPracticeRecords(host, paperId) {
+  host.innerHTML = '<div class="admin-user-directory__empty">載入重作紀錄…</div>';
+  const res = await db.getExamPracticeRecords(paperId);
+  if (!res.success) { host.innerHTML = `<div class="admin-user-directory__empty">${esc(res.message || "載入失敗")}</div>`; return; }
+  const rows = Array.isArray(res.data?.records) ? res.data.records : [];
+  host.innerHTML = `
+    <p class="exam-admin__meta">以下全部是重作練習，不列入正式成績、平均、排行、團隊統計或正式簡答批改。</p>
+    ${rows.length ? `<div class="exam-admin__practice-list">${rows.map((r) => `
+      <details class="exam-admin__practice-row" data-practice-attempt="${esc(r.attemptId)}">
+        <summary><strong>${esc(r.name || "（未具名）")}</strong>　<span class="stat-badge stat-badge--warning">不列入成績</span>
+         　${esc(r.status || "")}　已填 ${Number(r.answeredCount || 0)} 題</summary>
+        <p class="exam-admin__meta">${esc([r.greatRegion, r.pastoralZone, r.smallGroup].filter(Boolean).join(" / "))}</p>
+        <p class="exam-admin__meta">開始：${esc(r.startedAt ? new Date(r.startedAt).toLocaleString("zh-TW") : "—")}　最後儲存：${esc(r.lastSavedAt ? new Date(r.lastSavedAt).toLocaleString("zh-TW") : "—")}</p>
+        <p class="exam-admin__meta">練習自動分：${r.autoScore == null ? "尚未評分" : `${esc(r.autoScore)} 分`}（永不列入正式統計）</p>
+        <div data-practice-detail></div>
+      </details>`).join("")}</div>` : '<div class="admin-user-directory__empty">目前沒有重作練習紀錄。</div>'}`;
+  host.querySelectorAll("[data-practice-attempt]").forEach((row) => row.addEventListener("toggle", async () => {
+    if (!row.open || row.dataset.loaded === "1") return;
+    row.dataset.loaded = "1";
+    const detail = row.querySelector("[data-practice-detail]");
+    if (detail) detail.innerHTML = '<p class="exam-admin__meta">載入作答內容…</p>';
+    const r = await db.getExamPracticeDetail(row.dataset.practiceAttempt);
+    if (!r.success) { if (detail) detail.innerHTML = `<p class="exam-admin__meta">${esc(r.message || "載入失敗")}</p>`; return; }
+    const answers = Array.isArray(r.data?.answers) ? r.data.answers : [];
+    if (detail) detail.innerHTML = answers.map((a) => `<div class="exam-admin__practice-answer">
+      <p><strong>${esc(SECTION_TITLE[a.section] || a.section)}　第 ${esc(a.position)} 題</strong></p>
+      <p class="exam-admin__meta">${esc(a.stem || "")}</p>
+      <p>作答：${describeExamValue(a.section, a.payload, a.response)}</p>
+    </div>`).join("") || '<p class="exam-admin__meta">尚無作答內容。</p>';
+  }));
 }
 
 function gradeCard(it) {
@@ -1039,7 +1101,7 @@ function gradeCard(it) {
 }
 
 // ────────────────────────────────────────────────────────────── 滿版作答頁
-export function mountExamRunner({ paperId = null, standalone = false, preview = false } = {}) {
+export function mountExamRunner({ paperId = null, standalone = false, preview = false, attemptKind = "official" } = {}) {
   document.getElementById("exam-fullscreen")?.remove();
   const host = document.createElement("div");
   host.id = "exam-fullscreen";
@@ -1056,17 +1118,18 @@ export function mountExamRunner({ paperId = null, standalone = false, preview = 
   document.body.appendChild(host);
   try { document.body.dataset.examOpen = "1"; document.body.style.overflow = "hidden"; } catch (_) {}
 
-  const runner = new ExamRunner(host, paperId, standalone, preview);
+  const runner = new ExamRunner(host, paperId, standalone, preview, attemptKind);
   host.querySelector("#exam-back").addEventListener("click", () => runner.requestExit());
   runner.boot();
   return runner;
 }
 
 class ExamRunner {
-  constructor(host, paperId, standalone = false, preview = false) {
+  constructor(host, paperId, standalone = false, preview = false, attemptKind = "official") {
     this.host = host;
     this.standalone = standalone;
     this.preview = !!preview;
+    this.attemptKind = attemptKind === "practice" ? "practice" : "official";
     this.el = host.querySelector("#exam-fs-inner");
     this.titleEl = host.querySelector("#exam-fs-title");
     this.timerEl = host.querySelector("#exam-timer");
@@ -1080,6 +1143,8 @@ class ExamRunner {
     this.timerId = null;
     this.saveTimer = null;
     this.persistTimer = null;
+    this.practiceSyncTimer = null;
+    this._practiceSaveDebounce = null;
     this.dirty = false;
     this.submitting = false;
     this.resyncing = false;
@@ -1099,7 +1164,10 @@ class ExamRunner {
 
   async boot() {
     this.el.innerHTML = '<div class="admin-user-directory__empty">載入測驗…</div>';
-    const res = await db.getExamForAttempt(this.paperId, { preview: this.preview });
+    const res = await db.getExamForAttempt(this.paperId, {
+      preview: this.preview,
+      attemptKind: this.attemptKind
+    });
     if (!res.success) {
       // 網路 / 功能未開等錯誤：不清 active 旗標，保留稍後自動重試的機會
       this.el.innerHTML = `<div class="admin-user-directory__empty">${esc(res.message)}
@@ -1126,12 +1194,12 @@ class ExamRunner {
     if (d.attempt) {
       this.attempt = d.attempt;
       this.deadlineTs = 0;
-      this._anchorDeadline(this.attempt.secondsRemaining, this.attempt.deadlineAt);
+      if (this.attemptKind !== "practice") this._anchorDeadline(this.attempt.secondsRemaining, this.attempt.deadlineAt);
       this.lsKey = "exam_resp_" + this.attempt.id;
       this.hydrateFromAttempt();
       this.mergeLocal();
       if (this.attempt.status === "in_progress") {
-        setActiveExam(this.paper.id);       // 作答中 → 記住，app 重整後自動重開
+        setActiveExam(this.paper.id, this.attemptKind); // 作答中 → 記住，app 重整後自動重開
         this.attachLifecycle();
         this.renderRunner();
         this.persistLocal();
@@ -1142,7 +1210,8 @@ class ExamRunner {
       }
       return;
     }
-    if (this.openState === "not_open") { clearActiveExam(); this.el.innerHTML = this.closedCard("測驗尚未開放作答。"); return; }
+    if (this.openState === "practice_ready") { this.renderPracticeGate(); return; }
+    if (this.openState === "not_open") { clearActiveExam(); this.el.innerHTML = this.closedCard(this.attemptKind === "practice" ? "目前無法開始重作練習。" : "測驗尚未開放作答。"); return; }
     if (this.openState === "closed") { clearActiveExam(); this.el.innerHTML = this.closedCard("測驗已結束。"); return; }
     this.renderPledge();
   }
@@ -1155,6 +1224,9 @@ class ExamRunner {
     window.addEventListener("online", this._onOnline);
     if (!this.saveTimer) this.saveTimer = setInterval(() => this.flushSave(), 15000);
     if (!this.persistTimer) this.persistTimer = setInterval(() => this.persistLocal(), 3000);
+    if (this.attemptKind === "practice" && !this.practiceSyncTimer) {
+      this.practiceSyncTimer = setInterval(() => this.resync(), 30000);
+    }
   }
   detachLifecycle() {
     document.removeEventListener("visibilitychange", this._onVis);
@@ -1164,6 +1236,8 @@ class ExamRunner {
     if (this._matchResize) { window.removeEventListener("resize", this._matchResize); this._matchResize = null; }
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     if (this.persistTimer) { clearInterval(this.persistTimer); this.persistTimer = null; }
+    if (this.practiceSyncTimer) { clearInterval(this.practiceSyncTimer); this.practiceSyncTimer = null; }
+    if (this._practiceSaveDebounce) { clearTimeout(this._practiceSaveDebounce); this._practiceSaveDebounce = null; }
     if (this._timeoutRetry) { clearTimeout(this._timeoutRetry); this._timeoutRetry = null; }
     if (this._autoLeaveTimer) { clearTimeout(this._autoLeaveTimer); this._autoLeaveTimer = null; }
     this.stopTimer();
@@ -1253,6 +1327,12 @@ class ExamRunner {
 
   requestExit() {
     if (this.attempt && this.attempt.status === "in_progress" && !this.submitting) {
+      if (this.attemptKind === "practice") {
+        this.persistLocal();
+        void this.flushSave();
+        this.destroy();
+        return;
+      }
       // 時間已到 → 直接收卷，不能只存進度就走（否則這筆會卡在 in_progress）
       if (this.deadlineTs && Date.now() >= this.deadlineTs) {
         this._lockForTimeout();
@@ -1270,7 +1350,7 @@ class ExamRunner {
     if (this.resyncing || this.submitting || !this.attempt || this.attempt.status !== "in_progress") return;
     this.resyncing = true;
     try {
-      const res = await db.getExamForAttempt(this.paperId);
+      const res = await db.getExamForAttempt(this.paperId, { attemptKind: this.attemptKind });
       if (!res.success || !res.data) return;
       const a = res.data.attempt;
       if (!a) return;
@@ -1281,14 +1361,16 @@ class ExamRunner {
         await this.renderResult();
         return;
       }
-      this._anchorDeadline(a.secondsRemaining, a.deadlineAt);
       const saved = a.savedAnswers || {};
       let filled = false;
       Object.keys(saved).forEach((qid) => {
         if (this.RESP[qid] === undefined) { this.RESP[qid] = saved[qid]; filled = true; }
       });
-      this.tickTimer();
-      if (this.deadlineTs && Date.now() >= this.deadlineTs) { this._lockForTimeout(); this.submit("timeout"); return; }
+      if (this.attemptKind !== "practice") {
+        this._anchorDeadline(a.secondsRemaining, a.deadlineAt);
+        this.tickTimer();
+        if (this.deadlineTs && Date.now() >= this.deadlineTs) { this._lockForTimeout(); this.submit("timeout"); return; }
+      }
       if (filled) this.renderRunner();           // 有補回答案才整頁重繪
     } finally {
       this.resyncing = false;
@@ -1320,6 +1402,38 @@ class ExamRunner {
     try { localStorage.setItem(this.lsKey, JSON.stringify(this.collectAnswers())); } catch (_) {}
   }
   clearLocal() { try { if (this.lsKey) localStorage.removeItem(this.lsKey); } catch (_) {} }
+
+  // ── 重作練習 gate：與正式宣示分開，並留下「不列入成績」確認存證 ──
+  renderPracticeGate() {
+    if (this.timerEl) this.timerEl.hidden = true;
+    const closeText = this.paper?.closeAt ? new Date(this.paper.closeAt).toLocaleString("zh-TW") : "活動結束";
+    this.el.innerHTML = `
+      <div class="glass-card exam-pledge exam-practice-gate">
+        <span class="stat-badge stat-badge--warning">重作模式</span>
+        <h3>${esc(this.paper?.title || "速讀測驗")}｜重作練習</h3>
+        <ul class="exam-pledge__rules">
+          <li>這次練習不列入正式成績、排名或團隊統計。</li>
+          <li>不會覆蓋你的正式首考答案與成績。</li>
+          <li>沒有個人倒數，可修改至 ${esc(closeText)}；活動結束後自動鎖定。</li>
+        </ul>
+        <label class="exam-pledge__agree">
+          <input type="checkbox" id="exam-practice-agree">
+          我了解這是重作練習，且本次不列入正式成績。
+        </label>
+        <button type="button" id="exam-practice-start" class="primary-btn" disabled>開始重作練習</button>
+      </div>`;
+    const agree = this.el.querySelector("#exam-practice-agree");
+    const btn = this.el.querySelector("#exam-practice-start");
+    agree?.addEventListener("change", () => { btn.disabled = !agree.checked; });
+    btn?.addEventListener("click", () => this.startPractice());
+  }
+
+  async startPractice() {
+    this.el.innerHTML = '<div class="admin-user-directory__empty">建立重作練習…</div>';
+    const res = await db.startExamPractice(this.paper.id, true);
+    if (!res.success) { toast(res.message || "無法開始重作練習"); this.renderPracticeGate(); return; }
+    return this.boot();
+  }
 
   // ── 宣示 gate ──
   renderPledge() {
@@ -1392,10 +1506,15 @@ class ExamRunner {
            <p class="exam-q__note">預覽模式：此畫面僅供檢視題目，不會計時、不會建立作答紀錄。</p>
            <button type="button" id="exam-preview-close" class="secondary-btn" style="width:100%;">關閉預覽</button>
          </div>`
+      : this.attemptKind === "practice"
+        ? `<div class="exam-submit-bar exam-submit-bar--practice">
+             <p class="exam-q__note">重作模式｜不列入正式成績。答案會自動儲存，活動結束前可再次進入修改。</p>
+             <button type="button" id="exam-practice-finish" class="secondary-btn">暫時完成練習</button>
+           </div>`
       : `<div class="exam-submit-bar">
            <button type="button" id="exam-submit" class="primary-btn" style="width:100%;">送出答案</button>
          </div>`;
-    this.el.innerHTML = `<div id="exam-questions">${sectionsHtml}</div>${bar}`;
+    this.el.innerHTML = `${this.attemptKind === "practice" ? '<div class="exam-practice-banner">重作模式｜不列入正式成績</div>' : ""}<div id="exam-questions">${sectionsHtml}</div>${bar}`;
 
     if (typeof hydrateIcons === "function") hydrateIcons(this.el);
     this.el.querySelectorAll("[data-exam-q]").forEach((node) => this.bindQuestion(node, layout));
@@ -1406,9 +1525,25 @@ class ExamRunner {
       return;
     }
 
-    if (this.timerEl) this.timerEl.hidden = false;
-    this.el.querySelector("#exam-submit").addEventListener("click", () => this.submit("manual"));
-    this.startTimer();
+    if (this.attemptKind === "practice") {
+      if (this.timerEl) this.timerEl.hidden = true;
+      this.el.querySelector("#exam-practice-finish")?.addEventListener("click", () => this.finishPractice());
+    } else {
+      if (this.timerEl) this.timerEl.hidden = false;
+      this.el.querySelector("#exam-submit").addEventListener("click", () => this.submit("manual"));
+      this.startTimer();
+    }
+  }
+
+  async finishPractice() {
+    if (!this.attempt || this.attemptKind !== "practice") return;
+    this.persistLocal();
+    if (this.dirty) await this.flushSave();
+    if (this.dirty) { toast("答案尚未同步，請確認網路後再試一次"); return; }
+    const res = await db.markExamPracticeComplete(this.attempt.id);
+    if (!res.success) { toast(res.message || "練習儲存失敗"); return; }
+    toast("練習已儲存，活動結束前仍可回來修改");
+    this.destroy();
   }
 
   renderQuestion(q, idx, layout) {
@@ -1734,7 +1869,18 @@ class ExamRunner {
   }
 
   // ── 暫存 ──
-  markDirty() { if (this.preview) return; this.dirty = true; this.persistLocal(); }
+  markDirty() {
+    if (this.preview) return;
+    this.dirty = true;
+    this.persistLocal();
+    if (this.attemptKind === "practice") {
+      if (this._practiceSaveDebounce) clearTimeout(this._practiceSaveDebounce);
+      this._practiceSaveDebounce = setTimeout(() => {
+        this._practiceSaveDebounce = null;
+        void this.flushSave();
+      }, 700);
+    }
+  }
   async flushSave() {
     if (!this.dirty || !this.attempt || this.attempt.status !== "in_progress" || this.submitting) return;
     this.dirty = false;
@@ -1767,6 +1913,7 @@ class ExamRunner {
   // ── 送出（失敗自動重試） ──
   async submit(reason) {
     if (this.submitting) return;
+    if (this.attemptKind === "practice") return;
     if (reason === "manual" && !confirm("確定送出？送出後即鎖定，記錄以第一次為準、不可重作。")) return;
     this.submitting = true;
     this.stopTimer();
@@ -1810,7 +1957,7 @@ class ExamRunner {
     this.detachLifecycle();
     if (this.timerEl) this.timerEl.hidden = true;
 
-    const res = await db.getMyExamResult(this.paper.id);
+    const res = await db.getMyExamResult(this.paper.id, this.attempt?.id || null);
     const d = res.success ? (res.data || {}) : {};
     const graded = d.state === "graded";
     const auto = d.autoScore ?? submitData?.autoScore ?? "—";
@@ -1827,17 +1974,18 @@ class ExamRunner {
     // 成績未公布時不顯示暫定分數（可能是尚未定稿正解算出的、會誤導）
     const showAuto = graded && auto !== "—" && auto !== null && auto !== undefined;
     const staffPreview = d.staffPreview === true;   // 管理員在「公布成績」前提前看到的預覽
+    const isPractice = d.attemptKind === "practice" || this.attemptKind === "practice";
 
     this.el.innerHTML = `
       <div class="glass-card" style="padding:1.4rem 1.5rem;">
-        <h3 style="margin:0 0 .5rem;">${esc(this.paper.title)}</h3>
+        <h3 style="margin:0 0 .5rem;">${esc(this.paper.title)}${isPractice ? '　<span class="stat-badge stat-badge--warning">重作練習</span>' : ""}</h3>
         <div class="exam-result__banner">
-          測驗已送出，記錄以第一次為準、不可重作。<br>
+          ${isPractice ? "重作練習已鎖定，本次不列入正式成績。" : "正式作答已送出，答案已鎖定。"}<br>
           ${showAuto
             ? `${esc(autoLabel)}：<strong>${auto}</strong> 分${hasShort
                 ? `　｜　簡答題：<strong>${d.manualScore ?? "—"}</strong> 分　｜　總分：<strong>${total ?? "—"}</strong> 分`
                 : ""}`
-            : "成績尚未公布，管理員完成評分後會通知你，屆時可在此查看分數、完整解答與正解。"}
+            : "你可以查看自己的填答內容；活動關閉並公布成績前，不顯示分數、對錯或正解。"}
         </div>
         ${!answers.length ? "" : graded && showAuto ? `
           <p class="exam-result__hint">${staffPreview
@@ -1899,7 +2047,7 @@ function examResultRow(a, graded) {
     return `<div class="exam-result__row">
       <p class="exam-result__q">${head}（${a.points} 分）</p>
       <p class="exam-result__ln"><span class="exam-result__k">你的作答：</span>${esc(a.response || "（未作答）")}</p>
-      <p class="exam-result__ln"><span class="exam-result__k">得分：</span>${scored ? `<strong>${a.awardedPoints} / ${a.points}</strong>` : "待批改"}</p>
+      <p class="exam-result__ln"><span class="exam-result__k">得分：</span>${scored ? `<strong>${a.awardedPoints} / ${a.points}</strong>` : "尚未評分"}</p>
       ${a.graderComment ? `<p class="exam-result__ln"><span class="exam-result__k">評語：</span>${esc(a.graderComment)}</p>` : ""}
       ${ref}${rubric}
     </div>`;
@@ -1912,8 +2060,13 @@ function examResultRow(a, graded) {
     const answered = a.response !== null && a.response !== undefined
       && !(Array.isArray(a.response) && a.response.length === 0)
       && !(typeof a.response === "object" && !Array.isArray(a.response) && Object.keys(a.response).length === 0);
-    return `<div class="exam-result__row"><span class="exam-result__q-inline">${head}：</span>${
-      answered ? '<span class="exam-result__pending">已作答，待計分</span>' : '<span class="exam-bad">未作答</span>'}</div>`;
+    return `<div class="exam-result__row">
+      <p class="exam-result__q">${head}：${answered
+        ? '<span class="exam-result__pending">已作答，尚未評分</span>'
+        : '<span class="exam-bad">未作答</span>'}</p>
+      ${a.payload && a.payload.stem ? `<p class="exam-result__ln">${esc(a.payload.stem)}</p>` : ""}
+      <p class="exam-result__ln"><span class="exam-result__k">你的作答：</span>${describeExamValue(a.section, a.payload, a.response)}</p>
+    </div>`;
   }
   if (!graded || ok) {
     return `<div class="exam-result__row"><span class="exam-result__q-inline">${head}：</span>${

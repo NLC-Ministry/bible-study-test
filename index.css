@@ -14894,6 +14894,15 @@ textarea::placeholder {
 .exam-ok { color: var(--color-success-foreground); }
 .exam-bad { color: var(--color-danger-foreground); }
 .exam-result__pending { color: var(--text-muted); }
+.exam-practice-banner { position: sticky; top: 0; z-index: var(--z-header); margin: 0 0 0.75rem; padding: 0.7rem 1rem; border: 1px solid var(--color-warning); border-radius: 10px; background: var(--bg-surface); color: var(--text-primary); text-align: center; font-size: 0.9375rem; }
+.exam-practice-gate .primary-btn { width: 100%; }
+.exam-submit-bar--practice { display: grid; gap: 0.5rem; }
+.exam-home-banner__actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.exam-admin__practice-list { display: grid; gap: 0.65rem; }
+.exam-admin__practice-row { border: 1px solid var(--border-card); border-radius: 10px; padding: 0.75rem; background: var(--bg-surface); }
+.exam-admin__practice-row summary { cursor: pointer; font-size: 0.9375rem; }
+.exam-admin__practice-answer { margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--border-card); font-size: 0.9375rem; }
+.exam-admin__practice-answer p { margin: 0.2rem 0; }
 .exam-closed-card { padding: 1.25rem; }
 .exam-closed-card h3 { margin: 0 0 0.4rem; }
 .exam-closed-card p { margin: 0; font-size: 0.9375rem; color: var(--text-secondary); }
