@@ -160,11 +160,16 @@ export async function renderExamPanel(root) {
   const hasShortSection = !!examSectionCfg(paper).shortanswer;   // 沒選「簡答題」→ 隱藏批改分頁
   const canEditPaper = isTest;   // 正式版不提供編輯，題目與設定一律由測試版「推上正式版」
   const hasNotice = isLive;      // 測試版不用預告文（預告文只給會友端的正式版）
+  // 「填答案」：題目鎖定但要能補正解（正式版；或已有作答的測試版）——考完才給答案的情境
+  const canFillAnswers = !canEditPaper || attemptCount > 0;
   if (examAdminSubview === "grade" && !hasShortSection) examAdminSubview = "bank";
-  if (!canEditPaper && (examAdminSubview === "bank" || examAdminSubview === "meta")) examAdminSubview = "notice";
-  if (!hasNotice && examAdminSubview === "notice") examAdminSubview = "bank";
+  if (!canEditPaper && (examAdminSubview === "bank" || examAdminSubview === "meta")) examAdminSubview = canFillAnswers ? "answers" : "notice";
+  if (!hasNotice && examAdminSubview === "notice") examAdminSubview = canEditPaper ? "bank" : "answers";
+  if (examAdminSubview === "answers" && !canFillAnswers) examAdminSubview = "bank";
   const annPub = paper.announcement_published === true;
   const noticeReady = !!((paper.announcement || {}).headline || "").trim() && !!((paper.announcement || {}).body || "").trim();
+  const autoScoreOn = paper.auto_score_enabled !== false;   // 預設開；答案未定稿時可先關
+  const resultsPublished = !!paper.results_published_at;     // 成績已公布 → 全部鎖定不得再改
 
   const badge = paper.status === "published" ? "success" : "neutral";
   const statusLabel = { draft: "草稿（可編輯）", published: "測驗進行中", closed: "已關閉" }[paper.status] || paper.status;
@@ -175,7 +180,12 @@ export async function renderExamPanel(root) {
   const actions = [
     `<a class="secondary-btn" href="exam.html?paper=${encodeURIComponent(paper.id)}&preview=1" target="_blank" rel="noopener">預覽試卷</a>`
   ];
+  if (!resultsPublished) {
+    actions.push(`<button type="button" class="secondary-btn" data-exam-act="autoscore">${autoScoreOn ? "關閉自動評分" : "開啟自動評分"}</button>`);
+  }
   const hints = [];
+  if (resultsPublished) hints.push("成績已公布並鎖定：不可再修改正解、重新計分、批改或清除作答。");
+  else if (!autoScoreOn) hints.push("自動評分已關閉：作答只會存起來、不計分，狀態停在「待公布」；答案定稿後開回來並「重新計分」。");
 
   // ── 預告文（只有正式版有；獨立於 status，不鎖題庫）──
   if (hasNotice) {
@@ -224,19 +234,31 @@ export async function renderExamPanel(root) {
 
   // 測試版 → 同步到正式版（正式版已存在時才顯示；不存在時用上方「正式版（尚未建立）」按鈕建立）
   if (isTest && liveOf) {
-    actions.push('<button type="button" class="primary-btn" data-exam-act="push">同步到正式版</button>');
-    hints.push("題目 / 設定改好後按「同步到正式版」把最新內容推過去；正式版若已發佈會退回草稿要重新發佈。");
+    const livePushBlocked = (liveOf.attemptCount || 0) > 0
+      ? `正式版已有 ${liveOf.attemptCount} 筆作答，無法再同步題目（會毀掉已計分的成績）。要重來請另建新試卷。`
+      : liveOf.status === "published"
+        ? "正式版測驗進行中，請先切到「正式版」按「關閉測驗」，再回來同步題目。"
+        : "";
+    actions.push(`<button type="button" class="primary-btn" data-exam-act="push"${livePushBlocked ? " disabled" : ""}>同步到正式版</button>`);
+    hints.push(livePushBlocked
+      || "題目 / 設定改好後按「同步到正式版」把最新內容推過去；正式版若為「已關閉」會退回草稿要重新發佈。");
   } else if (isTest && !liveOf) {
     hints.push("題目改好後，用上方「正式版（尚未建立）」建立正式版，再去編預告文、發佈給會友。");
   } else if (isLive && paper.pushed_from_id) {
     hints.push("正式版只能編預告文與發佈；題目 / 設定要改請切到「測試版」。");
+  }
+
+  // 公布成績：正式版、已有作答、尚未公布 → 對外釋出並永久鎖定
+  if (isLive && attemptCount > 0 && !resultsPublished) {
+    actions.push('<button type="button" class="primary-btn" data-exam-act="publish-results">公布成績</button>');
+    hints.push("「公布成績」後，作答者才看得到分數與正解；公布後所有結算相關操作一律鎖定，不可再改。");
   }
   const actionHint = hints.join(" ");
 
   body.innerHTML = `
     ${pickerBar}
     <div class="exam-admin__paper">
-      <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${isLive ? "brand" : "neutral"}">${isLive ? "正式版" : "測試版"}</span>　<span class="stat-badge stat-badge--${badge}">${esc(statusLabel)}</span>${hasNotice ? annBadge : ""}</p>
+      <p><strong>${esc(paper.title)}</strong>　<span class="stat-badge stat-badge--${isLive ? "brand" : "neutral"}">${isLive ? "正式版" : "測試版"}</span>　<span class="stat-badge stat-badge--${badge}">${esc(statusLabel)}</span>${hasNotice ? annBadge : ""}${autoScoreOn || resultsPublished ? "" : '　<span class="stat-badge stat-badge--danger">自動評分關閉</span>'}${resultsPublished ? '　<span class="stat-badge stat-badge--brand">成績已公布（鎖定）</span>' : ""}</p>
       <div class="exam-admin__actions">${actions.join("")}</div>
       ${actionHint ? `<p class="exam-admin__meta">${esc(actionHint)}</p>` : ""}
       ${isTest ? `<details class="exam-admin__testers"><summary>測試名單（開放指定會友作答這份測試版）</summary>
@@ -252,6 +274,7 @@ export async function renderExamPanel(root) {
       ${hasNotice ? `<button type="button" data-exam-sub="notice" class="${examAdminSubview === "notice" ? "active" : ""}">預告文</button>` : ""}
       ${canEditPaper ? `<button type="button" data-exam-sub="bank" class="${examAdminSubview === "bank" ? "active" : ""}">題庫編輯</button>
       <button type="button" data-exam-sub="meta" class="${examAdminSubview === "meta" ? "active" : ""}">試卷設定</button>` : ""}
+      ${canFillAnswers ? `<button type="button" data-exam-sub="answers" class="${examAdminSubview === "answers" ? "active" : ""}">填答案</button>` : ""}
       ${hasShortSection ? `<button type="button" data-exam-sub="grade" class="${examAdminSubview === "grade" ? "active" : ""}">簡答批改</button>` : ""}
       <button type="button" data-exam-sub="stats" class="${examAdminSubview === "stats" ? "active" : ""}">統計</button>
     </nav>
@@ -299,7 +322,8 @@ export async function renderExamPanel(root) {
     const sub = body.querySelector("#exam-admin-sub");
     if (!sub) return;
     if (examAdminSubview === "notice") renderExamNoticeForm(sub, paper, rerender);
-    else if (examAdminSubview === "grade") renderExamGrading(sub, paper.id);
+    else if (examAdminSubview === "answers") renderExamAnswerKeys(sub, paper, questions, rerender);
+    else if (examAdminSubview === "grade") renderExamGrading(sub, paper.id, resultsPublished);
     else if (examAdminSubview === "stats") renderExamStats(sub, paper.id, hasShortSection);
     else if (!canEditPaper) sub.innerHTML = '<div class="admin-user-directory__empty">正式版的題目與試卷設定不提供編輯，一律由對應的測試版按「推上正式版」維護。要查看題目請用上方「預覽試卷」。</div>';
     else if (examAdminSubview === "meta") renderExamMetaForm(sub, paper, rerender);
@@ -313,6 +337,22 @@ export async function renderExamPanel(root) {
   }));
   body.querySelectorAll("[data-exam-act]").forEach((b) => b.addEventListener("click", async () => {
     const act = b.dataset.examAct;
+    if (act === "autoscore") {
+      const turnOn = !autoScoreOn;
+      if (!turnOn && !confirm("關閉自動評分後，之後送出的作答只會存起來、不計分，狀態停在「待公布」。確定？")) return;
+      b.disabled = true;
+      const r = await db.setExamAutoScore(paper.id, turnOn);
+      b.disabled = false;
+      if (!r.success) { toast(r.message || "切換失敗"); return; }
+      if (turnOn && confirm("已開啟自動評分。要立刻重新計分現有的所有作答嗎？")) {
+        const r2 = await db.recomputeExamScores(paper.id);
+        toast(r2.success ? `已重新計分 ${r2.data?.recomputed ?? ""} 筆` : (r2.message || "重新計分失敗"));
+      } else {
+        toast(turnOn ? "已開啟自動評分" : "已關閉自動評分");
+      }
+      rerender();
+      return;
+    }
     if (act === "ver-test") {
       examAdminPaperId = examKey; examAdminSubview = "bank"; rerender();
       return;
@@ -329,8 +369,18 @@ export async function renderExamPanel(root) {
       rerender();
       return;
     }
+    if (act === "publish-results") {
+      if (!confirm("公布成績後，作答者就能看到自己的分數與正解，且之後不能再修改正解、重新計分、批改或清除作答。\n請確認所有作答都已批改完成。確定公布？")) return;
+      b.disabled = true;
+      const r = await db.publishExamResults(paper.id);
+      b.disabled = false;
+      if (!r.success) { toast(r.message || "公布失敗"); return; }
+      toast(`成績已公布，已通知 ${r.data?.notified ?? 0} 位作答者`);
+      rerender();
+      return;
+    }
     if (act === "push") {
-      if (!confirm("把這份測試版的最新題目與設定同步到正式版？\n（正式版的預告文不受影響；若正式版已發佈會退回草稿。）")) return;
+      if (!confirm("把這份測試版的最新題目與設定同步到正式版？\n（正式版的預告文不受影響；若正式版為「已關閉」會退回草稿要重新發佈。正式版一旦有人作答就不能再同步。）")) return;
       b.disabled = true;
       const r = await db.pushExamToLive(paper.id);
       b.disabled = false;
@@ -750,14 +800,146 @@ function collectQCard(card, sec, secCfg) {
   return { payload, answer_key, points };
 }
 
+// ── 只填答案（題目鎖定，考完才給正解的情境）──
+function answerKeyCard(q, ordinal) {
+  const pl = q.payload || {};
+  const ak = q.answer_key;
+  const sec = q.section;
+  let ctrl = "";
+  if (sec === "truefalse") {
+    ctrl = `<select class="form-control" data-ak="tf">
+      <option value="">（未設定）</option>
+      <option value="true" ${ak === true ? "selected" : ""}>O（對）</option>
+      <option value="false" ${ak === false ? "selected" : ""}>X（錯）</option></select>`;
+  } else if (sec === "single") {
+    const opts = pl.options || [];
+    ctrl = `<select class="form-control" data-ak="single">
+      <option value="">（未設定）</option>
+      ${opts.map((o, i) => `<option value="${i}" ${ak === i ? "selected" : ""}>${i + 1}. ${esc(o)}</option>`).join("")}</select>`;
+  } else if (sec === "multiple") {
+    const opts = pl.options || [];
+    const cur = Array.isArray(ak) ? ak : [];
+    ctrl = `<div class="exam-admin__ak-opts">${opts.map((o, i) => `<label><input type="checkbox" data-ak="multi" value="${i}" ${cur.includes(i) ? "checked" : ""}> ${i + 1}. ${esc(o)}</label>`).join("")}</div>`;
+  } else if (sec === "matching") {
+    const left = pl.left || [], right = pl.right || [];
+    const cur = (ak && typeof ak === "object" && !Array.isArray(ak)) ? ak : {};
+    ctrl = left.map((l) => `<div class="exam-admin__ak-row"><span>${esc(l.text)}</span>
+      <select class="form-control" data-ak="match" data-l="${esc(l.id)}">
+        <option value="">（未設定）</option>
+        ${right.map((r) => `<option value="${esc(r.id)}" ${cur[l.id] === r.id ? "selected" : ""}>${esc(r.text)}</option>`).join("")}
+      </select></div>`).join("");
+  } else if (sec === "ordering") {
+    const items = pl.items || [];
+    const cur = Array.isArray(ak) ? ak : [];
+    ctrl = items.map((it) => {
+      const rank = cur.indexOf(it.id);
+      return `<div class="exam-admin__ak-row"><span>${esc(it.text)}</span>
+        <input type="number" class="form-control" data-ak="order" data-id="${esc(it.id)}" min="1" max="${items.length}" value="${rank >= 0 ? rank + 1 : ""}" placeholder="順位"></div>`;
+    }).join("");
+  }
+  return `<div class="exam-admin__ak-card" data-qid="${esc(q.id)}" data-section="${sec}">
+    <p class="exam-admin__ak-stem"><strong>${ordinal}.</strong> ${esc(pl.stem || "")}</p>
+    ${ctrl}
+    <div class="exam-admin__ak-actions">
+      <button type="button" class="secondary-btn" data-ak-save>儲存正解</button>
+      <span class="exam-admin__meta" data-ak-status>${ak === undefined || ak === null ? "尚未設定" : "已設定"}</span>
+    </div>
+  </div>`;
+}
+
+function collectAnswerKey(card, sec) {
+  if (sec === "truefalse") {
+    const v = card.querySelector('[data-ak="tf"]').value;
+    if (v === "") return { error: "請選擇正解" };
+    return { answer_key: v === "true" };
+  }
+  if (sec === "single") {
+    const v = card.querySelector('[data-ak="single"]').value;
+    if (v === "") return { error: "請選擇正解" };
+    return { answer_key: Number(v) };
+  }
+  if (sec === "multiple") {
+    const arr = [...card.querySelectorAll('[data-ak="multi"]')].filter((i) => i.checked).map((i) => Number(i.value)).sort((a, b) => a - b);
+    if (arr.length < 1) return { error: "請至少勾選一個正解" };
+    return { answer_key: arr };
+  }
+  if (sec === "matching") {
+    const out = {};
+    let missing = false;
+    card.querySelectorAll('[data-ak="match"]').forEach((s) => {
+      if (!s.value) missing = true;
+      else out[s.dataset.l] = s.value;
+    });
+    if (missing) return { error: "每個左欄項目都要選對應的右欄" };
+    return { answer_key: out };
+  }
+  if (sec === "ordering") {
+    const rows = [...card.querySelectorAll('[data-ak="order"]')];
+    const ranks = rows.map((r) => ({ id: r.dataset.id, n: Number(r.value) }));
+    if (ranks.some((r) => !r.n || r.n < 1 || r.n > rows.length)) return { error: `順位請填 1～${rows.length}` };
+    if (new Set(ranks.map((r) => r.n)).size !== rows.length) return { error: "順位不可重複" };
+    return { answer_key: ranks.sort((a, b) => a.n - b.n).map((r) => r.id) };
+  }
+  return { error: "不支援的題型" };
+}
+
+function renderExamAnswerKeys(host, paper, questions, rerender) {
+  const locked = !!paper.results_published_at;
+  const list = (questions || []).filter((q) => q.section !== "shortanswer")
+    .slice().sort((a, b) => (SECTION_ORDER.indexOf(a.section) - SECTION_ORDER.indexOf(b.section)) || (a.position - b.position));
+  if (!list.length) { host.innerHTML = '<div class="admin-user-directory__empty">這份試卷沒有可自動計分的題目。</div>'; return; }
+
+  const bySec = {};
+  list.forEach((q) => (bySec[q.section] ||= []).push(q));
+
+  if (locked) {
+    host.innerHTML = '<div class="admin-user-directory__empty">成績已公布並鎖定，正解與計分不可再更改。</div>';
+    return;
+  }
+
+  host.innerHTML = `
+    <p class="exam-admin__meta">題目已鎖定，這裡只填「正解」。適合「考完才拿到官方答案」的情況——填好後回上方按「開啟自動評分」→「重新計分」即可結算。</p>
+    ${SECTION_ORDER.filter((s) => bySec[s]).map((s) => `
+      <section class="exam-admin__bank-sec">
+        <h4>${esc(SECTION_TITLE[s])}</h4>
+        <div class="exam-admin__q-list">${bySec[s].map((q, i) => answerKeyCard(q, i + 1)).join("")}</div>
+      </section>`).join("")}
+    <div class="exam-admin__ak-foot">
+      <button type="button" class="primary-btn" id="exam-ak-recompute">重新計分（依目前正解）</button>
+    </div>`;
+
+  host.querySelectorAll(".exam-admin__ak-card").forEach((card) => {
+    card.querySelector("[data-ak-save]").addEventListener("click", async (e) => {
+      const built = collectAnswerKey(card, card.dataset.section);
+      if (built.error) { toast(built.error); return; }
+      e.target.disabled = true;
+      const r = await db.setExamAnswerKey(card.dataset.qid, built.answer_key);
+      e.target.disabled = false;
+      if (!r.success) { toast(r.message || "儲存失敗"); return; }
+      const st = card.querySelector("[data-ak-status]");
+      if (st) st.textContent = "已設定 ✓";
+      toast("已儲存正解");
+    });
+  });
+  host.querySelector("#exam-ak-recompute")?.addEventListener("click", async (e) => {
+    if (!confirm("依目前已填的正解，重新計算所有已送出的作答分數？")) return;
+    e.target.disabled = true;
+    const r = await db.recomputeExamScores(paper.id);
+    e.target.disabled = false;
+    toast(r.success ? `已重新計分 ${r.data?.recomputed ?? ""} 筆` : (r.message || "重新計分失敗"));
+    if (r.success) rerender();
+  });
+}
+
 // ── 簡答批改佇列（分數 + 評語）──
-async function renderExamGrading(host, paperId) {
+async function renderExamGrading(host, paperId, locked = false) {
   host.innerHTML = '<div class="admin-user-directory__empty">載入批改清單…</div>';
   const res = await db.getExamGradingQueue(paperId, examAdminGradeFilter);
   if (!res.success) { host.innerHTML = `<div class="admin-user-directory__empty">${esc(res.message || "載入失敗")}</div>`; return; }
   const { summary = {}, items = [] } = res.data || {};
 
   host.innerHTML = `
+    ${locked ? '<p class="exam-admin__meta">成績已公布並鎖定，批改結果不可再更改（僅供檢視）。</p>' : ""}
     <div class="exam-admin__grade-head">
       <span class="exam-admin__meta">待批 ${summary.pending ?? "?"}／已批 ${summary.graded ?? "?"}／共 ${summary.total ?? "?"}</span>
       <span class="exam-admin__filter">
@@ -767,8 +949,13 @@ async function renderExamGrading(host, paperId) {
     ${items.length ? items.map(gradeCard).join("") : '<div class="admin-user-directory__empty">沒有符合的簡答作答。</div>'}`;
 
   host.querySelectorAll("[data-gf]").forEach((b) => b.addEventListener("click", () => {
-    examAdminGradeFilter = b.dataset.gf; renderExamGrading(host, paperId);
+    examAdminGradeFilter = b.dataset.gf; renderExamGrading(host, paperId, locked);
   }));
+  if (locked) {
+    host.querySelectorAll(".exam-admin__grade-card [data-g], .exam-admin__grade-card [data-grade-save]")
+      .forEach((el) => { el.disabled = true; });
+    return;
+  }
   host.querySelectorAll(".exam-admin__grade-card").forEach((card) => {
     card.querySelector("[data-grade-save]").addEventListener("click", async (e) => {
       const pts = Number(card.querySelector('[data-g="points"]').value);

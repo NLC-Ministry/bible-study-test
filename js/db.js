@@ -3238,6 +3238,8 @@ const db = {
       exam_reset_live_forbidden: "正式測驗不可清除作答紀錄。如需重置請由工程人員處理。",
       exam_mode_locked: "已發佈的卷不能切換模式。請先「關閉測驗 → 改回草稿」再切。",
       exam_push_source_not_test: "只有測試卷可以「推上正式版」。",
+      exam_push_live_has_attempts: "正式版已有人作答，不能再推題目上去（會毀掉已計分的成績）。要更新請另建新試卷。",
+      exam_push_live_not_closed: "正式版測驗進行中，請先「關閉測驗」再更新題目。",
       exam_tester_user_not_found: "找不到這個 email 對應的使用者（對方要先登入過一次）。",
       exam_window_invalid: "請先設定正確的開放起訖時間。",
       exam_section_count_mismatch: "各大題題數與設定不符。",
@@ -3248,7 +3250,9 @@ const db = {
       exam_attempt_locked: "測驗已送出，不可再修改。",
       exam_time_up: "作答時間已結束。",
       exam_answer_not_gradable: "這一題不是可人工評分的題目。",
-      exam_points_out_of_range: "分數超出配分範圍。"
+      exam_points_out_of_range: "分數超出配分範圍。",
+      exam_results_locked: "成績已公布並鎖定，不可再更改答案、重新計分或批改。",
+      exam_results_incomplete: "還有作答尚未結算完成（作答中 / 待批 / 待重新計分），無法公布成績。"
     };
     const key = Object.keys(messages).find(code => raw.includes(code));
     return key ? messages[key] : "目前無法載入大測驗資料，請稍後再試。";
@@ -3310,6 +3314,18 @@ const db = {
   },
   async resetExamAttempts(paperId) {
     return this._callExamRpc("exam_reset_attempts", { p_paper_id: paperId });
+  },
+  async setExamAutoScore(paperId, enabled) {
+    return this._callExamRpc("exam_set_auto_score", { p_paper_id: paperId, p_enabled: !!enabled });
+  },
+  async recomputeExamScores(paperId) {
+    return this._callExamRpc("exam_recompute_scores", { p_paper_id: paperId });
+  },
+  async setExamAnswerKey(questionId, answerKey) {
+    return this._callExamRpc("exam_set_answer_key", { p_question_id: questionId, p_answer_key: answerKey });
+  },
+  async publishExamResults(paperId) {
+    return this._callExamRpc("exam_publish_results", { p_paper_id: paperId });
   },
   async getExamPaperTesters(paperId) {
     return this._callExamRpc("exam_get_paper_testers", { p_paper_id: paperId });
