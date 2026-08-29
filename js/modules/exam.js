@@ -92,6 +92,26 @@ export async function renderExamPanel(root) {
     return;
   }
 
+  // 非系統管理員（牧者 / 牧區長 / 區長 / 小組長）：只看統計，且由 exam_get_stats
+  // 依委派範圍過濾。不載入出題 / 發佈 / 批改（那些 RPC 仍是 admin-only）。
+  const isExamAdmin = typeof getUserRoleCode === "function"
+    && getUserRoleCode(state.currentUser) === "admin";
+  if (!isExamAdmin) {
+    const bannerRes = await db.getExamHomeBanner();
+    const pid = bannerRes && bannerRes.data && bannerRes.data.paperId;
+    if (!pid) {
+      body.innerHTML = '<div class="admin-user-directory__empty">目前沒有可檢視統計的測驗。</div>';
+      return;
+    }
+    if (!body.querySelector("#exam-stats-leader")) {
+      body.innerHTML = `<p class="exam-admin__meta">${esc(bannerRes.data.title || "大測驗")}　—　統計</p>
+        <div id="exam-stats-leader"></div>`;
+    }
+    await renderExamStats(body.querySelector("#exam-stats-leader"), pid, true);
+    keepScroll();
+    return;
+  }
+
   const paperRes = await db.getExamPaperAdmin(examAdminPaperId);
   if (!paperRes.success) {
     body.innerHTML = `<div class="admin-user-directory__empty">${esc(paperRes.message || "無法載入試卷")}${
@@ -502,7 +522,19 @@ async function renderExamStats(host, paperId, hasShort = true) {
   const tbl = (rows, cols) => `<table class="exam-stats__table"><thead><tr>${cols.map((c) => `<th>${esc(c.h)}</th>`).join("")}</tr></thead>
     <tbody>${rows.map((r) => `<tr>${cols.map((c) => `<td>${c.f(r)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
 
+  const scoped = d.scope === "scoped";
+  const rank3 = (d.teamRanking || []).filter((r) => r.division === 3);
+  const rank6 = (d.teamRanking || []).filter((r) => r.division === 6);
+  const rankTbl = (rows, size) => rows.length ? tbl(rows, [
+    { h: "名次", f: (r) => r.rank },
+    { h: "隊名", f: (r) => esc(r.name || "") },
+    { h: "完成", f: (r) => `${r.completed}/${size}` },
+    { h: "隊伍總分", f: (r) => `<strong>${num(r.teamTotal)}</strong>` },
+    { h: "平均", f: (r) => num(r.avgTotal) }])
+    : `<p class="exam-admin__meta">目前沒有${size} 人隊完成作答。</p>`;
+
   host.innerHTML = `
+    ${scoped ? '<p class="exam-admin__meta exam-stats__scope">只顯示你負責範圍內的作答；隊伍總分也只計入範圍內成員。</p>' : ""}
     <div class="exam-stats__tiles">
       <div class="exam-stats__tile"><span>作答</span><strong>${num(o.submitted)}</strong></div>
       <div class="exam-stats__tile"><span>已批改</span><strong>${num(o.graded)}</strong></div>
@@ -527,20 +559,18 @@ async function renderExamStats(host, paperId, hasShort = true) {
         { h: "牧區", f: (r) => esc(r.zone) }, { h: "小組", f: (r) => esc(r.name) },
         { h: "作答", f: (r) => r.count }, { h: "已批", f: (r) => r.graded }, { h: "平均總分", f: (r) => num(r.avgTotal) }])}
     </details>
-    <details class="exam-stats__sec" open><summary>個人／組隊</summary>
-      ${tbl(d.byDivision || [], [
+    <details class="exam-stats__sec" open><summary>組隊規模</summary>
+      ${tbl(d.byTeamSize || [], [
         { h: "類別", f: (r) => esc(r.label) },
         { h: "作答", f: (r) => r.count }, { h: "已批", f: (r) => r.graded },
         { h: "平均總分", f: (r) => num(r.avgTotal) }])}
+      <p class="exam-admin__meta">依作答者本人的讀經團隊成員身分分類。同時在 3 人與 6 人團隊的人，兩邊都計入。</p>
     </details>
-    <details class="exam-stats__sec"><summary>各組隊（${(d.byTeam || []).length} 隊）</summary>
-      ${tbl(d.byTeam || [], [
-        { h: "隊名", f: (r) => esc(r.name || "") },
-        { h: "組別", f: (r) => (r.division ? `${r.division} 人` : "—") },
-        { h: "作答", f: (r) => r.members }, { h: "已批", f: (r) => r.graded },
-        { h: "平均總分", f: (r) => num(r.avgTotal) },
-        { h: "總分和", f: (r) => num(r.totalSum) },
-        { h: "最高／最低", f: (r) => `${num(r.maxTotal)} / ${num(r.minTotal)}` }])}
+    <details class="exam-stats__sec" open><summary>3 人隊排行（${rank3.length} 隊）</summary>
+      ${rankTbl(rank3, 3)}
+    </details>
+    <details class="exam-stats__sec" open><summary>6 人隊排行（${rank6.length} 隊）</summary>
+      ${rankTbl(rank6, 6)}
     </details>
     <details class="exam-stats__sec"><summary>逐題正確率（自動計分題）</summary>
       ${tbl(d.byQuestion || [], [
@@ -556,7 +586,7 @@ async function renderExamStats(host, paperId, hasShort = true) {
         { h: "大區", f: (r) => esc(r.greatRegion || "") },
         { h: "牧區", f: (r) => esc(r.pastoralZone || "") },
         { h: "小組", f: (r) => esc(r.smallGroup || "") },
-        { h: "組隊", f: (r) => esc(r.team || (r.teamDivision ? `${r.teamDivision} 人組` : "個人")) },
+        { h: "組隊", f: (r) => esc(r.teamLabel || "個人") },
         ...(hasShort ? [
           { h: "自動", f: (r) => num(r.autoScore) },
           { h: "簡答", f: (r) => num(r.manualScore) },
@@ -569,17 +599,15 @@ async function renderExamStats(host, paperId, hasShort = true) {
   host.querySelector("#exam-stats-csv")?.addEventListener("click", () => {
     const rows = d.roster || [];
     const head = hasShort
-      ? ["姓名", "大區", "牧區", "小組", "組隊", "組別", "狀態", "自動", "簡答", "總分", "送出時間"]
-      : ["姓名", "大區", "牧區", "小組", "組隊", "組別", "狀態", "分數", "送出時間"];
+      ? ["姓名", "大區", "牧區", "小組", "組隊", "狀態", "自動", "簡答", "總分", "送出時間"]
+      : ["姓名", "大區", "牧區", "小組", "組隊", "狀態", "分數", "送出時間"];
     const csv = [head.join(",")].concat(rows.map((r) => (hasShort ? [
       r.name, r.greatRegion, r.pastoralZone, r.smallGroup,
-      r.team || (r.teamDivision ? `${r.teamDivision}人組` : "個人"),
-      r.teamDivision ? `${r.teamDivision}人` : "個人",
+      r.teamLabel || "個人",
       r.status, r.autoScore, r.manualScore, r.totalScore, r.submittedAt
     ] : [
       r.name, r.greatRegion, r.pastoralZone, r.smallGroup,
-      r.team || (r.teamDivision ? `${r.teamDivision}人組` : "個人"),
-      r.teamDivision ? `${r.teamDivision}人` : "個人",
+      r.teamLabel || "個人",
       r.status, r.totalScore ?? r.autoScore, r.submittedAt
     ]).map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))).join("\r\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });

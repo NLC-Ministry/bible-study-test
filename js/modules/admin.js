@@ -17,7 +17,7 @@ import {
 } from "./export-time.mjs";
 // Keep the ?v= in sync with any change to exam.js so a deploy isn't masked by a
 // Service Worker that cached /modules/exam.js at its bare (unversioned) URL.
-import { renderExamPanel } from "./exam.js?v=20260828_exam_p5c";
+import { renderExamPanel } from "./exam.js?v=20260828_exam_p5e";
 
 function updatePastoralWallControl(enabled, options = {}) {
   const toggle = document.getElementById("admin-pastoral-wall-toggle");
@@ -64,8 +64,12 @@ function updateExamFeatureControl(enabled, options = {}) {
 
 // 「大測驗」計劃管理分頁：系統管理員 + speed_reading_exam 功能開啟時才顯示。
 function applyAdminExamVisibility(enabled) {
-  const isAdmin = state.currentUser && getUserRoleCode(state.currentUser) === "admin";
-  const show = isAdmin && enabled === true;
+  // 系統管理員：完整後台（出題 / 發佈 / 批改 / 統計）。
+  // 牧者 / 牧區長 / 區長 / 小組長：只看統計（renderExamPanel 內部判斷，統計依委派範圍）。
+  const roleCode = state.currentUser && typeof getUserRoleCode === "function"
+    ? getUserRoleCode(state.currentUser) : null;
+  const canSee = ["admin", "pastor", "great_zone_leader", "zone_leader", "group_leader"].includes(roleCode);
+  const show = canSee && enabled === true;
   const tab = document.querySelector('#admin-plan-subtabs [data-plan-subtab="exam"]');
   const panel = document.getElementById("admin-plan-subtab-exam");
   if (tab) { tab.classList.toggle("hidden", !show); tab.style.display = show ? "" : "none"; }
