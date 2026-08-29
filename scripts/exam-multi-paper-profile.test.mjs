@@ -19,15 +19,15 @@ describe("多試卷首頁與個人紀錄", () => {
     expect(home).toContain('data-exam-paper-id');
   });
 
-  it("個人分頁將正式與重作紀錄分開標示", () => {
+  it("個人分頁將正式與複習紀錄分開標示", () => {
     const profile = read("js/modules/profile.js");
     expect(profile).toContain("正式作答：");
-    expect(profile).toContain("重作練習：");
+    expect(profile).toContain("複習：");
     expect(profile).toContain("不列入正式成績");
   });
 });
 
-describe("重作練習獨立寬限期", () => {
+describe("複習獨立寬限期", () => {
   const sql = read("supabase/migrations/0124_exam_practice_grace_period.sql");
   it("正式關閉只收 official，練習期限為活動結束後一天", () => {
     expect(sql).toContain("attempt_kind='official' AND status='in_progress'");

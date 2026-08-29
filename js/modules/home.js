@@ -2753,9 +2753,9 @@ function getExamHomeCardState(d, serverNow) {
     action = { kind: "pledge", label: "測驗宣示" };
     if (openTs && serverNow < openTs) countdownTo = openTs;
   }
-  if (d.practiceAttemptStatus === "in_progress") practiceAction = { label: "繼續重作練習" };
-  else if (d.canPractice) practiceAction = { label: "開始重作練習" };
-  else if (d.practiceReviewReady) practiceAction = { label: "查看重作紀錄" };
+  if (d.practiceAttemptStatus === "in_progress") practiceAction = { label: "繼續複習" };
+  else if (d.canPractice) practiceAction = { label: "題目回顧" };
+  else if (d.practiceReviewReady) practiceAction = { label: "查看複習紀錄" };
   return { badge, badgeKind, note, action, practiceAction, countdownTo };
 }
 

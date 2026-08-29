@@ -9,7 +9,7 @@ const edge = readFileSync(join(root, "supabase/functions/nlc-data/index.ts"), "u
 const db = readFileSync(join(root, "js/db.js"), "utf8");
 const exam = readFileSync(join(root, "js/modules/exam.js"), "utf8");
 
-describe("大測驗正式首考與重作練習隔離", () => {
+describe("大測驗正式首考與複習隔離", () => {
   it("回填舊資料並以 partial unique indexes 保留一份正式與一份練習", () => {
     expect(migration).toContain("SET attempt_kind = 'official'");
     expect(migration).toContain("CREATE UNIQUE INDEX idx_exam_attempts_one_official");
@@ -41,6 +41,6 @@ describe("大測驗正式首考與重作練習隔離", () => {
       expect(edge).toContain(`"${fn}"`);
     }
     expect(db).toContain('p_attempt_kind: attemptKind === "practice" ? "practice" : "official"');
-    expect(exam).toContain('重作模式｜不列入正式成績');
+    expect(exam).toContain('複習模式｜不列入正式成績');
   });
 });

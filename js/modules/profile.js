@@ -585,8 +585,8 @@ async function renderMyExamPapers() {
       <h4>${labels[group]} <span>${items.length}</span></h4>
       ${items.map(item => {
         const display = getMyExamDisplay(item);
-        const practiceLabel = item.practiceAttemptStatus === "in_progress" ? "繼續重作練習"
-          : item.canPractice ? "開始重作練習" : item.practiceAttemptId ? "查看重作紀錄" : "";
+        const practiceLabel = item.practiceAttemptStatus === "in_progress" ? "繼續複習"
+          : item.canPractice ? "題目回顧" : item.practiceAttemptId ? "查看複習紀錄" : "";
         return `<article class="profile-exam-card" data-profile-exam-id="${escapeHTML(item.paperId)}">
           <div class="profile-exam-card__head">
             <div><h5>${escapeHTML(item.title || item.headline || "速讀大測驗")}</h5><p>${escapeHTML(formatExamDateRange(item.openAt, item.closeAt))}</p></div>
@@ -595,7 +595,7 @@ async function renderMyExamPapers() {
           ${item.resultReady && item.myTotalScore != null ? `<div class="profile-exam-card__score"><span>正式成績</span><strong>${escapeHTML(String(item.myTotalScore))} 分</strong></div>` : ""}
           <div class="profile-exam-card__records">
             <span>正式作答：${item.officialAttemptId ? "已建立紀錄" : "尚未作答"}</span>
-            <span>重作練習：${item.practiceAttemptId ? "已有紀錄（不列入正式成績）" : "尚無紀錄"}${item.practiceCloseAt ? `・開放至 ${escapeHTML(formatExamSingleTime(item.practiceCloseAt))}` : ""}</span>
+            <span>複習：${item.practiceAttemptId ? "已有紀錄（不列入正式成績）" : "尚無紀錄"}${item.practiceCloseAt ? `・開放至 ${escapeHTML(formatExamSingleTime(item.practiceCloseAt))}` : ""}</span>
           </div>
           <div class="profile-exam-card__actions">
             ${display.primary ? `<button type="button" class="primary-btn" data-profile-exam-official>${display.primary}</button>` : ""}

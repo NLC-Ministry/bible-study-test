@@ -216,7 +216,7 @@ export async function renderExamPanel(root) {
     actions.push(`<button type="button" class="secondary-btn" data-exam-act="autoscore">${autoScoreOn ? "關閉自動評分" : "開啟自動評分"}</button>`);
   }
   if (isLive && paper.status !== "closed" && !resultsPublished) {
-    actions.push(`<button type="button" class="secondary-btn" data-exam-act="practice-toggle">${practiceEnabled ? "關閉重作練習" : "開啟重作練習"}</button>`);
+    actions.push(`<button type="button" class="secondary-btn" data-exam-act="practice-toggle">${practiceEnabled ? "關閉複習" : "開啟複習"}</button>`);
   }
   const hints = [];
   if (resultsPublished) hints.push("成績已公布並鎖定：不可再修改正解、重新計分、批改或清除作答。");
@@ -312,7 +312,7 @@ export async function renderExamPanel(root) {
       <button type="button" data-exam-sub="meta" class="${examAdminSubview === "meta" ? "active" : ""}">試卷設定</button>` : ""}
       ${canFillAnswers ? `<button type="button" data-exam-sub="answers" class="${examAdminSubview === "answers" ? "active" : ""}">填答案</button>` : ""}
       ${hasShortSection ? `<button type="button" data-exam-sub="grade" class="${examAdminSubview === "grade" ? "active" : ""}">簡答批改</button>` : ""}
-      ${isLive ? `<button type="button" data-exam-sub="practice" class="${examAdminSubview === "practice" ? "active" : ""}">重作紀錄${practiceAttemptCount ? `（${practiceAttemptCount}）` : ""}</button>` : ""}
+      ${isLive ? `<button type="button" data-exam-sub="practice" class="${examAdminSubview === "practice" ? "active" : ""}">複習紀錄${practiceAttemptCount ? `（${practiceAttemptCount}）` : ""}</button>` : ""}
       <button type="button" data-exam-sub="stats" class="${examAdminSubview === "stats" ? "active" : ""}">統計</button>
     </nav>
     <div id="exam-admin-sub"></div>`;
@@ -401,12 +401,12 @@ export async function renderExamPanel(root) {
     }
     if (act === "practice-toggle") {
       const turnOn = !practiceEnabled;
-      if (!turnOn && !confirm("關閉後不再接受新的重作練習；已建立的練習仍可修改到原活動結束時間後 24 小時。確定？")) return;
+      if (!turnOn && !confirm("關閉後不再接受新的複習；已建立的複習仍可修改到原活動結束時間後 24 小時。確定？")) return;
       b.disabled = true;
       const r = await db.setExamPracticeEnabled(paper.id, turnOn);
       b.disabled = false;
       if (!r.success) { toast(r.message || "切換失敗"); return; }
-      toast(turnOn ? "已開放重作練習" : "已停止建立新的重作練習");
+      toast(turnOn ? "已開放複習" : "已停止建立新的複習");
       rerender();
       return;
     }
@@ -457,7 +457,7 @@ export async function renderExamPanel(root) {
     }
     if (act === "announce" && !confirm("將把這份預告文發佈到全體會友的首頁。確定？")) return;
     if (act === "unannounce" && !confirm("撤下後，會友首頁就不會再顯示這份測驗的預告區塊。確定？")) return;
-    if (act === "close" && !confirm("關閉後會立即收卷並鎖定所有正式作答；重作練習不受影響，仍可修改至原活動結束時間後 24 小時。若自動評分已開啟且正解完整，關閉後才會開始計算正式成績。確定提前關閉？")) return;
+    if (act === "close" && !confirm("關閉後會立即收卷並鎖定所有正式作答；複習不受影響，仍可修改至原活動結束時間後 24 小時。若自動評分已開啟且正解完整，關閉後才會開始計算正式成績。確定提前關閉？")) return;
     if (act === "publish" && !confirm(isTest
       ? "將開放「測試作答」——只有系統管理員能進入，不會出現在會友端。發佈後題庫會鎖定。確定？"
       : "將開放作答（開放時間內全體會友可作答），發佈後題庫會鎖定。確定？")) return;
@@ -1145,12 +1145,12 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
 }
 
 async function renderExamPracticeRecords(host, paperId) {
-  host.innerHTML = '<div class="admin-user-directory__empty">載入重作紀錄…</div>';
+  host.innerHTML = '<div class="admin-user-directory__empty">載入複習紀錄…</div>';
   const res = await db.getExamPracticeRecords(paperId);
   if (!res.success) { host.innerHTML = `<div class="admin-user-directory__empty">${esc(res.message || "載入失敗")}</div>`; return; }
   const rows = Array.isArray(res.data?.records) ? res.data.records : [];
   host.innerHTML = `
-    <p class="exam-admin__meta">以下全部是重作練習，不列入正式成績、平均、排行、團隊統計或正式簡答批改。</p>
+    <p class="exam-admin__meta">以下全部是複習，不列入正式成績、平均、排行、團隊統計或正式簡答批改。</p>
     ${rows.length ? `<div class="exam-admin__practice-list">${rows.map((r) => `
       <details class="exam-admin__practice-row" data-practice-attempt="${esc(r.attemptId)}">
         <summary><strong>${esc(r.name || "（未具名）")}</strong>　<span class="stat-badge stat-badge--warning">不列入成績</span>
@@ -1159,7 +1159,7 @@ async function renderExamPracticeRecords(host, paperId) {
         <p class="exam-admin__meta">開始：${esc(r.startedAt ? new Date(r.startedAt).toLocaleString("zh-TW") : "—")}　最後儲存：${esc(r.lastSavedAt ? new Date(r.lastSavedAt).toLocaleString("zh-TW") : "—")}</p>
         <p class="exam-admin__meta">練習自動分：${r.autoScore == null ? "尚未評分" : `${esc(r.autoScore)} 分`}（永不列入正式統計）</p>
         <div data-practice-detail></div>
-      </details>`).join("")}</div>` : '<div class="admin-user-directory__empty">目前沒有重作練習紀錄。</div>'}`;
+      </details>`).join("")}</div>` : '<div class="admin-user-directory__empty">目前沒有複習紀錄。</div>'}`;
   host.querySelectorAll("[data-practice-attempt]").forEach((row) => row.addEventListener("toggle", async () => {
     if (!row.open || row.dataset.loaded === "1") return;
     row.dataset.loaded = "1";
@@ -1345,7 +1345,7 @@ class ExamRunner {
       return;
     }
     if (this.openState === "practice_ready") { this.renderPracticeGate(); return; }
-    if (this.openState === "not_open") { clearActiveExam(); this.el.innerHTML = this.closedCard(this.attemptKind === "practice" ? "目前無法開始重作練習。" : "測驗尚未開放作答。"); return; }
+    if (this.openState === "not_open") { clearActiveExam(); this.el.innerHTML = this.closedCard(this.attemptKind === "practice" ? "目前無法開始複習。" : "測驗尚未開放作答。"); return; }
     if (this.openState === "closed") { clearActiveExam(); this.el.innerHTML = this.closedCard("測驗已結束。"); return; }
     this.renderPledge();
   }
@@ -1544,14 +1544,14 @@ class ExamRunner {
   }
   clearLocal() { try { if (this.lsKey) localStorage.removeItem(this.lsKey); } catch (_) {} }
 
-  // ── 重作練習 gate：與正式宣示分開，並留下「不列入成績」確認存證 ──
+  // ── 複習 gate：與正式宣示分開，並留下「不列入成績」確認存證 ──
   renderPracticeGate() {
     if (this.timerEl) this.timerEl.hidden = true;
     const closeText = this.paper?.practiceCloseAt ? new Date(this.paper.practiceCloseAt).toLocaleString("zh-TW") : "原活動結束後 24 小時";
     this.el.innerHTML = `
       <div class="glass-card exam-pledge exam-practice-gate">
-        <span class="stat-badge stat-badge--warning">重作模式</span>
-        <h3>${esc(this.paper?.title || "速讀測驗")}｜重作練習</h3>
+        <span class="stat-badge stat-badge--warning">複習模式</span>
+        <h3>${esc(this.paper?.title || "速讀測驗")}｜複習</h3>
         <ul class="exam-pledge__rules">
           <li>這次練習不列入正式成績、排名或團隊統計。</li>
           <li>不會覆蓋你的正式首考答案與成績。</li>
@@ -1559,9 +1559,9 @@ class ExamRunner {
         </ul>
         <label class="exam-pledge__agree">
           <input type="checkbox" id="exam-practice-agree">
-          我了解這是重作練習，且本次不列入正式成績。
+          我了解這是複習，且本次不列入正式成績。
         </label>
-        <button type="button" id="exam-practice-start" class="primary-btn" disabled>開始重作練習</button>
+        <button type="button" id="exam-practice-start" class="primary-btn" disabled>題目回顧</button>
       </div>`;
     const agree = this.el.querySelector("#exam-practice-agree");
     const btn = this.el.querySelector("#exam-practice-start");
@@ -1570,9 +1570,9 @@ class ExamRunner {
   }
 
   async startPractice() {
-    this.el.innerHTML = '<div class="admin-user-directory__empty">建立重作練習…</div>';
+    this.el.innerHTML = '<div class="admin-user-directory__empty">載入複習…</div>';
     const res = await db.startExamPractice(this.paper.id, true);
-    if (!res.success) { toast(res.message || "無法開始重作練習"); this.renderPracticeGate(); return; }
+    if (!res.success) { toast(res.message || "無法開始複習"); this.renderPracticeGate(); return; }
     return this.boot();
   }
 
@@ -1596,7 +1596,7 @@ class ExamRunner {
         </div>
         <label class="exam-pledge__agree">
           <input type="checkbox" id="exam-pledge-agree">
-          我已詳閱並同意以上全部規則，且了解送出後將以第一次記錄為準、不可重作。
+          我已詳閱並同意以上全部規則，且了解送出後記錄以第一次正式測驗為準、複習不列入評分計算。
         </label>
         <button type="button" id="exam-pledge-start" class="primary-btn" style="width:100%;" disabled>
           開始作答（${this.paper.durationMinutes} 分鐘）
@@ -1649,13 +1649,13 @@ class ExamRunner {
          </div>`
       : this.attemptKind === "practice"
         ? `<div class="exam-submit-bar exam-submit-bar--practice">
-             <p class="exam-q__note">重作模式｜不列入正式成績。答案會自動儲存，原活動結束後 24 小時內可再次進入修改。</p>
+             <p class="exam-q__note">複習模式｜不列入正式成績。答案會自動儲存，原活動結束後 24 小時內可再次進入修改。</p>
              <button type="button" id="exam-practice-finish" class="secondary-btn">暫時完成練習</button>
            </div>`
       : `<div class="exam-submit-bar">
            <button type="button" id="exam-submit" class="primary-btn" style="width:100%;">送出答案</button>
          </div>`;
-    this.el.innerHTML = `${this.attemptKind === "practice" ? '<div class="exam-practice-banner">重作模式｜不列入正式成績</div>' : ""}<div id="exam-questions">${sectionsHtml}</div>${bar}`;
+    this.el.innerHTML = `${this.attemptKind === "practice" ? '<div class="exam-practice-banner">複習模式｜不列入正式成績</div>' : ""}<div id="exam-questions">${sectionsHtml}</div>${bar}`;
 
     if (typeof hydrateIcons === "function") hydrateIcons(this.el);
     this.el.querySelectorAll("[data-exam-q]").forEach((node) => this.bindQuestion(node, layout));
@@ -2055,7 +2055,7 @@ class ExamRunner {
   async submit(reason) {
     if (this.submitting) return;
     if (this.attemptKind === "practice") return;
-    if (reason === "manual" && !confirm("確定送出？送出後即鎖定，記錄以第一次為準、不可重作。")) return;
+    if (reason === "manual" && !confirm("確定送出？送出後即鎖定，記錄以第一次正式測驗為準、複習不列入評分計算。")) return;
     this.submitting = true;
     this.stopTimer();
     const btn = this.el.querySelector("#exam-submit");
@@ -2120,9 +2120,9 @@ class ExamRunner {
 
     this.el.innerHTML = `
       <div class="glass-card" style="padding:1.4rem 1.5rem;">
-        <h3 style="margin:0 0 .5rem;">${esc(this.paper.title)}${this.paper.mode === "test" ? '　<span class="stat-badge stat-badge--neutral">測試版</span>' : ""}${isPractice ? '　<span class="stat-badge stat-badge--warning">重作練習</span>' : ""}</h3>
+        <h3 style="margin:0 0 .5rem;">${esc(this.paper.title)}${this.paper.mode === "test" ? '　<span class="stat-badge stat-badge--neutral">測試版</span>' : ""}${isPractice ? '　<span class="stat-badge stat-badge--warning">複習</span>' : ""}</h3>
         <div class="exam-result__banner">
-          ${isPractice ? "重作練習已鎖定，本次不列入正式成績。" : "正式作答已送出，答案已鎖定。"}<br>
+          ${isPractice ? "複習已鎖定，本次不列入正式成績。" : "正式作答已送出，答案已鎖定。"}<br>
           ${showAuto
             ? `${esc(autoLabel)}：<strong>${auto}</strong> 分${hasShort
                 ? `　｜　簡答題：<strong>${d.manualScore ?? "—"}</strong> 分　｜　總分：<strong>${total ?? "—"}</strong> 分`
