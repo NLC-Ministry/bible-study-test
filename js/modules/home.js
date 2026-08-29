@@ -2792,6 +2792,7 @@ async function refreshExamHomeBanner() {
       <div class="exam-home-banner__main">
         <div class="exam-home-banner__head">
           <h3 class="card-title exam-home-banner__title">${escapeHTML(d.headline || d.title || "速讀大測驗")}</h3>
+          ${d.mode === "test" ? '<span class="stat-badge stat-badge--neutral">測試版</span>' : ""}
           <span class="stat-badge stat-badge--${state.badgeKind}">${escapeHTML(state.badge)}</span>
         </div>
         ${state.note ? `<p class="exam-home-banner__note">${escapeHTML(state.note)}</p>` : ""}

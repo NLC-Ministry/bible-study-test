@@ -1304,7 +1304,10 @@ class ExamRunner {
     if (d.state === "no_paper") { clearActiveExam(); this.el.innerHTML = '<div class="admin-user-directory__empty">目前沒有可作答的試卷。</div>'; return; }
     this.paper = d.paper;
     this.openState = d.state;
-    if (this.titleEl && this.paper) this.titleEl.textContent = this.paper.title;
+    if (this.titleEl && this.paper) {
+      this.titleEl.textContent = this.paper.title
+        + (this.paper.mode === "test" ? "（測試版）" : "");
+    }
 
     // 後台預覽：唯讀呈現整卷題目，不建 attempt、不倒數、不送出、不跳結果畫面
     // （不動 exam_active_paper 旗標，以免影響使用者自己可能進行中的作答續作）
@@ -1583,7 +1586,7 @@ class ExamRunner {
 
     this.el.innerHTML = `
       <div class="glass-card exam-pledge">
-        <h3>✅ ${esc(this.paper.title)}｜測驗宣示</h3>
+        <h3>✅ ${esc(this.paper.title)}${this.paper.mode === "test" ? "（測試版）" : ""}｜測驗宣示</h3>
         <p class="exam-pledge__open">${esc(pledge.openText || "")}</p>
         <ol class="exam-pledge__rules">${rules.map((r) => `<li>${esc(r)}</li>`).join("")}</ol>
         <div class="exam-pledge__consent">
@@ -2116,7 +2119,7 @@ class ExamRunner {
 
     this.el.innerHTML = `
       <div class="glass-card" style="padding:1.4rem 1.5rem;">
-        <h3 style="margin:0 0 .5rem;">${esc(this.paper.title)}${isPractice ? '　<span class="stat-badge stat-badge--warning">重作練習</span>' : ""}</h3>
+        <h3 style="margin:0 0 .5rem;">${esc(this.paper.title)}${this.paper.mode === "test" ? '　<span class="stat-badge stat-badge--neutral">測試版</span>' : ""}${isPractice ? '　<span class="stat-badge stat-badge--warning">重作練習</span>' : ""}</h3>
         <div class="exam-result__banner">
           ${isPractice ? "重作練習已鎖定，本次不列入正式成績。" : "正式作答已送出，答案已鎖定。"}<br>
           ${showAuto
