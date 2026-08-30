@@ -120,6 +120,7 @@ const EXAM_RPC_FUNCTIONS = new Set([
   "exam_grade_answer",
   "exam_grade_answers_batch",
   "exam_get_stats",
+  "exam_export_answers",
   "get_exam_notifications",
   "mark_exam_notifications_read"
 ]);

@@ -608,7 +608,10 @@ async function renderExamStats(host, paperId, hasShort = true) {
         { h: "正確率", f: (r) => rateBar(r.correctRate) }])}
     </details>
     <details class="exam-stats__sec" open><summary>作答名單（${(d.roster || []).length} 人）</summary>
-      <div class="exam-stats__toolbar"><button type="button" class="secondary-btn" id="exam-stats-csv">匯出 CSV</button></div>
+      <div class="exam-stats__toolbar">
+        <button type="button" class="secondary-btn" id="exam-stats-csv">匯出分數 CSV</button>
+        <button type="button" class="secondary-btn" id="exam-answers-csv">匯出完整作答 CSV</button>
+      </div>
       <div class="exam-stats__roster">${tbl(d.roster || [], [
         { h: "姓名", f: (r) => esc(r.name) },
         { h: "大區", f: (r) => esc(r.greatRegion || "") },
@@ -644,6 +647,49 @@ async function renderExamStats(host, paperId, hasShort = true) {
     a.download = `exam_${(d.paper && d.paper.title) || "results"}.csv`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  // 匯出完整作答（每位 × 每題一列）
+  host.querySelector("#exam-answers-csv")?.addEventListener("click", async (e) => {
+    e.target.disabled = true; e.target.textContent = "匯出中…";
+    const r = await db.exportExamAnswers(paperId);
+    e.target.disabled = false; e.target.textContent = "匯出完整作答 CSV";
+    if (!r.success || !Array.isArray(r.data)) { toast(r.message || "匯出失敗"); return; }
+    const secShort = { truefalse: "是非", single: "單選", multiple: "複選", matching: "連連看", ordering: "排序", shortanswer: "簡答" };
+    const choiceTexts = (row, val) => {
+      const opts = (row.payload && row.payload.options) || [];
+      const arr = row.section === "multiple"
+        ? (Array.isArray(val) ? val : [])
+        : (val == null || val === "" ? [] : [val]);
+      return arr.map((i) => opts[Number(i)]).filter((t) => t != null).join("、");
+    };
+    const respText = (row) => {
+      if (row.section === "shortanswer") return typeof row.response === "string" ? row.response : "";
+      if (row.section === "single" || row.section === "multiple") {
+        return choiceTexts(row, row.response) || describeExamValue(row.section, row.payload, row.response);
+      }
+      return describeExamValue(row.section, row.payload, row.response);
+    };
+    const keyText = (row) => {
+      if (row.section === "shortanswer") return (row.payload && row.payload.referenceAnswer) || "";
+      if (row.section === "single" || row.section === "multiple") return choiceTexts(row, row.answerKey);
+      return describeExamValue(row.section, row.payload, row.answerKey);
+    };
+    const head = ["姓名", "大區", "牧區", "小組", "狀態", "送出時間", "大題", "題號", "配分", "作答", "正確答案", "對錯", "得分"];
+    const csv2 = [head.join(",")].concat((r.data).map((row) => [
+      row.name, row.greatRegion, row.pastoralZone, row.smallGroup, row.status, row.submittedAt,
+      secShort[row.section] || row.section, row.position, row.points,
+      respText(row),
+      keyText(row),
+      row.autoCorrect === true ? "對" : row.autoCorrect === false ? "錯" : "",
+      row.awardedPoints ?? ""
+    ].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))).join("\r\n");
+    const blob2 = new Blob(["﻿" + csv2], { type: "text/csv;charset=utf-8" });
+    const a2 = document.createElement("a");
+    a2.href = URL.createObjectURL(blob2);
+    a2.download = `exam_${(d.paper && d.paper.title) || "results"}_作答明細.csv`;
+    a2.click();
+    setTimeout(() => URL.revokeObjectURL(a2.href), 1000);
   });
 }
 

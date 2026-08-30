@@ -3446,6 +3446,10 @@ const db = {
   async getExamStats(paperId) {
     return this._callExamRpc("exam_get_stats", { p_paper_id: paperId });
   },
+  // 匯出完整作答（每位 × 每題攤平；migration 0132）
+  async exportExamAnswers(paperId) {
+    return this._callExamRpc("exam_export_answers", { p_paper_id: paperId });
+  },
   async gradeExamAnswersBatch(paperId, grades = []) {
     return this._callExamRpc("exam_grade_answers_batch", {
       p_paper_id: paperId,
