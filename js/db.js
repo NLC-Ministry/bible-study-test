@@ -5231,9 +5231,10 @@ const db = {
       return { error: new Error("訊息不能超過 300 字") };
     }
 
-    // Demo 模式：僅模擬，不真正寫入
+    // Demo 模式：僅模擬，不真正寫入。不印出訊息全文——即使只是示範帳號，
+    // 使用者輸入的文字內容也不該進 console。
     if (state.currentUser && state.currentUser.is_demo) {
-      console.info("[Demo] sendCareReminder (simulated):", { recipientId, reason, message: trimmedMsg });
+      console.info("[Demo] sendCareReminder (simulated):", { recipientId, reason, messageLength: trimmedMsg.length });
       return { error: null };
     }
 

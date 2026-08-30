@@ -2691,7 +2691,11 @@ async function renderAdminUnjoinedPlanMembers(forceRefresh = false) {
     ].filter(Boolean).join("、");
     if (typeof showToast === "function") showToast(`批次提醒完成：${summary}`);
     if (failedMembers.length > 0) {
-      console.warn("Bulk plan invitation failures", { planId: planAtStart?.id, members: failedMembers });
+      // Only ids — never the full member record (name, pastoral placement)
+      // this list carries, even though the admin viewing it can already see
+      // that same data rendered on screen; no reason to also put it in the
+      // console history.
+      console.warn("Bulk plan invitation failures", { planId: planAtStart?.id, memberIds: failedMembers.map(m => m?.id).filter(Boolean) });
     }
   };
 
