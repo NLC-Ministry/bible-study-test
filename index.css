@@ -14936,10 +14936,15 @@ textarea::placeholder {
 .exam-submit-bar { margin-top: 2rem; padding: 1.25rem 0 0.5rem; border-top: 1px solid var(--border-card); }
 
 .exam-result__banner { border: 1px solid var(--color-brand); background: color-mix(in srgb, var(--color-brand) 8%, transparent); border-radius: 12px; padding: 0.85rem 1rem; font-size: 0.9375rem; line-height: 1.7; color: var(--text-primary); }
-.exam-result__list { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
-.exam-result__row { font-size: 0.9375rem; border: 1px solid var(--border-card); border-radius: 8px; padding: 0.5rem 0.7rem; color: var(--text-primary); line-height: 1.7; }
-.exam-result__row--wrong { border-color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 6%, transparent); }
-.exam-result__row--correct { border-color: var(--color-success); background: color-mix(in srgb, var(--color-success) 5%, transparent); }
+.exam-result__list { margin-top: 0.6rem; display: flex; flex-direction: column; }
+/* 未評分／一般題：不再各自一個框，改用淡分隔線，少一層視覺干擾 */
+.exam-result__row { font-size: 0.9375rem; padding: 0.75rem 0.15rem; color: var(--text-primary); line-height: 1.7; border-bottom: 1px solid var(--border-card); }
+.exam-result__row:last-child { border-bottom: none; }
+/* 已評分的對／錯：用左側色條 + 淡底突顯，不用整圈粗框 */
+.exam-result__row--wrong,
+.exam-result__row--correct { border-bottom: none; border-left: 3px solid transparent; border-radius: 6px; padding-left: 0.7rem; margin: 0.35rem 0; }
+.exam-result__row--wrong { border-left-color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 6%, transparent); }
+.exam-result__row--correct { border-left-color: var(--color-success); background: color-mix(in srgb, var(--color-success) 5%, transparent); }
 .exam-result__summary { cursor: pointer; font-size: 0.9375rem; margin-top: 1rem; }
 .exam-result__hint { font-size: 0.9375rem; color: var(--text-secondary); margin: 0.75rem 0 0.25rem; line-height: 1.6; }
 .exam-result__q { margin: 0 0 0.3rem; font-weight: var(--type-weight-strong, 600); }
