@@ -250,7 +250,6 @@ export function initReaderControls() {
   renderReaderPicker();
 
   function openReaderCatalog() {
-    console.log('目錄被點擊了');
     if (typeof window.openBibleNavOverlay === "function") window.openBibleNavOverlay();
   }
 
@@ -260,7 +259,6 @@ export function initReaderControls() {
   const navDirectoryBtn = document.getElementById("reader-nav-directory-btn");
   if (navDirectoryBtn) {
     navDirectoryBtn.addEventListener("click", () => {
-      console.log('目錄被點擊了');
       if (typeof window.openBibleNavOverlay === "function") {
         window.openBibleNavOverlay();
       }
@@ -401,7 +399,6 @@ export function initReaderControls() {
 
   if (settingsTrigger && settingsBackdrop) {
     settingsTrigger.addEventListener("click", (e) => {
-      console.log("➡️ [Debug] 點擊文字設定按鈕，嘗試開啟 typography-settings-backdrop");
       e.stopPropagation();
       openReaderLayer(settingsBackdrop);
       updateSheetActiveStates();
@@ -413,7 +410,6 @@ export function initReaderControls() {
 
   if (settingsCloseBtn && settingsBackdrop) {
     settingsCloseBtn.addEventListener("click", () => {
-      console.log("🔒 [Debug] 關閉文字設定按鈕被點擊");
       closeReaderLayer(settingsBackdrop);
     });
   }
@@ -437,7 +433,6 @@ export function initReaderControls() {
   if (settingsBackdrop) {
     settingsBackdrop.addEventListener("click", (e) => {
       if (e.target === settingsBackdrop) {
-        console.log("🔒 [Debug] 點擊文字設定外部遮罩關閉");
         closeReaderLayer(settingsBackdrop);
       }
     });
@@ -556,11 +551,9 @@ export function initReaderControls() {
   const prevChapterBtn = document.getElementById("prev-chapter-btn");
   const nextChapterBtn = document.getElementById("next-chapter-btn");
   if (prevChapterBtn) prevChapterBtn.addEventListener("click", () => {
-    console.log('上一章被點擊了');
     navigateToChapter(-1);
   });
   if (nextChapterBtn) nextChapterBtn.addEventListener("click", () => {
-    console.log('下一章被點擊了');
     navigateToChapter(1);
   });
 
@@ -993,8 +986,6 @@ export async function renderReaderText(options = {}) {
   let verses = null;
   let isLoading = true;
 
-  console.log('🔍 [畫面渲染檢查] 目前 verses 資料狀態：', verses, '是否加載中：', isLoading);
-
   if (isSpeaking && options.preserveAudio !== true) {
     stopReaderAudio(true);
   }
@@ -1060,8 +1051,6 @@ export async function renderReaderText(options = {}) {
     if (requestIsStale) return false;
     verses = data ? data.verses : null;
     isLoading = false;
-
-    console.log('🔍 [畫面渲染檢查] 目前 verses 資料狀態：', verses, '是否加載中：', isLoading);
 
     if (!verses || verses.length === 0) {
       throw new Error("經文正在稍微休息中，別擔心，我們一起重新點亮畫面試試看！");
@@ -2257,7 +2246,6 @@ let navOverlayState = {
 };
 
 window.openBibleNavOverlay = function() {
-  console.log("➡️ [Debug] 開啟聖經目錄選單");
   const overlay = document.getElementById("bible-nav-overlay");
   if (!overlay) return;
   
@@ -2338,7 +2326,6 @@ window.openBibleNavOverlay = function() {
 };
 
 window.switchNavTab = function(tabName) {
-  console.log(`➡️ [Debug] 切換聖經目錄分頁至: ${tabName}`);
   navOverlayState.activeTab = tabName;
   
   document.querySelectorAll("#bible-nav-overlay .segmented-tab").forEach(tab => {
@@ -2503,21 +2490,13 @@ function renderBibleNavContent() {
     grid.className = "verse-nav-grid";
     
     let totalVerses = 30;
-    let localData = null;
     if (book && typeof BIBLE_VERSE_COUNTS !== "undefined") {
       const bookCounts = BIBLE_VERSE_COUNTS[book.eng];
       if (bookCounts && bookCounts[navOverlayState.selectedChapter - 1]) {
         totalVerses = bookCounts[navOverlayState.selectedChapter - 1];
-        localData = {
-          book: book.name,
-          chapter: navOverlayState.selectedChapter,
-          totalVerses: totalVerses
-        };
       }
     }
-    
-    console.log('📦 [本地讀取成功] 已從 Local 讀取出卷章節數據：', localData);
-    
+
     for (let v = 1; v <= totalVerses; v++) {
       const item = document.createElement("div");
       item.className = "grid-item-number";
@@ -2531,20 +2510,17 @@ function renderBibleNavContent() {
 }
 
 function selectNavBook(bookId) {
-  console.log(`➡️ [Debug] 聖經目錄選擇書卷 ID: ${bookId}`);
   navOverlayState.selectedBookId = bookId;
   navOverlayState.selectedChapter = 1;
   window.switchNavTab('chapter');
 }
 
 function selectNavChapter(chNum) {
-  console.log(`➡️ [Debug] 聖經目錄選擇章節數: ${chNum}`);
   navOverlayState.selectedChapter = chNum;
   window.switchNavTab('verse');
 }
 
 async function selectNavVerse(vNum) {
-  console.log(`➡️ [Debug] 聖經目錄選擇節數: ${vNum}`);
   navOverlayState.selectedVerse = vNum;
   
   closeReaderLayer(document.getElementById("bible-nav-overlay"));
@@ -2700,12 +2676,10 @@ function triggerPredictivePrefetch() {
     return;
   }
 
-  console.log(`📡 [背景預載啟動] 正在預載下一章: ${nextBookEng} ${nextChapter}章`);
   fetchBibleChapter(nextBookEng, nextChapter, requestedVersion)
     .then(data => {
       if (window._bibleChapterCache && data && !data.isPlaceholder) {
         window._bibleChapterCache[cacheKey] = data;
-        console.log(`💾 [背景預載完成] 已快取下一章: ${cacheKey}`);
       }
     })
     .catch(err => {

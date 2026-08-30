@@ -451,7 +451,6 @@ function ensurePlanViewModeToggle() {
 
 // Reactive state propagation audit
 window.addEventListener("planDataChanged", (e) => {
-  console.log('🏗️ [系統審計] 收到資料變更事件通知，強制重新渲染組件，資料版本:', e.detail.dataVersion);
   renderHorizontalDateStrip();
   renderPlanScheduleTracker(true);
 });
@@ -1655,20 +1654,6 @@ function renderJoinedPlansList() {
       plansToRender = (state.activePlans || []).filter(p => isExpired(p));
     }
 
-    console.log("🔍 [Debug renderJoinedPlansList]", {
-      filter,
-      today: today.toISOString().split('T')[0],
-      activePlansLength: state.activePlans ? state.activePlans.length : null,
-      activePlans: state.activePlans
-    });
-    
-    (state.activePlans || []).forEach(plan => {
-      console.log(`  Active Plan: ${plan.name} (${plan.presetKey || plan.id})`, {
-        endDate: plan.endDate,
-        isExpired: isExpired(plan)
-      });
-    });
-
     plansToRender = plansToRender.filter(plan => canManageHiddenPlans() || !isPlanHidden(plan));
     plansToRender = plansToRender.filter(matchesPlanSearch);
     plansToRender = sortJoinedPlansChronologically(plansToRender);
@@ -2376,14 +2361,6 @@ function renderPresetPlansList() {
       || normalizedName === "2026-2029 新生生命聖經速讀計畫");
   };
 
-  console.log("🔍 [Debug renderPresetPlansList]", {
-    isSupabaseMode: state.isSupabaseMode,
-    globalPlansLength: state.globalPlans ? state.globalPlans.length : null,
-    globalPlans: state.globalPlans,
-    activePlans: state.activePlans,
-    presets: CHURCH_PLAN_PRESETS
-  });
-
   const visiblePlans = sourcePlans.filter(plan => {
     if (!plan) return false;
     const isObsolete = isObsoleteCategoryPlan(plan);
@@ -2393,22 +2370,12 @@ function renderPresetPlansList() {
     
     const joinedKeysValues = [plan.id, plan.globalPlanId, plan.presetKey, plan.name].filter(Boolean).map(String);
     const isAlreadyJoined = joinedKeysValues.some(value => joinedKeys.has(value));
-    
-    console.log(`  Plan: ${plan.name} (${plan.presetKey || plan.id})`, {
-      isObsolete,
-      isLegacy,
-      isHidden,
-      matchesSearch,
-      isAlreadyJoined,
-      joinedKeysValues
-    });
 
     if (isObsolete || isLegacy) return false;
     if (isHidden && !canManageHiddenPlans() && !window.isCampaignStageLocked(plan)) return false;
     if (!matchesSearch) return false;
     return !isAlreadyJoined;
   });
-  console.log("🔍 [Debug renderPresetPlansList] visiblePlans:", visiblePlans);
 
   if (visiblePlans.length === 0) {
     container.innerHTML = `
@@ -2581,8 +2548,6 @@ function getPlanProgressStatus(plan = state.activePlan) {
 }
 
 function renderHorizontalDateStrip() {
-  console.log('[系統審計] 進入資料讀寫，當前操作類型：渲染日曆格子 (無縫滑動視窗優化)', '資料版本:', state.dataVersion);
-
   const container = document.getElementById("plan-date-carousel");
   if (!container || !state.activePlan) return;
 
@@ -2773,9 +2738,6 @@ function renderHorizontalDateStrip() {
         e.preventDefault();
         e.stopPropagation();
 
-        const clickedDate = `${cell.year}/${String(cell.month).padStart(2, '0')}/${String(cell.dayOfMonth).padStart(2, '0')}`;
-        console.log('📅 [日曆切換防護] 已成功鎖定日期：', clickedDate, '準備渲染對應章節');
-
         if (window._dateSwitchAbortController) {
           window._dateSwitchAbortController.abort();
         }
@@ -2895,7 +2857,6 @@ function renderPlanProgressUpgradeOverlay(plan = state.activePlan) {
 }
 
 async function renderPlanScheduleTracker(skipCarouselUpdate = false, signal = null) {
-  console.log('🏗️ [系統審計] 進入資料讀寫，當前操作類型：渲染任務章節', '資料版本:', state.dataVersion);
 
   const container = document.getElementById("plan-tasks-list");
   if (!container || !state.activePlan) return;
@@ -2968,12 +2929,10 @@ async function renderPlanScheduleTracker(skipCarouselUpdate = false, signal = nu
 
   // Validate abort signal
   if (signal && signal.aborted) {
-    console.log('⏳ [日期切換防護] 偵測到 AbortController 取消，已自動忽略/取消舊日期的非同步請求');
     return;
   }
   // Validate request pointer after asynchronous block to prevent race condition overrides
   if (currentRequestId !== lastTrackerRequestId) {
-    console.log('⏳ [日期切換防護] 偵測到快速切換，已自動忽略/取消舊日期的非同步請求，當前鎖定日期：', state.selectedPlanDay);
     return;
   }
 
@@ -3605,7 +3564,6 @@ function getRoundBadge(ch, currentRound) {
 }
 
 window.toggleYouVersionChapter = function (checkboxEl, book, chapter, taskRound = null) {
-  console.log('🏗️ [系統審計] 進入資料讀寫，當前操作類型：切換章節已讀狀態', '資料版本:', state.dataVersion);
 
   const isCurrentlyRead = checkboxEl.dataset.isCurrentRead === 'true';
   const willBeChecked = !isCurrentlyRead;
@@ -3701,8 +3659,6 @@ window.toggleYouVersionChapter = function (checkboxEl, book, chapter, taskRound 
 
   // Set dataVersion to optimistically propagate changes to all listening views via CustomEvent
   window.setDataVersion(prev => prev + 1);
-
-  console.log('✅ [進度同步完成] 成功標記已讀，已強制驅動畫面更新');
 
   // ── Cross-tab data sync: notify all loaded modules via unified event bus ──
   // Using an event prevents direct dependency on functions that may not be loaded yet.
@@ -4392,7 +4348,6 @@ window.openPlanChapterInReader = function (bookName, chapter, dayNum, round = nu
     showToast("此計畫已過期，無法再進入進度閱讀。");
     return;
   }
-  console.log('📖 [Debug] 已點選章節，進入全滿版沉浸閱讀模式');
   const book = BIBLE_BOOKS.find(b => b.name === bookName || b.eng === bookName);
   if (!book) {
     console.warn('找不到本地聖經卷名，無法進入閱讀：', bookName);
@@ -7484,9 +7439,6 @@ window.showPlanStatsModal = function () {
   const progressStatus = getPlanProgressStatus(plan);
   const statusLabel = progressStatus.label;
   const statusBadgeClass = progressStatus.badgeClass || "stat-badge--brand";
-
-  // Mandatory debug log injection representing modal useEffect mount hook
-  console.log('📊 [統計面板載入] 真實讀取 -> 累計章數:', totalReadChapters, '成功追回天數:', catchUpDays);
 
   // 7. Create Stats Modal Elements
   const modalOverlay = document.createElement("div");

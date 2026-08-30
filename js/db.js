@@ -110,6 +110,26 @@ async function fetchAllRows(buildQuery, pageSize = 200) {
   return { data: rows, error: null };
 }
 
+// PostgREST encodes an `.in()` filter's values directly into the request
+// URL (`id=in.(uuid,uuid,...)`). Once the church has accumulated enough
+// reading_teams across every quarterly stage, an unbounded id list here can
+// make that URL long enough to trip an HTTP/2 request-size limit somewhere
+// in the path (Cloudflare/PostgREST/the Edge Runtime's own HTTP client) —
+// surfacing as a bare "stream error … unspecific protocol error", not a
+// normal Postgres error. Chunk the ids and merge results instead of sending
+// one giant filter.
+async function fetchRowsInChunks(buildQueryForChunk, ids, chunkSize = 100) {
+  const uniqueIds = Array.from(new Set(ids));
+  const rows = [];
+  for (let i = 0; i < uniqueIds.length; i += chunkSize) {
+    const chunk = uniqueIds.slice(i, i + chunkSize);
+    const { data, error } = await buildQueryForChunk(chunk);
+    if (error) return { data: rows, error };
+    rows.push(...(data || []));
+  }
+  return { data: rows, error: null };
+}
+
 function createEmptyOrgStructure(revision = 0) {
   return {
     regions: [],
@@ -947,7 +967,11 @@ const db = {
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.edge_session) {
-      console.error("❌ NLC Session Sync Failed Payload:", payload);
+      // Only the status/error code/message — never the raw payload. The
+      // nlc-session edge function no longer returns a stack trace, but this
+      // must not become a place that re-leaks server internals if that ever
+      // changes again.
+      console.error("❌ NLC Session Sync Failed:", response.status, payload.error || payload.message || "unknown");
       // Special case: the server detected a known sub but couldn't resolve the profile.
       // This typically means the Logto sub changed between devices or tokens are mismatched.
       // Show a specific error and prompt re-login instead of crashing.
@@ -1192,10 +1216,14 @@ const db = {
           state.supabase.from("reading_plans").select("id, user_id, global_plan_id, name, start_date, end_date, target_books, preset_key, level, current_round, was_downgraded, downgrade_locked_until, upgrade_prompt_handled, current_round_started_at, is_fixed, reading_days_per_week, rest_weekdays, created_at").eq("user_id", user.id).order("created_at", { ascending: false })
         ]);
 
-        if (globalPlansResult.error) console.error("❌ global_plans load failed:", globalPlansResult.error);
-        if (profileResult.error) console.error("❌ profile load failed:", profileResult.error);
-        if (logsResult.error) console.error("❌ reading_logs load failed:", logsResult.error);
-        if (plansResult.error) console.error("❌ reading_plans load failed:", plansResult.error);
+        // Only message/code — never the raw error object. A PostgrestError
+        // can echo back query/row context that shouldn't reach the browser
+        // console in production.
+        const summarizeLoadError = (error) => error ? { message: error.message, code: error.code } : null;
+        if (globalPlansResult.error) console.error("❌ global_plans load failed:", summarizeLoadError(globalPlansResult.error));
+        if (profileResult.error) console.error("❌ profile load failed:", summarizeLoadError(profileResult.error));
+        if (logsResult.error) console.error("❌ reading_logs load failed:", summarizeLoadError(logsResult.error));
+        if (plansResult.error) console.error("❌ reading_plans load failed:", summarizeLoadError(plansResult.error));
         const initialDataLoadSucceeded = ![
           globalPlansResult,
           profileResult,
@@ -1783,7 +1811,6 @@ const db = {
       offlineError.code = "OFFLINE_READ_ONLY";
       throw offlineError;
     }
-    console.log('🏗️ [系統審計] 進入資料讀寫，當前操作類型：資料庫寫入進度', '資料版本:', state.dataVersion);
     const todayISO = new Date().toISOString();
     const targetPlan = planOverride || state.activePlan;
     if (isChecked && targetPlan && isPlanProgressLocked(targetPlan, { hidden: window.isPlanHidden?.(targetPlan) })) {
@@ -2123,10 +2150,10 @@ const db = {
       const teamIds = Array.from(new Set((teamMembershipsResult || []).map(m => m.team_id).filter(Boolean)));
       let teamNameById = new Map();
       if (teamIds.length > 0) {
-        const { data: teamsResult } = await fetchAllRows(() => state.supabase
-          .from("reading_teams")
-          .select("id, name")
-          .in("id", teamIds));
+        const { data: teamsResult } = await fetchRowsInChunks(
+          (chunk) => state.supabase.from("reading_teams").select("id, name").in("id", chunk),
+          teamIds
+        );
         teamNameById = new Map((teamsResult || []).map(t => [String(t.id), t.name]));
       }
       // A member can belong to more than one team across different plans;
@@ -3116,14 +3143,10 @@ const db = {
     try {
       const { data, error } = await state.supabase.rpc(functionName, args);
       if (error) {
+        // Only message/code/status — never `details`/`hint`, which can echo
+        // back constraint names or row-level context from Postgrest.
         const errorDetails = error && typeof error === "object"
-          ? {
-              message: error.message || null,
-              code: error.code || null,
-              details: error.details || null,
-              hint: error.hint || null,
-              status: error.status || null
-            }
+          ? { message: error.message || null, code: error.code || null, status: error.status || null }
           : { message: String(error || "unknown_error") };
         console.warn(`[Quiz] ${functionName} failed: ${JSON.stringify(errorDetails)}`);
         return { success: false, error, message: this._quizErrorMessage(error) };
@@ -3131,13 +3154,7 @@ const db = {
       return { success: true, data };
     } catch (error) {
       const errorDetails = error && typeof error === "object"
-        ? {
-            message: error.message || null,
-            code: error.code || null,
-            details: error.details || null,
-            hint: error.hint || null,
-            status: error.status || null
-          }
+        ? { message: error.message || null, code: error.code || null, status: error.status || null }
         : { message: String(error || "unknown_error") };
       console.warn(`[Quiz] ${functionName} failed: ${JSON.stringify(errorDetails)}`);
       return { success: false, error, message: this._quizErrorMessage(error) };
@@ -3557,10 +3574,10 @@ const db = {
       ));
       let profilesMap = new Map();
       if (userIds.length > 0) {
-        const { data: pRows } = await client
-          .from("profiles")
-          .select("id, name, great_region, pastoral_zone, small_group")
-          .in("id", userIds);
+        const { data: pRows } = await fetchRowsInChunks(
+          (chunk) => client.from("profiles").select("id, name, great_region, pastoral_zone, small_group").in("id", chunk),
+          userIds
+        );
         if (Array.isArray(pRows)) {
           profilesMap = new Map(pRows.map(p => [String(p.id), p]));
         }
@@ -3849,10 +3866,10 @@ const db = {
       const teamIds = Array.from(new Set(memberships.map(m => m.team_id).filter(Boolean)));
       let teams = [];
       if (teamIds.length > 0) {
-        const { data: teamRows, error: teamsError } = await client
-          .from("reading_teams")
-          .select("id, name")
-          .in("id", teamIds);
+        const { data: teamRows, error: teamsError } = await fetchRowsInChunks(
+          (chunk) => client.from("reading_teams").select("id, name").in("id", chunk),
+          teamIds
+        );
         if (!teamsError && teamRows) teams = teamRows;
       }
 
@@ -5234,9 +5251,10 @@ const db = {
       return { error: new Error("訊息不能超過 300 字") };
     }
 
-    // Demo 模式：僅模擬，不真正寫入
+    // Demo 模式：僅模擬，不真正寫入。不印出訊息全文——即使只是示範帳號，
+    // 使用者輸入的文字內容也不該進 console。
     if (state.currentUser && state.currentUser.is_demo) {
-      console.info("[Demo] sendCareReminder (simulated):", { recipientId, reason, message: trimmedMsg });
+      console.info("[Demo] sendCareReminder (simulated):", { recipientId, reason, messageLength: trimmedMsg.length });
       return { error: null };
     }
 

@@ -175,7 +175,7 @@ describe("emitBundle (integration, real repo)", () => {
       expect(issueReportBundle).toMatch(/export\s*\{[^}]*mountIssueReportUi/);
       // contains app bundle code
       const bundle = rf(join(out, jsFile), "utf8");
-      expect(bundle.includes("Lazy-loading")).toBe(true);
+      expect(bundle.includes("MODULE_LOAD_FAILED")).toBe(true);
       expect(bundle).not.toContain("__BUILD_VERSION__");
       expect(bundle).toContain("issue-report-ui.bundle.js");
       expect(bundle).toMatch(/\d{14}/);

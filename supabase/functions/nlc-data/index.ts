@@ -599,7 +599,7 @@ Deno.serve(async (req: Request) => {
         ? { ...(body.args || {}), p_actor_id: profile.id }
         : (body.args || {});
       const { data, error } = await supabaseAdmin.rpc(rpcName, rpcArgs);
-      if (error) return jsonResponse({ error: error.message, details: error }, 400);
+      if (error) return jsonResponse({ error: error.message, code: error.code }, 400);
       return jsonResponse({ data });
     }
 
@@ -641,7 +641,7 @@ Deno.serve(async (req: Request) => {
           status: "unread",
           sent_on: new Date().toISOString().slice(0, 10)
         });
-      if (error) return jsonResponse({ error: error.message, details: error, code: error.code }, 400);
+      if (error) return jsonResponse({ error: error.message, code: error.code }, 400);
       return jsonResponse({ data: null });
     }
 
@@ -736,7 +736,7 @@ Deno.serve(async (req: Request) => {
           .single());
       }
 
-      if (saveError) return jsonResponse({ error: saveError.message, details: saveError }, 400);
+      if (saveError) return jsonResponse({ error: saveError.message, code: saveError.code }, 400);
       if (!savedProfile) return jsonResponse({ error: "profile_write_not_verified" }, 500);
 
       if (String((savedProfile as any).name || "") !== String(updatePayload.name || "")) {
@@ -871,7 +871,7 @@ Deno.serve(async (req: Request) => {
     else if (body.returning === "maybeSingle") query = query.maybeSingle();
 
     const { data, error } = await query;
-    if (error) return jsonResponse({ error: error.message, details: error }, 400);
+    if (error) return jsonResponse({ error: error.message, code: error.code }, 400);
 
     let responseData = data;
     if (table === "profiles" && ["insert", "update", "upsert"].includes(action)) {
@@ -880,7 +880,7 @@ Deno.serve(async (req: Request) => {
         .select(PROFILE_SELECT)
         .eq("id", profile.id)
         .maybeSingle();
-      if (verifyError) return jsonResponse({ error: verifyError.message, details: verifyError }, 400);
+      if (verifyError) return jsonResponse({ error: verifyError.message, code: verifyError.code }, 400);
       if (!verifiedProfile) return jsonResponse({ error: "profile_write_not_verified" }, 500);
       responseData = verifiedProfile;
     }

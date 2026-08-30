@@ -124,8 +124,6 @@ async function fetchFromBibleApi(bookEngName, chapter, translation) {
 
   const isEnglish = ["esv", "niv", "nlt", "web", "kjv"].includes(translation.toLowerCase());
   const url = `https://bible-api.com/${encodeURIComponent(queryPassage)}?translation=${encodeURIComponent(translation)}`;
-  const targetUrl = url;
-  console.log('🌐 [API 發送檢查] 正在線上獲取內文，完整 URL 內容為：', targetUrl);
   const data = await fetchJson(url);
   return assertCompleteEnough({
     reference: data.reference || `${bookEngName} ${chapter}`,
@@ -139,8 +137,6 @@ async function fetchFromBolls(bookEngName, chapter, translation, bookIdentifier 
 
   const isEnglish = ["esv", "niv", "nlt", "kjv"].includes(translation.toLowerCase());
   const url = `https://bolls.life/get-chapter/${encodeURIComponent(translation)}/${encodeURIComponent(bookCode)}/${encodeURIComponent(chapter)}/`;
-  const targetUrl = url;
-  console.log('🌐 [API 發送檢查] 正在線上獲取內文，完整 URL 內容為：', targetUrl);
   const data = await fetchJson(url);
   return assertCompleteEnough({
     reference: `${bookEngName} ${chapter}`,
@@ -208,7 +204,6 @@ async function fetchBibleChapter(bookEngName, chapter, requestedVersion = null) 
   }
   const cacheKey = getBibleChapterCacheKey(bookEngName, chapter, preferredVersion);
   if (window._bibleChapterCache[cacheKey] && !window._bibleChapterCache[cacheKey].isPlaceholder) {
-    console.log(`📦 [Cache Hits] 讀取預載快取成功: ${cacheKey}`);
     return window._bibleChapterCache[cacheKey];
   }
   if (window._bibleChapterCache[cacheKey]?.isPlaceholder) {
