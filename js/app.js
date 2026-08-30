@@ -358,22 +358,40 @@ function initNotificationSystem() {
   });
 }
 
+// A lazy-loaded view module (bible.js/plan.js/home.js/…) is fetched over the
+// network like any other request — a momentary blip, or a brief real offline
+// window, fails it exactly like any other fetch. Retry a couple of times
+// before giving up, since most real-world failures here are transient rather
+// than "this file genuinely doesn't exist".
+const MODULE_LOAD_RETRY_DELAYS_MS = [400, 1200];
+
 async function loadModule(name, path) {
   if (moduleCache[name]) {
     return moduleCache[name];
   }
   console.log(`📡 [ESM] Lazy-loading module: ${name} from ${path}`);
-  try {
-    const mod = await import(path);
-    moduleCache[name] = mod;
-    if (typeof mod.init === 'function') {
-      mod.init();
+  let lastErr = null;
+  for (let attempt = 0; attempt <= MODULE_LOAD_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const mod = await import(path);
+      moduleCache[name] = mod;
+      if (typeof mod.init === 'function') {
+        mod.init();
+      }
+      return mod;
+    } catch (err) {
+      lastErr = err;
+      const delayMs = MODULE_LOAD_RETRY_DELAYS_MS[attempt];
+      if (delayMs === undefined) break;
+      console.warn(`[ESM] Attempt ${attempt + 1} to load module ${name} failed, retrying in ${delayMs}ms`, err);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
     }
-    return mod;
-  } catch (err) {
-    console.error(`Failed to load module ${name}:`, err);
-    throw err;
   }
+  console.error(`Failed to load module ${name} after ${MODULE_LOAD_RETRY_DELAYS_MS.length + 1} attempts:`, lastErr);
+  const moduleError = new Error(`載入頁面元件失敗，請重新整理頁面再試一次。`);
+  moduleError.code = "MODULE_LOAD_FAILED";
+  moduleError.cause = lastErr;
+  throw moduleError;
 }
 
 async function loadIssueReportUi(options = {}) {
@@ -897,6 +915,42 @@ appRouter.switchTab = async function (tabId, options = {}) {
       await this.restoreTabScroll(tabId);
     }
 
+  } catch (error) {
+    console.error(`[Router] switchTab('${tabId}') failed:`, error);
+    // Best-effort recovery: fall back to the previous (working) tab instead
+    // of leaving the user stuck staring at a half-rendered pane whose lazy
+    // module (home.js/bible.js/plan.js/…) never finished loading — a failed
+    // dynamic import here used to be an unhandled rejection with no visible
+    // sign anything went wrong.
+    if (previousTab && previousTab !== tabId) {
+      this.currentTab = previousTab;
+      document.querySelectorAll(".tab-btn, .mobile-nav-btn").forEach(btn => {
+        const target = btn.getAttribute("data-target");
+        if (!target) return;
+        const isActive = target === previousTab;
+        btn.classList.toggle("active", isActive);
+        if (btn.classList.contains("mobile-nav-btn") || btn.closest(".nav-tabs")) {
+          btn.setAttribute("aria-selected", isActive ? "true" : "false");
+          if (isActive) btn.setAttribute("aria-current", "page");
+          else btn.removeAttribute("aria-current");
+        }
+      });
+      document.querySelectorAll(".view-pane").forEach(pane => {
+        if (pane.id === previousTab) {
+          pane.classList.remove("hidden");
+          pane.classList.add("active");
+        } else {
+          pane.classList.add("hidden");
+          pane.classList.remove("active");
+        }
+      });
+      this.updateNavigationChrome();
+    }
+    if (typeof showToast === "function") {
+      showToast(error && error.code === "MODULE_LOAD_FAILED"
+        ? "載入頁面元件失敗，請重新整理頁面再試一次。"
+        : "頁面切換失敗，請稍後再試。");
+    }
   } finally {
     // ── 7. Always release the lock, even on error ──
     this.isTabTransitioning = false;
