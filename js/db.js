@@ -947,7 +947,11 @@ const db = {
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.edge_session) {
-      console.error("❌ NLC Session Sync Failed Payload:", payload);
+      // Only the status/error code/message — never the raw payload. The
+      // nlc-session edge function no longer returns a stack trace, but this
+      // must not become a place that re-leaks server internals if that ever
+      // changes again.
+      console.error("❌ NLC Session Sync Failed:", response.status, payload.error || payload.message || "unknown");
       // Special case: the server detected a known sub but couldn't resolve the profile.
       // This typically means the Logto sub changed between devices or tokens are mismatched.
       // Show a specific error and prompt re-login instead of crashing.

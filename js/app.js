@@ -13,7 +13,7 @@ import './design/icons.js';
 import './state.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './auth.js?v=20260831_perf_b7';
 import './auth-launch.mjs';
-import './db.js?v=20260831_perf_b7';
+import './db.js?v=20260831_console_leak_fix';
 import './utils.js?v=20260830_region_cohort_v1';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import { initModalManager } from './modules/modal-manager.mjs';

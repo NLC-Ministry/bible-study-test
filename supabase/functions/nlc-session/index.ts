@@ -912,13 +912,13 @@ Deno.serve(async (req: Request) => {
       role_resolution_debug: roleResolutionAudit
     });
   } catch (err) {
-    // Log full detail server-side
+    // Log full detail server-side only — never return a stack trace to the
+    // client. A stack trace can reveal internal file paths, function names,
+    // and dependency versions to anyone who can trigger this failure path.
     console.error("nlc-session failed:", err);
-    // Bubble up error details to frontend console for direct diagnostics
-    return jsonResponse({ 
-      error: "nlc_session_failed", 
-      message: err instanceof Error ? err.message : String(err),
-      stack: err instanceof Error ? err.stack : undefined
+    return jsonResponse({
+      error: "nlc_session_failed",
+      message: err instanceof Error ? err.message : String(err)
     }, 500);
   }
 });
