@@ -15077,6 +15077,9 @@ textarea::placeholder {
 .exam-admin__grade-stem { margin: 0; font-size: 0.9375rem; color: var(--text-primary); line-height: 1.6; }
 .exam-admin__rubric { margin: 0.3rem 0 0; padding-left: 1.2rem; font-size: 0.875rem; color: var(--text-secondary); }
 .exam-admin__grade-resp { border: 1px solid var(--border-card); background: var(--bg-input); border-radius: 8px; padding: 0.6rem 0.75rem; font-size: 0.9375rem; color: var(--text-primary); line-height: 1.7; white-space: pre-wrap; }
+.exam-admin__full-sheet { margin-top: 0.5rem; border-top: 1px dashed var(--border-card); padding-top: 0.5rem; }
+.exam-admin__full-sheet > summary { color: var(--color-brand); font-size: 0.875rem; cursor: pointer; }
+.exam-admin__full-sheet [data-sheet] { margin-top: 0.5rem; }
 .exam-admin__grade-inputs { display: flex; flex-direction: column; gap: 0.5rem; }
 .exam-admin__grade-inputs label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.875rem; color: var(--text-secondary); }
 .exam-admin__grade-card.is-dirty { border-color: var(--color-warning); }

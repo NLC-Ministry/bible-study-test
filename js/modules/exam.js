@@ -1026,7 +1026,7 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
         ${["pending", "graded", "all"].map((f) => `<button type="button" data-gf="${f}" class="${examAdminGradeFilter === f ? "active" : ""}">${{ pending: "待批", graded: "已批", all: "全部" }[f]}</button>`).join("")}
       </span>
     </div>
-    ${items.length ? renderGradeGroups(items) : '<div class="admin-user-directory__empty">沒有符合的簡答作答。</div>'}
+    ${items.length ? renderGradeGroups(items, paperId) : '<div class="admin-user-directory__empty">沒有符合的簡答作答。</div>'}
     ${items.length && !locked ? `<div class="exam-admin__grade-batch-bar">
       <span class="exam-admin__meta" data-grade-dirty-count>目前沒有未儲存的修改</span>
       <button type="button" class="primary-btn" data-grade-batch-save disabled>儲存本次修改（0）</button>
@@ -1043,6 +1043,23 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
     if (!g) return;
     g.open = true;
     g.scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
+  // 展開某位作答者的「完整作答」：懶載入整份試卷（含一～五大題），用成績檢討的排版
+  host.querySelectorAll(".exam-admin__full-sheet").forEach((d) => d.addEventListener("toggle", async () => {
+    if (!d.open || d.dataset.loaded === "1") return;
+    d.dataset.loaded = "1";
+    const box = d.querySelector("[data-sheet]");
+    const r = await db.getMyExamResult(d.dataset.paper, d.dataset.attempt);
+    if (!r.success || !r.data || !Array.isArray(r.data.answers)) {
+      if (box) box.innerHTML = `<p class="exam-admin__meta">${esc((r && r.message) || "載入失敗")}</p>`;
+      d.dataset.loaded = "";
+      return;
+    }
+    const graded = r.data.state === "graded";
+    const rows = r.data.answers.slice().sort((a, b) =>
+      (a.sectionRank ?? 99) - (b.sectionRank ?? 99) || (a.position || 0) - (b.position || 0));
+    if (box) box.innerHTML = `<div class="exam-result__list">${rows.map((a) => examResultRow(a, graded)).join("")}</div>`;
+    if (box) drawResultMatchLines(box);
   }));
   if (locked) {
     host.querySelectorAll(".exam-admin__grade-card [data-g], .exam-admin__grade-card [data-grade-save]")
@@ -1178,7 +1195,7 @@ async function renderExamPracticeRecords(host, paperId) {
 
 // 批改清單依「題號」分組：每題一個可收合區塊，待批的預設展開、批完的收起，
 // 頂端一排題號 chip 可快速跳轉，不用一路往下滑。
-function renderGradeGroups(items) {
+function renderGradeGroups(items, paperId) {
   const groups = new Map();
   items.forEach((it) => {
     const key = String(it.position ?? "?");
@@ -1200,14 +1217,14 @@ function renderGradeGroups(items) {
     return `<details class="exam-admin__grade-group" data-grade-group="${esc(k)}" ${p ? "open" : ""}>
       <summary><strong>第 ${esc(g.position)} 題</strong>（${esc(g.points)} 分）　<span class="exam-admin__meta">待批 ${p}／已批 ${done}</span></summary>
       <p class="exam-admin__grade-group-stem">${esc(g.stem || "")}</p>
-      ${g.list.map((it) => gradeCard(it, true)).join("")}
+      ${g.list.map((it) => gradeCard(it, true, paperId)).join("")}
     </details>`;
   }).join("");
 
   return jump + body;
 }
 
-function gradeCard(it, grouped = false) {
+function gradeCard(it, grouped = false, paperId = "") {
   const who = [it.greatRegion, it.pastoralZone, it.smallGroup].filter(Boolean).join(" / ");
   return `<div class="exam-admin__grade-card" data-answer-id="${esc(it.answerId)}" data-was-graded="${it.awardedPoints != null}">
     <p class="exam-admin__grade-who"><strong>${esc(it.examineeName || "（未具名）")}</strong>${who ? `　<span class="exam-admin__meta">${esc(who)}</span>` : ""}
@@ -1222,6 +1239,10 @@ function gradeCard(it, grouped = false) {
       <label>分數（0～${it.points}）<input type="number" step="0.5" min="0" max="${it.points}" class="form-control" data-g="points" value="${it.awardedPoints ?? ""}"></label>
       <label>評語（會回饋給作答者）<textarea class="form-control" rows="2" data-g="comment">${esc(it.graderComment || "")}</textarea></label>
     </div>
+    ${it.attemptId ? `<details class="exam-admin__full-sheet" data-attempt="${esc(it.attemptId)}" data-paper="${esc(paperId)}">
+      <summary class="exam-admin__link">查看這位的完整作答（一～六大題）</summary>
+      <div data-sheet><p class="exam-admin__meta">展開載入…</p></div>
+    </details>` : ""}
   </div>`;
 }
 
