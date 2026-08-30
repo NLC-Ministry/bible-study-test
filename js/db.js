@@ -110,6 +110,26 @@ async function fetchAllRows(buildQuery, pageSize = 200) {
   return { data: rows, error: null };
 }
 
+// PostgREST encodes an `.in()` filter's values directly into the request
+// URL (`id=in.(uuid,uuid,...)`). Once the church has accumulated enough
+// reading_teams across every quarterly stage, an unbounded id list here can
+// make that URL long enough to trip an HTTP/2 request-size limit somewhere
+// in the path (Cloudflare/PostgREST/the Edge Runtime's own HTTP client) —
+// surfacing as a bare "stream error … unspecific protocol error", not a
+// normal Postgres error. Chunk the ids and merge results instead of sending
+// one giant filter.
+async function fetchRowsInChunks(buildQueryForChunk, ids, chunkSize = 100) {
+  const uniqueIds = Array.from(new Set(ids));
+  const rows = [];
+  for (let i = 0; i < uniqueIds.length; i += chunkSize) {
+    const chunk = uniqueIds.slice(i, i + chunkSize);
+    const { data, error } = await buildQueryForChunk(chunk);
+    if (error) return { data: rows, error };
+    rows.push(...(data || []));
+  }
+  return { data: rows, error: null };
+}
+
 function createEmptyOrgStructure(revision = 0) {
   return {
     regions: [],
@@ -2130,10 +2150,10 @@ const db = {
       const teamIds = Array.from(new Set((teamMembershipsResult || []).map(m => m.team_id).filter(Boolean)));
       let teamNameById = new Map();
       if (teamIds.length > 0) {
-        const { data: teamsResult } = await fetchAllRows(() => state.supabase
-          .from("reading_teams")
-          .select("id, name")
-          .in("id", teamIds));
+        const { data: teamsResult } = await fetchRowsInChunks(
+          (chunk) => state.supabase.from("reading_teams").select("id, name").in("id", chunk),
+          teamIds
+        );
         teamNameById = new Map((teamsResult || []).map(t => [String(t.id), t.name]));
       }
       // A member can belong to more than one team across different plans;
@@ -3554,10 +3574,10 @@ const db = {
       ));
       let profilesMap = new Map();
       if (userIds.length > 0) {
-        const { data: pRows } = await client
-          .from("profiles")
-          .select("id, name, great_region, pastoral_zone, small_group")
-          .in("id", userIds);
+        const { data: pRows } = await fetchRowsInChunks(
+          (chunk) => client.from("profiles").select("id, name, great_region, pastoral_zone, small_group").in("id", chunk),
+          userIds
+        );
         if (Array.isArray(pRows)) {
           profilesMap = new Map(pRows.map(p => [String(p.id), p]));
         }
@@ -3846,10 +3866,10 @@ const db = {
       const teamIds = Array.from(new Set(memberships.map(m => m.team_id).filter(Boolean)));
       let teams = [];
       if (teamIds.length > 0) {
-        const { data: teamRows, error: teamsError } = await client
-          .from("reading_teams")
-          .select("id, name")
-          .in("id", teamIds);
+        const { data: teamRows, error: teamsError } = await fetchRowsInChunks(
+          (chunk) => client.from("reading_teams").select("id, name").in("id", chunk),
+          teamIds
+        );
         if (!teamsError && teamRows) teams = teamRows;
       }
 
