@@ -1085,20 +1085,8 @@ const db = {
   },
 
   bindLoginGateHubReturnSync() {
-    if (this._loginGateHubReturnBound || typeof document === "undefined") return;
-    this._loginGateHubReturnBound = true;
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState !== "visible") return;
-      const loginGate = document.getElementById("login-gate");
-      if (!loginGate || loginGate.classList.contains("hidden")) return;
-      if (typeof auth === "undefined" || typeof auth.isLoggedIn !== "function" || !auth.isLoggedIn()) return;
-      this.syncNlcSessionWithSupabase(true).then(() => {
-        this.applyLoginOnboardingGate();
-      }).catch((err) => {
-        console.warn("[LoginOnboardingGate] Profile sync after Hub return failed:", err);
-        this.applyLoginOnboardingGate();
-      });
-    });
+    // 回前景時 login-gate 的重同步已由 app.js 的 onAppForeground() 統一處理，
+    // 這裡不再各自掛 visibilitychange 監聽器（效能重構 A1）。
   },
 
   // Handle Supabase Auth UI Switches

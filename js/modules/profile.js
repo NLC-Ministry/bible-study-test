@@ -375,19 +375,8 @@ function openMemberHubOnboarding() {
 }
 
 function scheduleProfileSyncOnReturn() {
-  if (typeof document === "undefined" || document._nlcHubVisibilityBound) return;
-  document._nlcHubVisibilityBound = true;
-  document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState !== "visible") return;
-    if (typeof auth === "undefined" || !auth.isLoggedIn()) return;
-    if (typeof db === "undefined" || typeof db.syncNlcSessionWithSupabase !== "function") return;
-    db.syncNlcSessionWithSupabase(true).then(function () {
-      if (typeof renderProfileView === "function") renderProfileView();
-      if (typeof renderMemberHubProfileLinks === "function") renderMemberHubProfileLinks();
-    }).catch(function (err) {
-      console.warn("Profile sync after Member Hub return failed:", err);
-    });
-  });
+  // 個人分頁回前景重同步已由 app.js 的 onAppForeground()（currentTab === 'profile-view'
+  // 時才做）統一處理，這裡不再各自掛 visibilitychange 監聽器（效能重構 A1）。
 }
 
 function renderMemberHubProfileLinks() {
@@ -858,6 +847,7 @@ function initSpeechPreferencesControls() {
 export { initSpeechPreferencesControls };
 
 window.renderProfileView = renderProfileView;
+window.renderMemberHubProfileLinks = renderMemberHubProfileLinks;
 window.paintProfileIdentityChrome = paintProfileIdentityChrome;
 window.applyProfileIdentitySkeletons = applyProfileIdentitySkeletons;
 window.updateHeaderAvatar = updateHeaderAvatar;
