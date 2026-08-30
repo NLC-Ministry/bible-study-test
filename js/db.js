@@ -3123,14 +3123,10 @@ const db = {
     try {
       const { data, error } = await state.supabase.rpc(functionName, args);
       if (error) {
+        // Only message/code/status — never `details`/`hint`, which can echo
+        // back constraint names or row-level context from Postgrest.
         const errorDetails = error && typeof error === "object"
-          ? {
-              message: error.message || null,
-              code: error.code || null,
-              details: error.details || null,
-              hint: error.hint || null,
-              status: error.status || null
-            }
+          ? { message: error.message || null, code: error.code || null, status: error.status || null }
           : { message: String(error || "unknown_error") };
         console.warn(`[Quiz] ${functionName} failed: ${JSON.stringify(errorDetails)}`);
         return { success: false, error, message: this._quizErrorMessage(error) };
@@ -3138,13 +3134,7 @@ const db = {
       return { success: true, data };
     } catch (error) {
       const errorDetails = error && typeof error === "object"
-        ? {
-            message: error.message || null,
-            code: error.code || null,
-            details: error.details || null,
-            hint: error.hint || null,
-            status: error.status || null
-          }
+        ? { message: error.message || null, code: error.code || null, status: error.status || null }
         : { message: String(error || "unknown_error") };
       console.warn(`[Quiz] ${functionName} failed: ${JSON.stringify(errorDetails)}`);
       return { success: false, error, message: this._quizErrorMessage(error) };
