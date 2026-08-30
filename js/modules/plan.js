@@ -42,6 +42,29 @@ const PLAN_ROUTE = Object.freeze({
 
 window.currentPlanViewState = window.currentPlanViewState || PLAN_ROUTE.LIST;
 
+// 效能重構 B7：同一個 <canvas> 還在就只 chart.update()，不要每次 destroy + new Chart。
+// destroy+new 會丟掉整個圖、重跑動畫、增加 GC，也是「Canvas is already in use」錯誤來源。
+function renderOrUpdateChart(key, canvasEl, config) {
+  if (!canvasEl || typeof Chart === "undefined") return null;
+  state.statsCharts = state.statsCharts || {};
+  const existing = state.statsCharts[key];
+  if (existing && existing.canvas === canvasEl) {
+    try {
+      existing.data = config.data;
+      if (config.options) existing.options = config.options;
+      existing.update("none");
+      return existing;
+    } catch (_) { /* 落到重建 */ }
+  }
+  try { existing && existing.destroy(); } catch (_) {}
+  try {
+    const stale = Chart.getChart ? Chart.getChart(canvasEl) : null;
+    if (stale && stale !== existing) stale.destroy();
+  } catch (_) {}
+  state.statsCharts[key] = new Chart(canvasEl.getContext("2d"), config);
+  return state.statsCharts[key];
+}
+
 function getPlanDetailTabs() {
   return document.querySelector(".plan-detail-tabs");
 }
@@ -5777,15 +5800,6 @@ function renderGroupGrowthTrend(overrideFilter) {
     data.push(activeByDate[dStr] ? activeByDate[dStr].size : 0);
   }
 
-  // Destroy previous chart if exists
-  if (state.statsCharts) {
-    if (state.statsCharts.dailyActive) {
-      state.statsCharts.dailyActive.destroy();
-    }
-  } else {
-    state.statsCharts = {};
-  }
-
   const isDark = state.theme === 'dark' ||
     document.body.classList.contains('dark-theme') ||
     document.body.classList.contains('dark') ||
@@ -5797,8 +5811,7 @@ function renderGroupGrowthTrend(overrideFilter) {
     ? 'rgba(4,169,210,0.18)'
     : 'rgba(4,169,210,0.10)';
 
-  const ctx = canvasEl.getContext('2d');
-  state.statsCharts.dailyActive = new Chart(ctx, {
+  renderOrUpdateChart('dailyActive', canvasEl, {
     type: 'line',
     data: {
       labels,
@@ -6082,14 +6095,12 @@ function renderPersonalTrendChart() {
     document.documentElement.getAttribute('data-theme') === 'dark';
   const fontColor = isDark ? 'rgba(248, 250, 252, 0.85)' : 'rgba(15, 23, 42, 0.75)';
 
-  if (window._personalTrendChart) window._personalTrendChart.destroy();
-
   const ctx = canvas.getContext('2d');
   const gradient = ctx.createLinearGradient(0, 0, 0, 160);
   gradient.addColorStop(0, 'rgba(4, 169, 210, 0.22)');
   gradient.addColorStop(1, 'rgba(4, 169, 210, 0)');
 
-  window._personalTrendChart = new Chart(ctx, {
+  renderOrUpdateChart('personalTrend', canvas, {
     type: 'line',
     data: {
       labels: labels,
@@ -7990,11 +8001,8 @@ function populateStatsZoneSelector(zones) {
 }
 
 function renderCharts(zoneStats) {
-  const ctxRank = document.getElementById("pastoral-rank-chart").getContext("2d");
-  const ctxProgress = document.getElementById("pastoral-progress-chart").getContext("2d");
-
-  if (state.statsCharts.rank) state.statsCharts.rank.destroy();
-  if (state.statsCharts.progress) state.statsCharts.progress.destroy();
+  const canvasRank = document.getElementById("pastoral-rank-chart");
+  const canvasProgress = document.getElementById("pastoral-progress-chart");
 
   const labels = zoneStats.map(z => z.name);
   const chaptersData = zoneStats.map(z => z.total_chapters);
@@ -8005,7 +8013,7 @@ function renderCharts(zoneStats) {
   const gridColor = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)";
 
   // Chart 1: Ranking Chart
-  state.statsCharts.rank = new Chart(ctxRank, {
+  renderOrUpdateChart('rank', canvasRank, {
     type: 'bar',
     data: {
       labels: labels,
@@ -8036,7 +8044,7 @@ function renderCharts(zoneStats) {
   });
 
   // Chart 2: Average Progress Chart
-  state.statsCharts.progress = new Chart(ctxProgress, {
+  renderOrUpdateChart('progress', canvasProgress, {
     type: 'radar',
     data: {
       labels: labels,
@@ -8068,8 +8076,7 @@ function renderCharts(zoneStats) {
 }
 
 async function updateGroupChart(zoneName) {
-  const ctxGroup = document.getElementById("group-stats-chart").getContext("2d");
-  if (state.statsCharts.group) state.statsCharts.group.destroy();
+  const canvasGroup = document.getElementById("group-stats-chart");
 
   let groupStats = [];
   const mockUser = {
@@ -8112,7 +8119,7 @@ async function updateGroupChart(zoneName) {
   const fontColor = isDark ? NLC_CHART.muted : NLC_DESIGN.black;
   const gridColor = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)";
 
-  state.statsCharts.group = new Chart(ctxGroup, {
+  renderOrUpdateChart('group', canvasGroup, {
     type: 'bar',
     data: {
       labels: labels,
@@ -8358,8 +8365,7 @@ function renderTeamStatsAnalysisDashboard(unfilteredAllUsers, mockUser) {
   document.getElementById("team-stat-round2-bar").style.width = round2PlusRate + "%";
 
   // 3. Render Growth Trend Chart
-  const ctxGrowth = document.getElementById("team-growth-chart").getContext("2d");
-  if (state.statsCharts.growth) state.statsCharts.growth.destroy();
+  const canvasGrowth = document.getElementById("team-growth-chart");
 
   const totalActiveMembers = teamUsers.filter(u => u.chapters_read > 0).length;
   const trendData = [];
@@ -8379,7 +8385,7 @@ function renderTeamStatsAnalysisDashboard(unfilteredAllUsers, mockUser) {
   const fontColor = isDark ? NLC_CHART.muted : NLC_DESIGN.black;
   const gridColor = isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)";
 
-  state.statsCharts.growth = new Chart(ctxGrowth, {
+  renderOrUpdateChart('growth', canvasGrowth, {
     type: 'line',
     data: {
       labels: trendLabels,

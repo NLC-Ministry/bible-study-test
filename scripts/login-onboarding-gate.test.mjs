@@ -8,6 +8,7 @@ import {
 } from "../js/login-onboarding-gate.mjs";
 
 const db = readFileSync("js/db.js", "utf8");
+const app = readFileSync("js/app.js", "utf8");
 const html = readFileSync("index.html", "utf8");
 
 function makeEl(initialClass = "") {
@@ -176,8 +177,11 @@ describe("login gate wiring", () => {
     expect(db).toContain("syncNlcSessionWithSupabase(true)");
   });
 
-  it("re-applies the predicate on visibilitychange when the gate is still up", () => {
-    expect(db).toContain('document.addEventListener("visibilitychange"');
-    expect(db).toMatch(/visibilitychange[\s\S]*login-gate[\s\S]*syncNlcSessionWithSupabase\(true\)|visibilitychange[\s\S]*syncNlcSessionWithSupabase\(true\)[\s\S]*login-gate/);
+  it("re-applies the predicate on foreground when the gate is still up", () => {
+    // 效能重構 A1：回前景的重同步收斂到 app.js 的單一 onAppForeground()，
+    // 由它在 login-gate 仍顯示時重打 syncNlcSessionWithSupabase(true) + applyLoginOnboardingGate()。
+    expect(app).toContain('document.addEventListener("visibilitychange"');
+    expect(app).toContain("function onAppForeground");
+    expect(app).toMatch(/login-gate[\s\S]*syncNlcSessionWithSupabase\(true\)[\s\S]*applyLoginOnboardingGate/);
   });
 });
