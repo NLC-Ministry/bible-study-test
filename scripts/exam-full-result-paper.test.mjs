@@ -10,11 +10,11 @@ describe("查看完整試卷",()=>{
   it("答對與答錯題都顯示完整題目和正解",()=>{
     expect(ui).toContain("function examResultQuestionBody(a)");
     expect(ui).toContain('exam-result__row--correct');
-    expect(ui).toContain("訂正答案：");
+    expect(ui).toContain("正確答案：");
     expect(ui).not.toContain("if (!graded || ok)");
   });
-  it("答錯題以紅色訂正答案取代原錯誤答案列",()=>{
+  it("答錯題以紅色正確答案取代原錯誤答案列",()=>{
     expect(ui).toContain("exam-result__corrected");
-    expect(ui).toContain("訂正答案：");
+    expect(ui).toContain("正確答案：");
   });
 });
