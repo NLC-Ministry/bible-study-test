@@ -1196,10 +1196,14 @@ const db = {
           state.supabase.from("reading_plans").select("id, user_id, global_plan_id, name, start_date, end_date, target_books, preset_key, level, current_round, was_downgraded, downgrade_locked_until, upgrade_prompt_handled, current_round_started_at, is_fixed, reading_days_per_week, rest_weekdays, created_at").eq("user_id", user.id).order("created_at", { ascending: false })
         ]);
 
-        if (globalPlansResult.error) console.error("❌ global_plans load failed:", globalPlansResult.error);
-        if (profileResult.error) console.error("❌ profile load failed:", profileResult.error);
-        if (logsResult.error) console.error("❌ reading_logs load failed:", logsResult.error);
-        if (plansResult.error) console.error("❌ reading_plans load failed:", plansResult.error);
+        // Only message/code — never the raw error object. A PostgrestError
+        // can echo back query/row context that shouldn't reach the browser
+        // console in production.
+        const summarizeLoadError = (error) => error ? { message: error.message, code: error.code } : null;
+        if (globalPlansResult.error) console.error("❌ global_plans load failed:", summarizeLoadError(globalPlansResult.error));
+        if (profileResult.error) console.error("❌ profile load failed:", summarizeLoadError(profileResult.error));
+        if (logsResult.error) console.error("❌ reading_logs load failed:", summarizeLoadError(logsResult.error));
+        if (plansResult.error) console.error("❌ reading_plans load failed:", summarizeLoadError(plansResult.error));
         const initialDataLoadSucceeded = ![
           globalPlansResult,
           profileResult,
