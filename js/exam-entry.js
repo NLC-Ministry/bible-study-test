@@ -14,12 +14,12 @@ import './design/design-system-helpers.js?v=20260826_quiz_remove_duplicate_scope
 import './design/icon-registry.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './design/icons.js';
 import './state.js?v=20260826_quiz_remove_duplicate_scope_filter';
-import './auth.js?v=20260827_proactive_token_refresh';
+import './auth.js?v=20260830_exam_token_resilience';
 import './auth-launch.mjs';
-import './db.js?v=20260830_exam_p5x';
+import './db.js?v=20260830_exam_p5y';
 import './utils.js?v=20260830_region_cohort_v1';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
-import { mountExamRunner } from './modules/exam.js?v=20260830_exam_p5x';
+import { mountExamRunner } from './modules/exam.js?v=20260830_exam_p5y';
 
 const boot = document.getElementById('exam-boot');
 const setBoot = (msg) => { if (boot) boot.textContent = msg; };
@@ -34,6 +34,10 @@ const setBoot = (msg) => { if (boot) boot.textContent = msg; };
   } catch (err) {
     console.warn('[exam-entry] db.init failed', err);
   }
+
+  // 獨立測驗頁自己沒有 app.js 的主動續期，作答時又不會切分頁 → token 會在
+  // 75 分鐘測驗途中（~60 分）過期，害送出當下失敗。這裡主動排程續期。
+  try { window.auth?.scheduleProactiveRefresh?.(); } catch (_) {}
 
   const loggedIn = typeof window.auth?.isLoggedIn === 'function' ? window.auth.isLoggedIn() : false;
   if (!loggedIn) {

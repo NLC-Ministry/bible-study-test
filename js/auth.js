@@ -735,7 +735,14 @@ const auth = {
     }
 
     if (shouldRefresh) {
-      const refreshed = await this.refreshTokens();
+      let refreshed = await this.refreshTokens();
+      // 續期回 null＝網路 / 尖峰把 Logto 續期端點打爆（不是帳號被拒）。
+      // 固定時段開放的大測驗，所有人 token 會同時到期、同時打續期端點，
+      // 立刻放棄就會讓「送出當下」剛好失敗。短暫退避後再試 2 次。
+      for (let i = 0; refreshed === null && i < 2; i++) {
+        await new Promise((r) => setTimeout(r, 2000 * (i + 1)));
+        refreshed = await this.refreshTokens();
+      }
       if (refreshed === null) {
         const offlineError = new Error("目前無法連線驗證登入狀態。");
         offlineError.code = "OFFLINE_AUTH_UNAVAILABLE";

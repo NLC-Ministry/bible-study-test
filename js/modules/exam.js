@@ -1356,6 +1356,8 @@ class ExamRunner {
     window.addEventListener("pageshow", this._onPageShow);
     window.addEventListener("beforeunload", this._onBeforeUnload);
     window.addEventListener("online", this._onOnline);
+    // 作答途中主動續期，別讓 token 在 75 分鐘測驗中（~60 分）悄悄過期
+    try { if (typeof auth !== "undefined") auth.scheduleProactiveRefresh?.(); } catch (_) {}
     if (!this.saveTimer) this.saveTimer = setInterval(() => this.flushSave(), 15000);
     if (!this.persistTimer) this.persistTimer = setInterval(() => this.persistLocal(), 3000);
     if (this.attemptKind === "practice" && !this.practiceSyncTimer) {
@@ -2062,10 +2064,17 @@ class ExamRunner {
     if (btn) { btn.disabled = true; btn.textContent = "送出中…"; }
 
     let res = null;
-    for (let attempt = 1; attempt <= 4; attempt++) {
+    // 退避拉長到 ~65 秒總覆蓋，足以撐過「大家 token 同時到期」的續期尖峰
+    const backoff = [2000, 5000, 10000, 20000, 30000];
+    for (let attempt = 1; attempt <= 6; attempt++) {
       res = await db.submitExamAttempt(this.attempt.id, this.collectAnswers(), reason);
       if (res.success) break;
-      if (attempt < 4) { toast("送出未成功，重試中…"); await sleep(1500 * attempt); }
+      if (attempt < 6) {
+        toast("送出未成功，重試中…（答案已暫存，不會遺失）");
+        await sleep(backoff[attempt - 1] || 30000);
+        // 失敗多半是 token 過期而續期端點被打爆 → 等待間隔裡自己再催一次續期
+        try { if (typeof auth !== "undefined") await auth.getValidAccessToken(true); } catch (_) {}
+      }
     }
     if (!res || !res.success) {
       this.submitting = false;
@@ -2080,7 +2089,10 @@ class ExamRunner {
         }, 20000);
         if (this.timerEl) { this.timerEl.hidden = false; this.timerEl.textContent = "時間到，送出中…"; }
       }
-      toast((res && res.message) || "送出失敗，請檢查網路後再試一次");
+      const generic = !res || !res.message || /無法載入大測驗資料|無法連線驗證登入狀態/.test(res.message);
+      toast(generic
+        ? "連線逾時，你的作答已暫存、不會遺失。請按上方「返回」再重新進入，即可送出。"
+        : res.message);
       return;
     }
     if (this._timeoutRetry) { clearTimeout(this._timeoutRetry); this._timeoutRetry = null; }
