@@ -749,6 +749,22 @@ const auth = {
         throw offlineError;
       }
       if (!refreshed) {
+        // refreshTokens() 回 false＝Logto 明確拒絕了這份 refresh token。
+        // 但常見的假警報：**另一個分頁 / 獨立測驗頁剛把 refresh token 輪替掉**，
+        // 這個 context 手上的是舊的、被拒屬正常。先重讀 localStorage——
+        // 若別處已換好還沒過期的 access token，直接用，不要清掉登入狀態
+        // （清掉會讓 app.js 的健康檢查偵測到 !currentUser.name → 再 loadUserData → 迴圈）。
+        const sharedToken = localStorage.getItem(this.keys.accessToken);
+        const sharedExp = parseInt(localStorage.getItem(this.keys.expiresAt) || "0", 10);
+        if (sharedToken && sharedToken !== token && Date.now() < sharedExp - 5000) {
+          return sharedToken;
+        }
+        // 給另一個 context 一點時間完成輪替，再試最後一次
+        await new Promise((r) => setTimeout(r, 1500));
+        if (await this.refreshTokens()) {
+          const t2 = localStorage.getItem(this.keys.accessToken);
+          if (t2) return t2;
+        }
         this._clearStoredTokens();
         this._resetAppAuthState();
         throw new Error("登入狀態已失效，請重新登入。");
