@@ -773,9 +773,7 @@ function getBadgeFrameClass(badge) {
 }
 
 function renderBadgeWall(containerId) {
-  console.log('[Badge Debug] renderBadgeWall initialized with containerId:', containerId);
   const container = document.getElementById("badges-grid") || document.getElementById(containerId);
-  console.log('[Badge Debug] Target container element:', container);
   if (!container) {
     console.warn('[Badge Debug] Target container not found in DOM!');
     return;
@@ -784,7 +782,6 @@ function renderBadgeWall(containerId) {
 
   try {
     const list = window.ACHIEVEMENTS || (typeof ACHIEVEMENTS !== "undefined" ? ACHIEVEMENTS : null);
-    console.log('[Badge Debug] Achievements list data:', list);
     if (!list || list.length === 0) {
       console.warn('[Badge Debug] Achievements list is empty or undefined!');
       container.innerHTML = `<div class="badge-wall__empty" style="text-align: center; padding: 2rem; color: var(--text-muted);">暫無徽章 (清單未載入或為空)</div>`;
@@ -796,7 +793,6 @@ function renderBadgeWall(containerId) {
         const starState = getBadgeStarState(badge);
         return starState.level > 0;
       }).length;
-      console.log('[Badge Debug] Unlocked badges count:', unlockedCount, 'out of', list.length);
       updateBadgeWallSummary(unlockedCount, list.length);
     }
 
@@ -804,10 +800,9 @@ function renderBadgeWall(containerId) {
       ? getHonorBadgeItemClasses
       : unlocked => (unlocked ? "honor-badge-item unlocked" : "honor-badge-item locked");
 
-    list.forEach((badge, index) => {
+    list.forEach((badge) => {
       const starState = getBadgeStarState(badge);
       const isUnlocked = starState.level > 0;
-      console.log(`[Badge Debug] Processing badge [${index}]:`, badge.title, 'isUnlocked:', isUnlocked, 'starState:', starState);
       const badgeItem = document.createElement("div");
       badgeItem.className = getClasses(isUnlocked) + " honor-badge-item--tile";
       badgeItem.setAttribute("role", "button");
@@ -855,11 +850,9 @@ function renderBadgeWall(containerId) {
     });
 
     if (typeof hydrateIcons === "function") {
-      console.log('[Badge Debug] Hydrating icons inside badge container');
       hydrateIcons(container);
     }
     bindBadgeDetailControls();
-    console.log('[Badge Debug] renderBadgeWall completed successfully!');
   } catch (err) {
     console.error('[Badge Debug] Critical error in renderBadgeWall execution:', err);
   }
@@ -1113,7 +1106,7 @@ window.openBadgeDetailPage = function(badge, isUnlocked, isDark) {
           title: `我解鎖了「${badge.title}」榮譽徽章！`,
           text: `我正在進行聖經速讀挑戰，解鎖了「${badge.title}」勳章！\n${badge.description}`,
           url: window.location.href
-        }).catch(err => console.log(err));
+        }).catch(err => console.warn("Native share failed or was cancelled:", err));
       } else {
         if (typeof showToast === "function") {
           showToast(`已複製「${badge.title}」分享文字，快傳送給朋友吧！`);

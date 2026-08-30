@@ -2,7 +2,7 @@
 
 // Import support and core files needed before first paint.
 import '../config.js';
-import './data/bible_data.js?v=20260826_quiz_remove_duplicate_scope_filter';
+import './data/bible_data.js?v=20260831_console_leak_fix';
 import './data/bible_verse_counts.js';
 import './copy/zh-Hant.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './data/church_campaign.js?v=20260826_quiz_remove_duplicate_scope_filter';
@@ -10,11 +10,11 @@ import './design/design-tokens.js';
 import './design/design-system-helpers.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './design/icon-registry.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './design/icons.js';
-import './state.js?v=20260826_quiz_remove_duplicate_scope_filter';
+import './state.js?v=20260831_console_debug_sweep';
 import './auth.js?v=20260831_perf_b7';
 import './auth-launch.mjs';
-import './db.js?v=20260831_console_leak_fix';
-import './utils.js?v=20260830_region_cohort_v1';
+import './db.js?v=20260831_console_debug_sweep';
+import './utils.js?v=20260831_console_debug_sweep';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import { initModalManager } from './modules/modal-manager.mjs';
 
@@ -369,7 +369,6 @@ async function loadModule(name, path) {
   if (moduleCache[name]) {
     return moduleCache[name];
   }
-  console.log(`📡 [ESM] Lazy-loading module: ${name} from ${path}`);
   let lastErr = null;
   for (let attempt = 0; attempt <= MODULE_LOAD_RETRY_DELAYS_MS.length; attempt++) {
     try {
@@ -1005,9 +1004,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Expose iOS 16.4+ notification permission helper for user gesture triggers
   window.requestPwaNotificationPermission = async () => {
-    const permission = await requestNotificationPermission();
-    console.log("PWA Notification permission status:", permission);
-    return permission;
+    return requestNotificationPermission();
   };
 
   // Expose global manual refresh function (Pull-to-Refresh JS is completely removed)

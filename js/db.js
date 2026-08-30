@@ -1787,7 +1787,6 @@ const db = {
       offlineError.code = "OFFLINE_READ_ONLY";
       throw offlineError;
     }
-    console.log('🏗️ [系統審計] 進入資料讀寫，當前操作類型：資料庫寫入進度', '資料版本:', state.dataVersion);
     const todayISO = new Date().toISOString();
     const targetPlan = planOverride || state.activePlan;
     if (isChecked && targetPlan && isPlanProgressLocked(targetPlan, { hidden: window.isPlanHidden?.(targetPlan) })) {
