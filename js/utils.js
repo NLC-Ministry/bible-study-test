@@ -1599,6 +1599,7 @@ function generateChurchCampaignPlanObject(definition, presetKey, scheduleSetting
     scheduleSettings && scheduleSettings.readingDaysPerWeek,
     scheduleSettings && scheduleSettings.restWeekdays
   );
+  const baseDays = window.buildChurchCampaignDays(definition, BIBLE_BOOKS, weeklySchedule.restWeekdays);
   // 日程永遠是教會原始的一遍（restWeekdays 是使用者個人的休息日設定，保留）。
   const days = baseDays.map(day => ({
     ...day,
