@@ -13,11 +13,11 @@ import './design/design-tokens.js';
 import './design/design-system-helpers.js?v=20260901_round_schedule_restore';
 import './design/icon-registry.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './design/icons.js';
-import './state.js?v=20260826_quiz_remove_duplicate_scope_filter';
+import './state.js?v=20260901_highlights_notes_review';
 import './auth.js?v=20260831_perf_b7';
 import './auth-launch.mjs';
-import './db.js?v=20260901_pagination_audit';
-import './utils.js?v=20260901_merge_care_reminder_round_schedule';
+import './db.js?v=20260901_highlights_notes_review';
+import './utils.js?v=20260901_highlights_notes_review';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import { mountExamRunner } from './modules/exam.js?v=20260831_grading_name_search';
 

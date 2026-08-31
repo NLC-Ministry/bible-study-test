@@ -1611,7 +1611,13 @@ function openIntegratedSelectionBottomBar(options) {
     }
     state.highlights[highlightKey] = normalizedColor;
     localStorage.setItem("bible_highlights", JSON.stringify(state.highlights));
+    state.highlightTimestamps[highlightKey] = new Date().toISOString();
+    localStorage.setItem("bible_highlight_timestamps", JSON.stringify(state.highlightTimestamps));
     highlightToggle?.classList.add("is-active");
+    if (typeof db.saveHighlight === "function") {
+      db.saveHighlight(bookName, chapter, verse, normalizedColor).catch(err =>
+        console.warn("[bible] saveHighlight failed:", err));
+    }
 
     barDiv.querySelectorAll("[data-color]").forEach(b => {
       const isActive = b.getAttribute("data-color") === normalizedColor;
@@ -1641,7 +1647,13 @@ function openIntegratedSelectionBottomBar(options) {
     }
     delete state.highlights[highlightKey];
     localStorage.setItem("bible_highlights", JSON.stringify(state.highlights));
+    delete state.highlightTimestamps[highlightKey];
+    localStorage.setItem("bible_highlight_timestamps", JSON.stringify(state.highlightTimestamps));
     highlightToggle?.classList.add("is-active");
+    if (typeof db.deleteHighlight === "function") {
+      db.deleteHighlight(bookName, chapter, verse).catch(err =>
+        console.warn("[bible] deleteHighlight failed:", err));
+    }
 
     // 重置所有色點 active 狀態，不關閉 bar
     barDiv.querySelectorAll("[data-color]").forEach(b => {

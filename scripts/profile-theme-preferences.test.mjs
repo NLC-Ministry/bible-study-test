@@ -10,7 +10,7 @@ const bible = readFileSync("js/modules/bible.js", "utf8");
 
 describe("Profile theme preferences", () => {
   it("adds a dedicated preferences tab with light and dark choices", () => {
-    expect(html).toContain('data-profile-tab="preferences"');
+    expect(html).toContain('data-profile-open="preferences"');
     expect(html).toContain('id="profile-tab-content-preferences"');
     expect(html).toContain('data-profile-theme="light"');
     expect(html).toContain('data-profile-theme="dark"');

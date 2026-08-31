@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260901_missed_chapters_reminder" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260901_highlights_notes_review" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -1572,16 +1572,8 @@
                 </div>
               </div>
 
-              <!-- iOS/Shadcn-style Tab Switcher -->
-              <div class="profile-tabs-list">
-                <button type="button" class="profile-tab-trigger active" data-profile-tab="settings">帳號設定</button>
-                <button type="button" class="profile-tab-trigger" data-profile-tab="exams">我的測驗</button>
-                <button type="button" class="profile-tab-trigger" data-profile-tab="preferences">偏好設定</button>
-                <button type="button" class="profile-tab-trigger" data-profile-tab="badges">我的徽章</button>
-              </div>
-
-              <!-- Tab Content 1: Settings -->
-              <div id="profile-tab-content-settings" class="profile-tab-content">
+              <!-- Root menu: list-style rows, tapping drills into a full-screen subpage -->
+              <div id="profile-root-content">
                 <!-- Member Hub identity card & actions (App Style Settings Group) -->
                 <div class="space-y-4" id="profile-settings-container" style="margin-top: 0.5rem; margin-bottom: 0.5rem;">
 
@@ -1647,6 +1639,68 @@
                   </div>
                 </div>
 
+                <div class="app-settings-group" id="profile-content-nav-group">
+                  <div class="profile-settings-section-label">我的內容</div>
+                  <div class="app-settings-list">
+                    <button type="button" class="app-settings-item w-full text-left" data-profile-open="highlights-notes">
+                      <div class="app-settings-item__leading">
+                        <span class="app-settings-icon-wrap app-settings-icon-wrap--brand">
+                          <span class="nlc-icon nlc-icon--sm" data-icon="pencil" aria-hidden="true"></span>
+                        </span>
+                        <div class="app-settings-item__meta">
+                          <span class="app-settings-item__title">我的螢光＆筆記</span>
+                          <span class="app-settings-item__subtitle">回顧曾經標記與寫下的心得</span>
+                        </div>
+                      </div>
+                      <span class="app-settings-item__chevron">
+                        <span class="nlc-icon nlc-icon--sm" data-icon="chevronRight" aria-hidden="true"></span>
+                      </span>
+                    </button>
+                    <button type="button" class="app-settings-item w-full text-left" data-profile-open="exams">
+                      <div class="app-settings-item__leading">
+                        <span class="app-settings-icon-wrap app-settings-icon-wrap--neutral">
+                          <span class="nlc-icon nlc-icon--sm" data-icon="checkCircle" aria-hidden="true"></span>
+                        </span>
+                        <div class="app-settings-item__meta">
+                          <span class="app-settings-item__title">我的測驗</span>
+                          <span class="app-settings-item__subtitle">正式作答與複習紀錄</span>
+                        </div>
+                      </div>
+                      <span class="app-settings-item__chevron">
+                        <span class="nlc-icon nlc-icon--sm" data-icon="chevronRight" aria-hidden="true"></span>
+                      </span>
+                    </button>
+                    <button type="button" class="app-settings-item w-full text-left" data-profile-open="badges">
+                      <div class="app-settings-item__leading">
+                        <span class="app-settings-icon-wrap app-settings-icon-wrap--neutral">
+                          <span class="nlc-icon nlc-icon--sm" data-icon="trophy" aria-hidden="true"></span>
+                        </span>
+                        <div class="app-settings-item__meta">
+                          <span class="app-settings-item__title">我的徽章</span>
+                          <span class="app-settings-item__subtitle">查看已解鎖的榮譽徽章</span>
+                        </div>
+                      </div>
+                      <span class="app-settings-item__chevron">
+                        <span class="nlc-icon nlc-icon--sm" data-icon="chevronRight" aria-hidden="true"></span>
+                      </span>
+                    </button>
+                    <button type="button" class="app-settings-item w-full text-left" data-profile-open="preferences">
+                      <div class="app-settings-item__leading">
+                        <span class="app-settings-icon-wrap app-settings-icon-wrap--neutral">
+                          <span class="nlc-icon nlc-icon--sm" data-icon="setting" aria-hidden="true"></span>
+                        </span>
+                        <div class="app-settings-item__meta">
+                          <span class="app-settings-item__title">偏好設定</span>
+                          <span class="app-settings-item__subtitle">畫面主題、離線聖經與離線登入</span>
+                        </div>
+                      </div>
+                      <span class="app-settings-item__chevron">
+                        <span class="nlc-icon nlc-icon--sm" data-icon="chevronRight" aria-hidden="true"></span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
                 <div class="app-settings-group" id="profile-help-settings-group">
                   <div class="profile-settings-section-label">APP 與協助</div>
                   <div class="app-settings-list">
@@ -1690,19 +1744,31 @@
               </div>
               </div>
 
-              <div id="profile-tab-content-exams" class="profile-tab-content hidden">
-                <div class="profile-exams__header">
-                  <div>
-                    <h3>我的測驗</h3>
-                    <p>正式作答與複習分開保存；只有正式作答列入評分。</p>
-                  </div>
-                  <button type="button" class="secondary-btn" id="profile-exams-refresh">重新整理</button>
+              <div id="profile-tab-content-exams" class="profile-subpage hidden" aria-hidden="true">
+                <header class="profile-subpage__header">
+                  <button type="button" class="profile-subpage__back" data-profile-close aria-label="返回">
+                    <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
+                    <span>返回</span>
+                  </button>
+                  <span class="profile-subpage__title">我的測驗</span>
+                  <button type="button" class="profile-subpage__action" id="profile-exams-refresh">重新整理</button>
+                </header>
+                <div class="profile-subpage__body">
+                  <p class="profile-exams__intro">正式作答與複習分開保存；只有正式作答列入評分。</p>
+                  <div id="profile-exams-list" class="profile-exams__list" aria-live="polite"></div>
                 </div>
-                <div id="profile-exams-list" class="profile-exams__list" aria-live="polite"></div>
               </div>
 
-              <!-- Tab Content 2: Preferences -->
-              <div id="profile-tab-content-preferences" class="profile-tab-content hidden">
+              <div id="profile-tab-content-preferences" class="profile-subpage hidden" aria-hidden="true">
+                <header class="profile-subpage__header">
+                  <button type="button" class="profile-subpage__back" data-profile-close aria-label="返回">
+                    <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
+                    <span>返回</span>
+                  </button>
+                  <span class="profile-subpage__title">偏好設定</span>
+                  <span class="profile-subpage__header-spacer"></span>
+                </header>
+                <div class="profile-subpage__body">
                 <div class="app-settings-group offline-login-settings">
                   <label class="offline-login-option" for="offline-reading-enabled">
                     <span class="app-settings-item__meta">
@@ -1768,22 +1834,45 @@
                   </div>
                 </div>
 
-
+                </div>
               </div>
 
-              <!-- Tab Content 3: Badges -->
-              <div id="profile-tab-content-badges" class="profile-tab-content hidden">
-                <div class="profile-badges-card badge-wall" id="profile-badges-inner-card" style="border: none; padding: 0.5rem 0; background: transparent;">
-                  <div class="badge-wall__header dashboard-panel-card__header card-header-flex" style="padding-top: 0;">
-                    <h3 class="dashboard-panel-card__title card-title" style="font-size: 1rem;">
-                      <span class="dashboard-panel-card__title-icon" aria-hidden="true">
-                        <span class="nlc-icon nlc-icon--sm" data-icon="trophy"></span>
-                      </span>
-                      <span class="dashboard-panel-card__title-text">我的榮譽徽章</span>
-                    </h3>
+              <div id="profile-tab-content-badges" class="profile-subpage hidden" aria-hidden="true">
+                <header class="profile-subpage__header">
+                  <button type="button" class="profile-subpage__back" data-profile-close aria-label="返回">
+                    <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
+                    <span>返回</span>
+                  </button>
+                  <span class="profile-subpage__title">我的徽章</span>
+                  <span class="profile-subpage__header-spacer"></span>
+                </header>
+                <div class="profile-subpage__body">
+                  <div class="profile-badges-card badge-wall" id="profile-badges-inner-card" style="border: none; padding: 0.5rem 0; background: transparent;">
                     <span class="stat-badge stat-badge--neutral badge-wall__count" id="badge-wall-summary">0 / 10</span>
+                    <div id="badges-grid" class="badges-grid" style="margin-top: 0.75rem;"></div>
                   </div>
-                  <div id="badges-grid" class="badges-grid" style="margin-top: 0.75rem;"></div>
+                </div>
+              </div>
+
+              <div id="profile-tab-content-highlights-notes" class="profile-subpage hidden" aria-hidden="true">
+                <header class="profile-subpage__header">
+                  <button type="button" class="profile-subpage__back" data-profile-close aria-label="返回">
+                    <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
+                    <span>返回</span>
+                  </button>
+                  <span class="profile-subpage__title">我的螢光＆筆記</span>
+                  <span class="profile-subpage__header-spacer"></span>
+                </header>
+                <div class="profile-subpage__body">
+                  <div class="profile-hn-tabs" role="tablist">
+                    <button type="button" class="profile-hn-tab active" role="tab" aria-selected="true" data-hn-tab="highlights">螢光</button>
+                    <button type="button" class="profile-hn-tab" role="tab" aria-selected="false" data-hn-tab="notes">筆記</button>
+                  </div>
+                  <div class="profile-hn-sort" role="radiogroup" aria-label="排序方式">
+                    <button type="button" class="profile-hn-sort-btn active" role="radio" aria-checked="true" data-hn-sort="recent">最新在前</button>
+                    <button type="button" class="profile-hn-sort-btn" role="radio" aria-checked="false" data-hn-sort="bible-order">依聖經順序</button>
+                  </div>
+                  <div id="profile-hn-list" class="profile-hn-list" aria-live="polite"></div>
                 </div>
               </div>
 
@@ -2675,7 +2764,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260901_db_pagination_audit"></script>
+  <script type="module" src="js/app.js?v=20260901_highlights_notes_review"></script>
 </body>
 
 </html>

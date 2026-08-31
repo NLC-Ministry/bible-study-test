@@ -514,7 +514,7 @@ export async function renderProfileView() {
   }
 
   await renderCareReminders();
-  if (document.querySelector('.profile-tab-trigger[data-profile-tab="exams"]')?.classList.contains("active")) {
+  if (state.profileDetailOpen === "exams") {
     await renderMyExamPapers();
   }
 }
@@ -629,6 +629,207 @@ async function renderCareReminders() {
 
 
 
+
+// ── 我的螢光＆筆記：個人頁的子頁面之一。見 openProfileDetail/closeProfileDetail ──
+let hnActiveTab = "highlights";
+let hnSortMode = "recent";
+let hnNotesCache = null; // db.getAllVerseNotesForUser() 的結果快取，切換排序/籤時不用重打 API
+
+function openProfileDetail(key) {
+  const page = document.getElementById(`profile-tab-content-${key}`);
+  if (!page) return;
+  state.profileDetailOpen = key;
+  page.classList.remove("hidden");
+  page.setAttribute("aria-hidden", "false");
+
+  if (key === "badges" && typeof window.renderBadgeWall === "function") {
+    window.renderBadgeWall("badges-grid");
+  }
+  if (key === "exams") void renderMyExamPapers();
+  if (key === "highlights-notes") {
+    hnNotesCache = null;
+    void renderHighlightsNotesView();
+  }
+}
+
+function closeProfileDetail() {
+  if (!state.profileDetailOpen) return;
+  const page = document.getElementById(`profile-tab-content-${state.profileDetailOpen}`);
+  state.profileDetailOpen = null;
+  if (page) {
+    page.classList.add("hidden");
+    page.setAttribute("aria-hidden", "true");
+  }
+}
+window.openProfileDetail = openProfileDetail;
+window.closeProfileDetail = closeProfileDetail;
+
+function formatRelativeTime(isoString) {
+  if (!isoString) return "";
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return "";
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.round(diffMs / 60000);
+  if (diffMinutes < 1) return "剛剛";
+  if (diffMinutes < 60) return `${diffMinutes} 分鐘前`;
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} 小時前`;
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays < 30) return `${diffDays} 天前`;
+  return new Intl.DateTimeFormat("zh-TW", { year: "numeric", month: "numeric", day: "numeric" }).format(date);
+}
+
+function bibleBookOrder(bookName) {
+  const book = typeof BIBLE_BOOKS !== "undefined" ? BIBLE_BOOKS.find(b => b.name === bookName) : null;
+  return book ? book.id : 999;
+}
+
+function buildHighlightRows() {
+  return Object.entries(state.highlights || {}).map(([key, color]) => {
+    const parts = key.split("_");
+    const verse = Number(parts.pop());
+    const chapter = Number(parts.pop());
+    const book = parts.join("_");
+    return { book, chapter, verse, color, updatedAt: (state.highlightTimestamps || {})[key] || null };
+  });
+}
+
+async function buildNoteRows() {
+  if (!hnNotesCache) {
+    hnNotesCache = typeof db !== "undefined" && typeof db.getAllVerseNotesForUser === "function"
+      ? await db.getAllVerseNotesForUser()
+      : [];
+  }
+  return hnNotesCache.map(row => ({
+    book: row.book,
+    chapter: row.chapter,
+    verse: row.verse,
+    content: row.content,
+    updatedAt: row.updated_at
+  }));
+}
+
+function sortHnRows(rows) {
+  const sorted = [...rows];
+  if (hnSortMode === "bible-order") {
+    sorted.sort((a, b) => (bibleBookOrder(a.book) - bibleBookOrder(b.book)) || (a.chapter - b.chapter) || (a.verse - b.verse));
+  } else {
+    sorted.sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+  }
+  return sorted;
+}
+
+function navigateToVerse(bookName, chapter) {
+  const book = typeof BIBLE_BOOKS !== "undefined" ? BIBLE_BOOKS.find(b => b.name === bookName) : null;
+  if (!book) return;
+  state.readerState.bookId = book.id;
+  state.readerState.chapter = Number(chapter);
+  state.readerState.fromPlan = false;
+  const testamentSelect = document.getElementById("reader-testament-select");
+  if (testamentSelect) testamentSelect.value = "all";
+  if (typeof populateBookSelector === "function") populateBookSelector("all");
+  if (typeof populateChapterSelector === "function") populateChapterSelector();
+  if (typeof saveReaderPreferences === "function") saveReaderPreferences();
+  appRouter.switchTab("reader-view");
+}
+
+async function renderHighlightsNotesView() {
+  const list = document.getElementById("profile-hn-list");
+  if (!list) return;
+  list.innerHTML = '<div class="profile-hn-empty">載入中…</div>';
+
+  const rawRows = hnActiveTab === "highlights" ? buildHighlightRows() : await buildNoteRows();
+  const rows = sortHnRows(rawRows);
+
+  if (!rows.length) {
+    list.innerHTML = hnActiveTab === "highlights"
+      ? '<div class="profile-hn-empty">還沒有任何螢光標記，去讀經畫面試試看標記重點吧！</div>'
+      : '<div class="profile-hn-empty">還沒有任何筆記，去讀經畫面選一節經文寫下心得吧！</div>';
+    return;
+  }
+
+  list.innerHTML = rows.map((row, index) => {
+    const ref = `${escapeHTML(row.book)} ${row.chapter}:${row.verse}`;
+    const time = escapeHTML(formatRelativeTime(row.updatedAt));
+    const swatch = hnActiveTab === "highlights"
+      ? `<span class="profile-hn-item__swatch" style="background:${escapeHTML(row.color)}"></span>`
+      : "";
+    const preview = hnActiveTab === "notes"
+      ? `<p class="profile-hn-item__preview">${escapeHTML(row.content)}</p>`
+      : "";
+    return `<div class="profile-hn-item" data-hn-index="${index}">
+      ${swatch}
+      <div class="profile-hn-item__main" data-hn-open="${index}">
+        <div class="profile-hn-item__ref"><span>${ref}</span><span class="profile-hn-item__time">${time}</span></div>
+        ${preview}
+      </div>
+      <button type="button" class="profile-hn-item__delete" data-hn-delete="${index}" aria-label="刪除">
+        <span class="nlc-icon nlc-icon--sm" data-icon="trash" aria-hidden="true"></span>
+      </button>
+    </div>`;
+  }).join("");
+  if (typeof hydrateIcons === "function") hydrateIcons(list);
+
+  list.querySelectorAll("[data-hn-open]").forEach(el => {
+    el.addEventListener("click", () => {
+      const row = rows[Number(el.getAttribute("data-hn-open"))];
+      if (row) navigateToVerse(row.book, row.chapter);
+    });
+  });
+  list.querySelectorAll("[data-hn-delete]").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const row = rows[Number(btn.getAttribute("data-hn-delete"))];
+      if (!row) return;
+      const confirmed = await window.showConfirmDialog({
+        title: hnActiveTab === "highlights" ? "確定要刪除這個螢光標記嗎？" : "確定要刪除這則筆記嗎？",
+        confirmText: "刪除",
+        cancelText: "取消",
+        isDestructive: true
+      });
+      if (!confirmed) return;
+      if (hnActiveTab === "highlights") {
+        const key = `${row.book}_${row.chapter}_${row.verse}`;
+        delete state.highlights[key];
+        delete state.highlightTimestamps[key];
+        localStorage.setItem("bible_highlights", JSON.stringify(state.highlights));
+        localStorage.setItem("bible_highlight_timestamps", JSON.stringify(state.highlightTimestamps));
+        if (typeof db.deleteHighlight === "function") {
+          db.deleteHighlight(row.book, row.chapter, row.verse).catch(err => console.warn("[profile] deleteHighlight failed:", err));
+        }
+      } else {
+        await db.deleteVerseNote(row.book, row.chapter, row.verse);
+        hnNotesCache = null;
+      }
+      void renderHighlightsNotesView();
+    });
+  });
+}
+
+function wireHighlightsNotesControls() {
+  document.querySelectorAll("[data-hn-tab]").forEach(btn => {
+    btn.onclick = () => {
+      hnActiveTab = btn.getAttribute("data-hn-tab");
+      document.querySelectorAll("[data-hn-tab]").forEach(b => {
+        const active = b === btn;
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-selected", String(active));
+      });
+      void renderHighlightsNotesView();
+    };
+  });
+  document.querySelectorAll("[data-hn-sort]").forEach(btn => {
+    btn.onclick = () => {
+      hnSortMode = btn.getAttribute("data-hn-sort");
+      document.querySelectorAll("[data-hn-sort]").forEach(b => {
+        const active = b === btn;
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-checked", String(active));
+      });
+      void renderHighlightsNotesView();
+    };
+  });
+}
 
 export function updateAdminNavVisibility() {
   const managementRoles = ['admin', 'pastor', 'great_zone_leader', 'zone_leader', 'group_leader'];
@@ -751,32 +952,23 @@ async function handleLogoutAndClearCache() {
 export function init() {
   updateGoogleLoginVisibility();
 
-  // Segmented control tabs toggle (Settings vs Badges)
-  const tabTriggers = document.querySelectorAll(".profile-tab-trigger");
-  tabTriggers.forEach(trigger => {
-    trigger.onclick = (e) => {
+  // Root menu rows -> full-screen subpages (see openProfileDetail/closeProfileDetail below).
+  document.querySelectorAll("[data-profile-open]").forEach(row => {
+    row.onclick = (e) => {
       e.preventDefault();
-      const targetTab = trigger.getAttribute("data-profile-tab");
-
-      tabTriggers.forEach(t => t.classList.remove("active"));
-      trigger.classList.add("active");
-
-      document.querySelectorAll(".profile-tab-content").forEach(content => {
-        content.classList.add("hidden");
-      });
-
-      const activeContent = document.getElementById(`profile-tab-content-${targetTab}`);
-      if (activeContent) activeContent.classList.remove("hidden");
-
-      if (targetTab === "badges" && typeof window.renderBadgeWall === "function") {
-        window.renderBadgeWall("badges-grid");
-      }
-      if (targetTab === "exams") void renderMyExamPapers();
+      openProfileDetail(row.getAttribute("data-profile-open"));
     };
   });
+  document.querySelectorAll("#profile-view [data-profile-close]").forEach(btn => {
+    btn.onclick = (e) => {
+      e.preventDefault();
+      closeProfileDetail();
+    };
+  });
+  wireHighlightsNotesControls();
 
   if (location.hash === "#my-exams") {
-    document.querySelector('.profile-tab-trigger[data-profile-tab="exams"]')?.click();
+    openProfileDetail("exams");
   }
 
 
