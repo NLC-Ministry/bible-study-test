@@ -1,4 +1,5 @@
 import { getMemberOverallPlanProgress, getTeamOverallPlanProgress } from "./team-progress-metrics.mjs";
+import { isCampaignStageKind } from "../data/campaign-stage-kinds.mjs";
 
 // Independent 3-person / 6-person competition team registration.
 // Organisation small-group and pastoral-zone scopes are deliberately not used here.
@@ -36,10 +37,14 @@ import { getMemberOverallPlanProgress, getTeamOverallPlanProgress } from "./team
 
   const isSupportedPlan = plan => {
     if (!plan) return false;
-    const isCampaign = plan.planKind === "church_campaign_stage" ||
-      (plan.presetKey && (plan.presetKey.startsWith("church_stage_") || plan.presetKey.startsWith("preset-stage-"))) ||
-      (plan.name && (plan.name.includes("熱身賽") || plan.name.includes("第一輪") || plan.name.includes("第二輪")));
-    return !!isCampaign && /^[0-9a-f-]{36}$/i.test(getPlanId(plan));
+    if (!/^[0-9a-f-]{36}$/i.test(getPlanId(plan))) return false;
+    // 主判斷：正式階段 or 大區延後梯次（唯一定義在 data/campaign-stage-kinds.mjs）。
+    if (isCampaignStageKind(plan)) return true;
+    // planKind 遺失時的保底辨識（church_stage_cohort_NN 也吃 church_stage_ 前綴）。
+    const key = String(plan.presetKey || "");
+    if (key.startsWith("church_stage_") || key.startsWith("preset-stage-")) return true;
+    const name = String(plan.name || "");
+    return name.includes("熱身賽") || name.includes("第一輪") || name.includes("第二輪");
   };
   const getTeamContexts = context => {
     if (Array.isArray(context && context.teams)) {

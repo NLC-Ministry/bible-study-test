@@ -1110,7 +1110,7 @@ async function maybeOfferNextStageTeamCarryover() {
   }
 
   const openNextStages = (state.globalPlans || [])
-    .filter(plan => plan && plan.planKind === "church_campaign_stage")
+    .filter(plan => plan && window.isCampaignStagePlan(plan))
     .filter(plan => Number(plan.stageNo || plan.campaignDefinition && plan.campaignDefinition.stageNo || 0) > 1)
     .filter(plan => !isPlanHidden(plan))
     .sort((left, right) =>
@@ -1274,11 +1274,11 @@ function getPlanCoverHtml(plan) {
   const bg = getPlanCoverColor(plan);
   const isCampaign = plan && (
     plan.planKind === "church_campaign"
-    || plan.planKind === "church_campaign_stage"
+    || window.isCampaignStagePlan(plan)
     || plan.id === window.CHURCH_CAMPAIGN_ID
     || plan.globalPlanId === window.CHURCH_CAMPAIGN_ID
   );
-  const campaignStageNo = plan && plan.planKind === "church_campaign_stage"
+  const campaignStageNo = plan && window.isCampaignStagePlan(plan)
     ? Number(plan.stageNo || plan.campaignDefinition && plan.campaignDefinition.stageNo || 0)
     : 0;
   if (campaignStageNo) {
@@ -1698,7 +1698,7 @@ function renderJoinedPlansList() {
       const progress = plan.progress || 0;
       const currentRound = plan.currentRound || 1;
       const upgradeAvailability = getPlanUpgradeAvailability(plan, { expired: isPlanExpired(plan) });
-      const isCampaignStage = plan.planKind === "church_campaign_stage";
+      const isCampaignStage = window.isCampaignStagePlan(plan);
       const campaignAwardName = plan.awardName || plan.campaignDefinition && plan.campaignDefinition.awardName || "";
       const campaignAwardEarned = isCampaignStage && (currentRound > 1 || progress >= 100);
       const weeklyScheduleSummary = formatFlexibleScheduleSummary(plan);
@@ -1746,8 +1746,7 @@ function renderJoinedPlansList() {
             ? `已完成第 ${currentRound - 1} 遍 👑<br>第 ${currentRound} 遍：已讀 ${progress}% (${plan.completedChapters} / ${plan.currentRoundTotalChapters || plan.totalChapters} 章)`
             : `已讀 ${progress}% (${plan.completedChapters} / ${plan.currentRoundTotalChapters || plan.totalChapters} 章)`);
 
-        const isTeamPlan = (typeof window.isReadingTeamPlan === "function" && window.isReadingTeamPlan(plan)) || 
-          !!(plan && (plan.planKind === "church_campaign_stage" || (plan.presetKey && (plan.presetKey.startsWith("church_stage_") || plan.presetKey.startsWith("preset-stage-")))));
+        const isTeamPlan = typeof window.isReadingTeamPlan === "function" && window.isReadingTeamPlan(plan);
         const teamHtml = isTeamPlan ? `<div class="plan-card-team-controls"></div>` : "";
         const progressHtml = isUpcomingFixed
           ? ""
@@ -2101,7 +2100,7 @@ function openPlanDetailsDialog(plan, options = {}) {
 
   const isFlexible = plan.isFixed === false || plan.is_fixed === false;
   const definition = plan.campaignDefinition || null;
-  const isCampaignStage = plan.planKind === "church_campaign_stage" && definition;
+  const isCampaignStage = window.isCampaignStagePlan(plan) && definition;
   const books = plan.target_books || plan.targetBooks || plan.books || [];
   const scheduleText = (plan.startDate + " ～ " + plan.endDate) + "；" + formatFlexibleScheduleSummary(plan);
   const segments = isCampaignStage && Array.isArray(definition.segments) ? definition.segments : [];
@@ -2398,7 +2397,7 @@ function renderPresetPlansList() {
 
   visiblePlans.forEach(plan => {
     const key = plan.id || plan.presetKey;
-    const isCampaignStage = plan.planKind === "church_campaign_stage";
+    const isCampaignStage = window.isCampaignStagePlan(plan);
     const isLockedStage = window.isCampaignStageLocked(plan);
     const isFixed = plan.isFixed !== false && plan.is_fixed !== false;
     const scheduleLabel = isCampaignStage
@@ -3820,8 +3819,8 @@ window.triggerPlanUpgradeFlow = async function() {
   planUpgradeInFlight = true;
   setPlanUpgradeOverlayBusy(true, upgradeAvailability.nextRoundLabel);
 
-  // 記錄此類別完成的遍數，並觸發勳章解鎖檢查
-  if (plan.planKind === "church_campaign_stage") {
+  // 記錄此類別完成的遍數，並觸發勳章解鎖檢查（cohort 階段與正式階段拿同一個獎）
+  if (window.isCampaignStagePlan(plan)) {
     const stageNo = Number(plan.stageNo || (plan.campaignDefinition && plan.campaignDefinition.stageNo) || 0);
     if (stageNo > 0) {
       const completedRoundsKey = `church_stage_completed_rounds_${stageNo}`;
@@ -4190,7 +4189,9 @@ async function renderAdminPlanManagement() {
       const hidden = isPlanHidden(plan);
       const isFixed = plan.isFixed !== false && plan.is_fixed !== false;
       const isCampaign = plan.planKind === "church_campaign" || plan.id === window.CHURCH_CAMPAIGN_ID;
-      const isCampaignStage = plan.planKind === "church_campaign_stage";
+      // 正式階段限定：cohort 階段在「大區延後梯次」專屬面板管理，這裡維持一般計畫列
+      // 的編輯 / 刪除操作，不套用階段列（隱藏刪除、鎖編輯規則）的處理。
+      const isCampaignStage = window.isCanonicalCampaignStagePlan(plan);
       const campaignStageNo = Number(plan.stageNo || plan.campaignDefinition && plan.campaignDefinition.stageNo || 0);
 
       let timeColHtml = "";

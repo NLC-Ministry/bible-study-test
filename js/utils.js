@@ -2,6 +2,7 @@ import { segmentScheduleDaysForRoundCount } from "./data/current-round-progress.
 import {
   getUserOnboardingBlock
 } from "./member-journey.mjs";
+import { isCampaignStageKind, isCanonicalCampaignStageKind } from "./data/campaign-stage-kinds.mjs";
 
 // ============================================================
 // utils.js — Shared utilities used across all view controllers
@@ -620,7 +621,7 @@ function getCampaignStageCompletedRounds(stageNo) {
   (state.activePlans || []).forEach(plan => {
     if (!plan) return;
     const planStageNo = Number(plan.stageNo || (plan.campaignDefinition && plan.campaignDefinition.stageNo) || 0);
-    if (plan.planKind !== "church_campaign_stage" || planStageNo !== target) return;
+    if (!isCampaignStageKind(plan) || planStageNo !== target) return;
     const currentRound = Math.max(1, Number(plan.currentRound || 1));
     const completed = Number(plan.progress || 0) >= 100 ? currentRound : currentRound - 1;
     liveCompletedRounds = Math.max(liveCompletedRounds ?? 0, completed);
@@ -646,7 +647,7 @@ function getCampaignStageCurrentRound(stageNo) {
   return (state.activePlans || []).reduce((maxRound, plan) => {
     if (!plan) return maxRound;
     const planStageNo = Number(plan.stageNo || (plan.campaignDefinition && plan.campaignDefinition.stageNo) || 0);
-    if (plan.planKind !== "church_campaign_stage" || planStageNo !== target) return maxRound;
+    if (!isCampaignStageKind(plan) || planStageNo !== target) return maxRound;
     return Math.max(maxRound, Number(plan.currentRound || 1));
   }, 1);
 }
@@ -1639,9 +1640,9 @@ function resolveChurchCampaignDefinition(presetKey, name) {
     plan.id === presetKey
     || plan.globalPlanId === presetKey
     || plan.presetKey === presetKey
-    || (["church_campaign", "church_campaign_stage"].includes(plan.planKind) && plan.name === name)
+    || ((plan.planKind === "church_campaign" || isCampaignStageKind(plan)) && plan.name === name)
   );
-  if (globalPlan && ["church_campaign", "church_campaign_stage"].includes(globalPlan.planKind)) {
+  if (globalPlan && (globalPlan.planKind === "church_campaign" || isCampaignStageKind(globalPlan))) {
     return window.cloneChurchCampaign(globalPlan.campaignDefinition || window.CHURCH_CAMPAIGN);
   }
   if (presetKey === window.CHURCH_CAMPAIGN_PRESET_KEY || presetKey === window.CHURCH_CAMPAIGN_ID) {
@@ -2313,9 +2314,7 @@ function isPlanHidden(plan) {
 }
 
 function isCampaignStageLocked(plan) {
-  return Boolean(plan
-    && (plan.planKind === "church_campaign_stage" || plan.planKind === "church_campaign_stage_cohort")
-    && isPlanHidden(plan));
+  return Boolean(plan && isCampaignStageKind(plan) && isPlanHidden(plan));
 }
 
 function canManageHiddenPlans() {
@@ -2380,6 +2379,9 @@ window.selectMostRecentActivePlan = selectMostRecentActivePlan;
 window.calculateAllPlansProgress = calculateAllPlansProgress;
 window.isPlanHidden = isPlanHidden;
 window.isCampaignStageLocked = isCampaignStageLocked;
+// 前端唯一定義在 js/data/campaign-stage-kinds.mjs；這裡轉出給少數非 import 的呼叫點。
+window.isCampaignStagePlan = isCampaignStageKind;
+window.isCanonicalCampaignStagePlan = isCanonicalCampaignStageKind;
 window.isPlanAudienceMatch = isPlanAudienceMatch;
 window.canManageHiddenPlans = canManageHiddenPlans;
 window.getVisiblePlans = getVisiblePlans;

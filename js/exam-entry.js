@@ -17,7 +17,7 @@ import './state.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './auth.js?v=20260831_perf_b7';
 import './auth-launch.mjs';
 import './db.js?v=20260831_perf_b7';
-import './utils.js?v=20260830_region_cohort_v1';
+import './utils.js?v=20260831_cohort_stage_kind';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import { mountExamRunner } from './modules/exam.js?v=20260831_grading_name_search';
 
