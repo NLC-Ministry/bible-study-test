@@ -5,6 +5,12 @@ import {
   getMemberOverallPlanProgress,
   getTeamOverallPlanProgress
 } from "../js/modules/team-progress-metrics.mjs";
+import { isCampaignStageKind } from "../js/data/campaign-stage-kinds.mjs";
+import {
+  countScheduleDaysCoveredByChapters,
+  countExpectedScheduleDays,
+  countLateCompletedDays
+} from "../js/data/schedule-progress.mjs";
 
 const teamUi = readFileSync(new URL("../js/modules/team-registration.js", import.meta.url), "utf8");
 
@@ -74,11 +80,15 @@ describe("reading team member removal refresh", () => {
       loader: { show: vi.fn(), hide: vi.fn() },
       showConfirmDialog: vi.fn().mockResolvedValue(true),
       getMemberOverallPlanProgress,
-      getTeamOverallPlanProgress
+      getTeamOverallPlanProgress,
+      isCampaignStageKind,
+      countScheduleDaysCoveredByChapters,
+      countExpectedScheduleDays,
+      countLateCompletedDays
     });
 
     dom.window.document.getElementById("parent").addEventListener("click", parentClick);
-    dom.window.eval(teamUi.replace(/^import[^;]+;\s*/m, ""));
+    dom.window.eval(teamUi.replace(/^import[^;]+;\s*/gm, ""));
 
     const container = dom.window.document.getElementById("team");
     dom.window.renderMyReadingTeamInline(container, plan, {
