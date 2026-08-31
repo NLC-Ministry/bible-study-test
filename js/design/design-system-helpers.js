@@ -3,6 +3,12 @@
  * ESM twin: design-system-helpers.mjs (Vitest).
  */
 
+import {
+  countScheduleDaysCoveredByChapters,
+  countExpectedScheduleDays,
+  countRound1ChaptersRead,
+} from "../data/schedule-progress.mjs";
+
 function isChapterReadForRound(ch, round) {
   if (!ch) return false;
   const chRound = ch.round || 1;
@@ -45,9 +51,10 @@ function getPlanProgressStatusFromDesignSystem(plan) {
 
   const currentRound = plan.currentRound || 1;
   if (currentRound > 1) {
+    // 第一遍之後：只顯示該使用者的輪次進度，不再算落後 / 超前。
     const roundProgress = Math.max(0, Math.min(100, Math.round(Number(plan.progress) || 0)));
     return {
-      label: roundProgress > 0 ? "超前第" + currentRound + "遍完成" + roundProgress + "%" : "第" + currentRound + "遍進行中",
+      label: roundProgress > 0 ? "第" + currentRound + "遍完成" + roundProgress + "%" : "第" + currentRound + "遍進行中",
       badgeClass: "stat-badge--success",
       diff: 0,
     };
@@ -56,10 +63,12 @@ function getPlanProgressStatusFromDesignSystem(plan) {
     return { label: "第一遍完成100%", badgeClass: "stat-badge--success", diff: 0 };
   }
 
-  const nextDay = getNextReadingPlanDayPure(plan);
-  const nextDayNum = nextDay ? Number(nextDay.dayNum || 1) : 1;
-  const completedBeforeNext = plan.days.filter(day => day.chapters && day.chapters.length > 0 && Number(day.dayNum) < nextDayNum).length;
-  const expectedDays = getExpectedPlanDayCountPure(plan);
+  // 落後 / 超前一律對「教會原始日程」比（七日、不套 level / 個人休息日）。
+  const baseline = (typeof window.getCanonicalStageScheduleDays === "function")
+    ? window.getCanonicalStageScheduleDays(plan)
+    : (plan.days || []);
+  const completedBeforeNext = countScheduleDaysCoveredByChapters(baseline, countRound1ChaptersRead(plan));
+  const expectedDays = countExpectedScheduleDays(baseline, plan.startDate);
   const diff = completedBeforeNext - expectedDays;
 
   if (diff > 0) {

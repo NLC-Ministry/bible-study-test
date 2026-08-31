@@ -299,3 +299,31 @@ window.validateChurchCampaign = validateChurchCampaign;
 window.buildChurchCampaignDays = buildChurchCampaignDays;
 window.getChurchCampaignTeamStatus = getChurchCampaignTeamStatus;
 
+// ── 進度比對的「教會原始日程」──────────────────────────────────────────────
+// 「落後 / 超前 / 補讀」的唯一比對尺：該階段書卷 ÷ 起訖天數、平均鋪、每週七日。
+// 不套使用者的 level、也不套使用者個人的休息日（第 3 參數固定傳 []）。
+// 非教會 campaign 的計畫沒有 campaignDefinition → 退回 plan.days（原則只規範教會階段）。
+const _canonicalStageScheduleCache = new Map();
+function getCanonicalStageScheduleDays(plan) {
+  if (!plan) return [];
+  const def = plan.campaignDefinition;
+  if (!def) return Array.isArray(plan.days) ? plan.days : [];
+  const key = String(def.id || def.presetKey || plan.presetKey || plan.globalPlanId || plan.id || "")
+    + "|" + String(def.startDate || plan.startDate || "")
+    + "|" + String(def.endDate || plan.endDate || "");
+  const cached = _canonicalStageScheduleCache.get(key);
+  if (cached) return cached;
+  let built = null;
+  try {
+    built = buildChurchCampaignDays(def, window.BIBLE_BOOKS || [], []);
+  } catch (error) {
+    console.warn("getCanonicalStageScheduleDays: build failed, using plan.days", error);
+  }
+  if (!Array.isArray(built) || !built.length) {
+    built = Array.isArray(plan.days) ? plan.days : [];
+  }
+  if (key !== "||") _canonicalStageScheduleCache.set(key, built);
+  return built;
+}
+window.getCanonicalStageScheduleDays = getCanonicalStageScheduleDays;
+

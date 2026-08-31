@@ -1,5 +1,10 @@
 import { getMemberOverallPlanProgress, getTeamOverallPlanProgress } from "./team-progress-metrics.mjs";
 import { isCampaignStageKind } from "../data/campaign-stage-kinds.mjs";
+import {
+  countScheduleDaysCoveredByChapters,
+  countExpectedScheduleDays,
+  countLateCompletedDays
+} from "../data/schedule-progress.mjs";
 
 // Independent 3-person / 6-person competition team registration.
 // Organisation small-group and pastoral-zone scopes are deliberately not used here.
@@ -291,52 +296,40 @@ import { isCampaignStageKind } from "../data/campaign-stage-kinds.mjs";
   }
 
   function getTeamMemberRosterMetrics(member, plan) {
-    const days = Array.isArray(plan && plan.days) ? plan.days : [];
+    // 比對一律對「教會原始日程」（七日、不套 level / 個人休息日），且只在第一遍。
+    const baselineDays = typeof window.getCanonicalStageScheduleDays === "function"
+      ? window.getCanonicalStageScheduleDays(plan)
+      : (Array.isArray(plan && plan.days) ? plan.days : []);
     const logs = Array.isArray(member.readingLogs) ? member.readingLogs : [];
-    const roundOneLogs = logs.filter(log => Number(log.round || 1) === 1);
     const currentRound = Number(member.currentRound || 1);
-    const start = new Date(`${plan && plan.startDate || ""}T00:00:00`);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const expectedDays = Number.isNaN(start.getTime())
-      ? 0
-      : Math.max(0, Math.min(days.length, Math.floor((today - start) / 86400000) + 1));
-
-    const completedDetails = days.map((day, index) => {
-      const chapters = Array.isArray(day.chapters) ? day.chapters : [];
-      if (!chapters.length) return null;
-      const matchedLogs = chapters.map(chapter => roundOneLogs.find(log =>
-        String(log.book) === String(chapter.book) && Number(log.chapter) === Number(chapter.chapter)
-      ));
-      if (matchedLogs.some(log => !log)) return null;
-      const scheduled = new Date(start);
-      scheduled.setDate(start.getDate() + index);
-      const latestRead = matchedLogs.reduce((latest, log) => {
-        const key = toLocalDateKey(log.readAt);
-        return key > latest ? key : latest;
-      }, "");
-      return { scheduled: toLocalDateKey(scheduled), latestRead };
-    }).filter(Boolean);
-
-    const readingDayCount = days.filter(day => Array.isArray(day.chapters) && day.chapters.length > 0).length;
-    const completedDays = currentRound > 1 ? readingDayCount : completedDetails.length;
+    const startDate = String(plan && plan.startDate || "");
     const completed = Number(member.chaptersRead || 0);
-    const makeup = completedDetails.filter(item => item.latestRead > item.scheduled).length;
+
+    const round1DateByChapter = new Map();
+    logs.filter(log => Number(log.round || 1) === 1).forEach(log => {
+      round1DateByChapter.set(`${log.book}_${log.chapter}`, toLocalDateKey(log.readAt || log.read_at));
+    });
+
+    // 完成天數用「累計已讀章數」推，不靠逐筆 log（名冊沒帶每個人的 readingLogs）。
+    const completedDays = countScheduleDaysCoveredByChapters(baselineDays, completed);
+    const expectedDays = countExpectedScheduleDays(baselineDays, startDate);
+    const makeup = countLateCompletedDays(baselineDays, startDate, round1DateByChapter);
     const diff = completedDays - expectedDays;
-    const currentProgress = Number(member.chaptersRead || 0);
+
     let statusStr = "未開始";
     let statusClass = "reading-team-status--muted";
 
     if (member.hasJoinedPlan && currentRound > 1) {
-      statusStr = `超前第${currentRound}遍`;
+      // 第一遍之後：只顯示輪次，不再算落後 / 超前。
+      statusStr = `第${currentRound}遍進行中`;
       statusClass = "reading-team-status--ahead";
-    } else if (member.hasJoinedPlan && currentProgress > 0 && diff > 0) {
+    } else if (member.hasJoinedPlan && completed > 0 && diff > 0) {
       statusStr = `超前 ${diff} 天`;
       statusClass = "reading-team-status--ahead";
-    } else if (member.hasJoinedPlan && currentProgress > 0 && diff < 0) {
+    } else if (member.hasJoinedPlan && completed > 0 && diff < 0) {
       statusStr = diff === -1 ? "今日未完成" : `落後 ${Math.abs(diff)} 天`;
       statusClass = "reading-team-status--behind";
-    } else if (member.hasJoinedPlan && currentProgress > 0) {
+    } else if (member.hasJoinedPlan && completed > 0) {
       statusStr = "在進度上";
       statusClass = "reading-team-status--current";
     }

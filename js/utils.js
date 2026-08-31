@@ -1472,15 +1472,10 @@ window.renderBadgeWall = renderBadgeWall;
 
 
 // === Moved Plan Helpers ===
-function getPlanLevelRounds(level) {
-  if (level === "breakthrough") return 2;
-  if (level === "super") return 3;
-  if (typeof level === "string" && level.startsWith("level")) {
-    const num = parseInt(level.substring(5), 10);
-    if (!isNaN(num)) return num;
-  }
-  const num = parseInt(level, 10);
-  if (!isNaN(num)) return num;
+function getPlanLevelRounds(_level) {
+  // 「level（突破/興盛/讀N遍）」設定已廢除：日程永遠是教會原始的一遍，
+  // 多讀幾遍靠 current_round 累加、沿用同一份日程。這裡一律回 1，
+  // 讓 segmentScheduleDaysForRoundCount 不再把章數乘遍數。
   return 1;
 }
 

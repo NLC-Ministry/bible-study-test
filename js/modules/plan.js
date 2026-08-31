@@ -13,6 +13,12 @@ import { getPlanUpgradeAvailability } from "./plan-upgrade-availability.mjs";
 import { createReaderBottomDwellController, observeReaderEndSentinel } from "./reader-bottom-dwell.mjs";
 import { isPlanProgressLocked } from "../data/plan-progress-availability.mjs";
 import {
+  countScheduleDaysCoveredByChapters,
+  countExpectedScheduleDays,
+  countLateCompletedDays,
+  isFirstRoundInProgress
+} from "../data/schedule-progress.mjs";
+import {
   cleanPlanAssociatedBadges,
   removePlanReadingLogs,
   resetPlanProgressState
@@ -5293,15 +5299,7 @@ async function renderPlanStatsView() {
       }
     }
 
-    // Calculate expected days up to today (for round 1 logic only)
-    const planStart = new Date(state.activePlan.startDate + "T00:00:00");
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const diffTime = today.getTime() - planStart.getTime();
-    const diffDays = Math.max(0, Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1);
-    const expectedDaysCount = Math.min(totalPlanDays, diffDays);
-
-    // 3. Progress Status
+    // 3. Progress Status（落後/超前只在第一遍；之後只顯示輪次進度 —— 見 getPlanProgressStatus）
     const reportStatProgressStatus = document.getElementById("report-stat-progress-status");
     if (reportStatProgressStatus) {
       const progressStatus = getPlanProgressStatus(state.activePlan);
@@ -5310,52 +5308,23 @@ async function renderPlanStatsView() {
     }
 
     // 4. Makeup/Catch up days (🛡️ 進度救援)
-    const statsStart = new Date(state.activePlan.startDate + "T00:00:00");
-    statsStart.setHours(0, 0, 0, 0);
-    const targetRoundsVal = getPlanLevelRounds(state.activePlan.level || "normal");
-    let catchUpDaysVal = 0;
-    // 補讀是相對原始日程的概念，只計第一遍，數值不會超過計畫天數。
-    for (let r = 1; r <= 1; r++) {
-      state.activePlan.days.forEach((day, index) => {
-        const d = index + 1;
-        const scheduledDate = new Date(statsStart);
-        scheduledDate.setDate(statsStart.getDate() + (d - 1));
-        const scheduledDateStr = scheduledDate.getFullYear() + '-' + String(scheduledDate.getMonth() + 1).padStart(2, '0') + '-' + String(scheduledDate.getDate()).padStart(2, '0');
-
-        const roundLogs = (state.readingLogs || []).filter(l =>
-          (l.plan_id === state.activePlan.id || l.presetKey === state.activePlan.presetKey) &&
-          (l.round || 1) === r
-        );
-
-        let allChaptersCompleted = true;
-        let maxReadDateStr = "";
-
-        const toLocalStr = window.toLocalYYYYMMDD || ((val) => {
-          if (!val) return "";
-          const date = val instanceof Date ? val : new Date(val);
-          if (Number.isNaN(date.getTime())) return "";
-          return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
-        });
-
-        for (const ch of day.chapters) {
-          const log = roundLogs.find(l => l.book === ch.book && l.chapter === ch.chapter);
-          if (!log) {
-            allChaptersCompleted = false;
-            break;
-          }
-          const logDateStr = toLocalStr(log.read_at);
-          if (!maxReadDateStr || logDateStr > maxReadDateStr) {
-            maxReadDateStr = logDateStr;
-          }
-        }
-
-        if (allChaptersCompleted && maxReadDateStr) {
-          if (maxReadDateStr > scheduledDateStr) {
-            catchUpDaysVal++;
-          }
-        }
-      });
-    }
+    // 一律對「教會原始日程」算，只看第一遍的 log（第一遍之後 log 不再變，數值自然凍結）。
+    const toLocalStr = window.toLocalYYYYMMDD || ((val) => {
+      if (!val) return "";
+      const date = val instanceof Date ? val : new Date(val);
+      if (Number.isNaN(date.getTime())) return "";
+      return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+    });
+    const round1DateByChapter = new Map();
+    (state.readingLogs || []).forEach(l => {
+      if ((l.plan_id === state.activePlan.id || l.presetKey === state.activePlan.presetKey) && (l.round || 1) === 1) {
+        round1DateByChapter.set(`${l.book}_${l.chapter}`, toLocalStr(l.read_at));
+      }
+    });
+    const canonicalDays = typeof window.getCanonicalStageScheduleDays === "function"
+      ? window.getCanonicalStageScheduleDays(state.activePlan)
+      : (state.activePlan.days || []);
+    const catchUpDaysVal = countLateCompletedDays(canonicalDays, state.activePlan.startDate, round1DateByChapter);
     const reportStatMakeup = document.getElementById("report-stat-makeup");
     if (reportStatMakeup) reportStatMakeup.textContent = catchUpDaysVal;
     const makeupCard = document.getElementById("report-stat-makeup-card");
@@ -6576,8 +6545,15 @@ async function renderGroupParticipantsRankingTable() {
   const myPlanReadCount = uniquePlanLogs(state.readingLogs || []);
   const personalStreak = myPlanReadCount > 0 ? (state.currentUser.streak || 0) : 0;
 
+  // 進度狀態 / 補讀天數是「大家對同一把尺」的天數比較，尺一律是這個階段的
+  // 教會原始日程（七日、不套任何使用者的 level 或個人休息日）。絕不能用
+  // state.activePlan.days —— 那是「看榜這個人自己」的排程。
+  const baselineScheduleDays = typeof window.getCanonicalStageScheduleDays === "function"
+    ? window.getCanonicalStageScheduleDays(state.activePlan)
+    : (state.activePlan.days || []);
+
   const calculateCatchUpDays = (userLogs) => {
-    if (!state.activePlan || !state.activePlan.days) return 0;
+    if (!state.activePlan || !baselineScheduleDays.length) return 0;
     const statsStart = new Date(state.activePlan.startDate + "T00:00:00");
     statsStart.setHours(0, 0, 0, 0);
     let catchUpDaysVal = 0;
@@ -6599,7 +6575,7 @@ async function renderGroupParticipantsRankingTable() {
       }
     }
 
-    const days = state.activePlan.days;
+    const days = baselineScheduleDays;
     for (let index = 0; index < days.length; index++) {
       const day = days[index];
       const scheduledDate = new Date(statsStart);
@@ -6658,13 +6634,13 @@ async function renderGroupParticipantsRankingTable() {
   today.setHours(0, 0, 0, 0);
   const diffTime = today.getTime() - planStart.getTime();
   const diffDays = Math.max(0, Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1);
-  const elapsedPlanDaysCount = Math.min(state.activePlan.days.length, diffDays);
+  const elapsedPlanDaysCount = Math.min(baselineScheduleDays.length, diffDays);
   // Rest days (no chapters scheduled) don't increment daysCovered above, so
   // the expected side must exclude them too — otherwise every rest day
   // silently counts as a calendar day you were supposed to read, and a
   // member perfectly on schedule reads as behind by however many rest days
   // have passed.
-  const expectedDaysCount = state.activePlan.days
+  const expectedDaysCount = baselineScheduleDays
     .slice(0, elapsedPlanDaysCount)
     .filter(day => day.chapters && day.chapters.length > 0)
     .length;
@@ -6866,9 +6842,10 @@ async function renderGroupParticipantsRankingTable() {
           memberIsCompletedOnce = (u.current_round || 1) > 1;
         }
         // 讀完一遍後直接視為天數全滿，避免進入二三遍後被誤判落後。
+        // 一律對「基準日程」比對，不受看榜者自己的 level 影響。
         const completedDays = memberIsCompletedOnce
-          ? state.activePlan.days.length
-          : countExactDaysCoveredByChapters(state.activePlan.days, completed);
+          ? baselineScheduleDays.length
+          : countExactDaysCoveredByChapters(baselineScheduleDays, completed);
         diff = completedDays - expectedDaysCount;
       }
 
@@ -7314,50 +7291,24 @@ window.showPlanStatsModal = function () {
   const todayZero = new Date();
   todayZero.setHours(0, 0, 0, 0);
   const elapsedDays = Math.max(0, Math.min(totalDays, Math.round((todayZero - start) / (1000 * 60 * 60 * 24)) + 1));
-  const targetRounds = getPlanLevelRounds(plan.level || "normal");
 
-  let catchUpDays = 0;
   const toLocalStr = window.toLocalYYYYMMDD || ((val) => {
     if (!val) return "";
     const date = val instanceof Date ? val : new Date(val);
     if (Number.isNaN(date.getTime())) return "";
     return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
   });
-  // 補讀只屬於第一遍；重讀進度不應疊加到補讀天數。
-  for (let r = 1; r <= 1; r++) {
-    plan.days.forEach((day, index) => {
-      const d = index + 1;
-      const scheduledDate = new Date(start);
-      scheduledDate.setDate(start.getDate() + (d - 1));
-      const scheduledDateStr = scheduledDate.getFullYear() + '-' + String(scheduledDate.getMonth() + 1).padStart(2, '0') + '-' + String(scheduledDate.getDate()).padStart(2, '0');
-
-      const roundLogs = (state.readingLogs || []).filter(l =>
-        (l.plan_id === plan.id || l.presetKey === plan.presetKey) &&
-        (l.round || 1) === r
-      );
-
-      let allChaptersCompleted = true;
-      let maxReadDateStr = "";
-
-      for (const ch of day.chapters) {
-        const log = roundLogs.find(l => l.book === ch.book && l.chapter === ch.chapter);
-        if (!log) {
-          allChaptersCompleted = false;
-          break;
-        }
-        const logDateStr = toLocalStr(log.read_at);
-        if (!maxReadDateStr || logDateStr > maxReadDateStr) {
-          maxReadDateStr = logDateStr;
-        }
-      }
-
-      if (allChaptersCompleted && maxReadDateStr) {
-        if (maxReadDateStr > scheduledDateStr) {
-          catchUpDays++;
-        }
-      }
-    });
-  }
+  // 補讀：一律對「教會原始日程」算，只看第一遍的 log（第一遍後 log 不變 → 數值凍結）。
+  const round1DateByChapter = new Map();
+  (state.readingLogs || []).forEach(l => {
+    if ((l.plan_id === plan.id || l.presetKey === plan.presetKey) && (l.round || 1) === 1) {
+      round1DateByChapter.set(`${l.book}_${l.chapter}`, toLocalStr(l.read_at));
+    }
+  });
+  const canonicalDays = typeof window.getCanonicalStageScheduleDays === "function"
+    ? window.getCanonicalStageScheduleDays(plan)
+    : (plan.days || []);
+  const catchUpDays = countLateCompletedDays(canonicalDays, plan.startDate, round1DateByChapter);
 
   // 4. Calculate cumulative chapters read (累計閱讀)
   const currentPlanId = plan.id;
@@ -7400,43 +7351,7 @@ window.showPlanStatsModal = function () {
     });
   }).length;
 
-  // 6. Calculate progress status (計畫狀態)
-  let equivalentDay = 0;
-  const cumulativeScheduled = [];
-  let sumChapters = 0;
-  for (let i = 0; i < plan.days.length; i++) {
-    sumChapters += plan.days[i].chapters.length;
-    cumulativeScheduled.push(sumChapters * targetRounds);
-  }
-
-  // Calculate actual completed chapters across rounds
-  let actualCompletedChaptersTotal = 0;
-  for (let r = 1; r <= targetRounds; r++) {
-    const roundLogs = (state.readingLogs || []).filter(l =>
-      (l.plan_id === plan.id || l.presetKey === plan.presetKey) &&
-      (l.round || 1) === r
-    );
-    const uniqueChapters = new Set(roundLogs.map(l => `${l.book}_${l.chapter}`));
-
-    let planChaptersCount = 0;
-    plan.days.forEach(day => {
-      day.chapters.forEach(ch => {
-        if (uniqueChapters.has(`${ch.book}_${ch.chapter}`)) {
-          planChaptersCount++;
-        }
-      });
-    });
-    actualCompletedChaptersTotal += planChaptersCount;
-  }
-
-  for (let d = 1; d <= plan.days.length; d++) {
-    if (actualCompletedChaptersTotal >= cumulativeScheduled[d - 1]) {
-      equivalentDay = d;
-    } else {
-      break;
-    }
-  }
-
+  // 6. Progress status（落後/超前只在第一遍；之後只顯示輪次進度 —— 見 getPlanProgressStatus）
   const progressStatus = getPlanProgressStatus(plan);
   const statusLabel = progressStatus.label;
   const statusBadgeClass = progressStatus.badgeClass || "stat-badge--brand";
@@ -8393,109 +8308,37 @@ function calculateProfileStats(plan) {
   const totalDays = plan.totalDays || (Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1);
   const elapsedDays = Math.max(0, Math.min(totalDays, Math.round((today - start) / (1000 * 60 * 60 * 24)) + 1));
 
-  const level = plan.level || 'normal';
-  let targetRounds = 1;
-  if (level === 'breakthrough') targetRounds = 2;
-  else if (level === 'super') targetRounds = 3;
-
-  // 1. Calculate actual completed chapters across all relevant rounds
-  let actualCompletedChapters = 0;
-  for (let r = 1; r <= targetRounds; r++) {
-    const roundLogs = state.readingLogs.filter(l =>
-      (l.plan_id === plan.id || l.presetKey === plan.presetKey) &&
-      (l.round || 1) === r
-    );
-    const uniqueChapters = new Set(roundLogs.map(l => `${l.book}_${l.chapter}`));
-
-    let planChaptersCount = 0;
-    plan.days.forEach(day => {
-      day.chapters.forEach(ch => {
-        if (uniqueChapters.has(`${ch.book}_${ch.chapter}`)) {
-          planChaptersCount++;
-        }
-      });
-    });
-    actualCompletedChapters += planChaptersCount;
-  }
-
-  // 2. Build cumulative scheduled chapters list
-  const cumulativeScheduled = [];
-  let sum = 0;
-  for (let i = 0; i < totalDays; i++) {
-    sum += plan.days[i].chapters.length;
-    cumulativeScheduled.push(sum * targetRounds);
-  }
-
-  // 3. Find equivalent day completed
-  let equivalentDay = 0;
-  for (let d = 1; d <= totalDays; d++) {
-    if (actualCompletedChapters >= cumulativeScheduled[d - 1]) {
-      equivalentDay = d;
-    } else {
-      break;
+  // 落後/超前/補讀一律對「教會原始日程」算，且只在第一遍（見比對原則）。
+  const currentRound = plan.currentRound || 1;
+  const toLocalStr = window.toLocalYYYYMMDD || ((val) => {
+    if (!val) return "";
+    const date = val instanceof Date ? val : new Date(val);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+  });
+  const canonicalDays = typeof window.getCanonicalStageScheduleDays === "function"
+    ? window.getCanonicalStageScheduleDays(plan)
+    : (plan.days || []);
+  const round1DateByChapter = new Map();
+  (state.readingLogs || []).forEach(l => {
+    if ((l.plan_id === plan.id || l.presetKey === plan.presetKey) && (l.round || 1) === 1) {
+      round1DateByChapter.set(`${l.book}_${l.chapter}`, toLocalStr(l.read_at));
     }
-  }
+  });
 
-  // 4. Calculate lag and lead days
   let lagDays = 0;
   let leadDays = 0;
-
-  const currentRound = plan.currentRound || 1;
-  // If currentRound >= 4, the user is in self-managed phase, no lag/lead scheduling checks
-  if (currentRound < 4 && elapsedDays > 0) {
-    const diff = equivalentDay - elapsedDays;
-    if (diff > 0) {
-      leadDays = diff;
-    } else if (diff < 0) {
-      lagDays = -diff;
-    }
+  if (currentRound === 1 && !plan.isPlanCompleted) {
+    const round1Chapters = round1DateByChapter.size;
+    const completedDays = countScheduleDaysCoveredByChapters(canonicalDays, round1Chapters);
+    const expectedDays = countExpectedScheduleDays(canonicalDays, plan.startDate, today);
+    const diff = completedDays - expectedDays;
+    if (diff > 0) leadDays = diff;
+    else if (diff < 0) lagDays = -diff;
   }
 
-  // 5. Calculate makeup days
-  let makeupDays = 0;
-  // 超過第一遍後都是超前，不再累加補讀天數。
-  for (let r = 1; r <= 1; r++) {
-    plan.days.forEach((day, index) => {
-      const d = index + 1;
-
-      const scheduledDate = new Date(start);
-      scheduledDate.setDate(start.getDate() + (d - 1));
-      const scheduledDateStr = scheduledDate.getFullYear() + '-' + String(scheduledDate.getMonth() + 1).padStart(2, '0') + '-' + String(scheduledDate.getDate()).padStart(2, '0');
-
-      const roundLogs = state.readingLogs.filter(l =>
-        (l.plan_id === plan.id || l.presetKey === plan.presetKey) &&
-        (l.round || 1) === r
-      );
-
-      let allChaptersCompleted = true;
-      let maxReadDateStr = "";
-
-      const toLocalStr = window.toLocalYYYYMMDD || ((val) => {
-        if (!val) return "";
-        const date = val instanceof Date ? val : new Date(val);
-        if (Number.isNaN(date.getTime())) return "";
-        return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
-      });
-
-      for (const ch of day.chapters) {
-        const log = roundLogs.find(l => l.book === ch.book && l.chapter === ch.chapter);
-        if (!log) {
-          allChaptersCompleted = false;
-          break;
-        }
-        const logDateStr = toLocalStr(log.read_at);
-        if (!maxReadDateStr || logDateStr > maxReadDateStr) {
-          maxReadDateStr = logDateStr;
-        }
-      }
-
-      if (allChaptersCompleted && maxReadDateStr) {
-        if (maxReadDateStr > scheduledDateStr) {
-          makeupDays++;
-        }
-      }
-    });
-  }
+  // 補讀：只看第一遍的 log，第一遍後 log 不再變 → 數值自然凍結。
+  const makeupDays = countLateCompletedDays(canonicalDays, plan.startDate, round1DateByChapter);
 
   return {
     elapsedDays,
