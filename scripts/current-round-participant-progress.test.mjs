@@ -74,7 +74,10 @@ describe("participant overview current-round progress", () => {
     expect(plan).toContain('statusStr = memberProgress > 0 ? `第${memberRound}遍完成${memberProgress}%` : `第${memberRound}遍進行中`');
     expect(plan).toContain("const visibleChapters = (selectedDay.chapters || []).filter");
     expect(plan).toContain("window._cachedAllUsersList = null");
-    expect(utils).toContain("log.read_at || log.readAt");
-    expect(utils).toContain("segmentScheduleDaysForRoundCount(");
+    // level (突破/興盛/讀N遍) removed: the church-campaign generator now emits a
+    // single round-1 schedule straight from buildChurchCampaignDays, so the
+    // old log-driven multi-round segmentation no longer runs in utils.js.
+    expect(utils).toContain("日程永遠是教會原始的一遍");
+    expect(utils).not.toContain("roundEndOffsets");
   });
 });

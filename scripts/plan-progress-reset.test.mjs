@@ -9,7 +9,6 @@ describe("plan progress reset", () => {
   const plan = {
     id: "plan-1",
     presetKey: "campaign-stage-1",
-    level: "breakthrough",
     currentRound: 2,
     upgradePromptHandled: true,
     progress: 40,
@@ -43,7 +42,6 @@ describe("plan progress reset", () => {
   it("returns an upgraded plan to a clean first round", () => {
     const reset = resetPlanProgressState(structuredClone(plan));
     expect(reset).toMatchObject({
-      level: "normal",
       currentRound: 1,
       upgradePromptHandled: false,
       progress: 0,

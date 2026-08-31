@@ -286,7 +286,7 @@ function migrateLocalChurchCampaignToStages(plans, logs) {
 
   stages.forEach(stage => {
     if ([stage.id, stage.presetKey].some(key => existingStageKeys.has(String(key)))) return;
-    const stagePlan = generatePlanObject(stage.name, stage.startDate, stage.endDate, stage.books, stage.presetKey, "normal", true, {
+    const stagePlan = generatePlanObject(stage.name, stage.startDate, stage.endDate, stage.books, stage.presetKey, true, {
       readingDaysPerWeek: scheduleSource.readingDaysPerWeek || scheduleSource.reading_days_per_week,
       restWeekdays: scheduleSource.restWeekdays || scheduleSource.rest_weekdays
     });
@@ -306,32 +306,6 @@ function migrateLocalChurchCampaignToStages(plans, logs) {
   return { plans: retainedPlans, logs: migratedLogs, migrated: true };
 }
 
-function getPlanStorageKey(plan) {
-  return String((plan && (plan.id || plan.presetKey || plan.globalPlanId || plan.name)) || "");
-}
-
-function getLocalPlanDowngradeLock(plan) {
-  try {
-    const key = getPlanStorageKey(plan);
-    const locks = JSON.parse(localStorage.getItem("plan_downgrade_locks") || "{}");
-    return key ? (locks[key] || null) : null;
-  } catch (e) {
-    return null;
-  }
-}
-
-function setLocalPlanDowngradeLock(plan, lockedUntil) {
-  try {
-    const key = getPlanStorageKey(plan);
-    if (!key) return;
-    const locks = JSON.parse(localStorage.getItem("plan_downgrade_locks") || "{}");
-    if (lockedUntil) locks[key] = lockedUntil;
-    else delete locks[key];
-    localStorage.setItem("plan_downgrade_locks", JSON.stringify(locks));
-  } catch (e) {
-    console.warn("Failed to persist downgrade lock locally", e);
-  }
-}
 
 const db = {
   _mergedUsersCache: {},
@@ -1231,7 +1205,7 @@ const db = {
               onData: (rows, meta) => this.applyReadingLogsSnapshot(rows, { notify: true, source: meta.source })
             })
             : state.supabase.from("reading_logs").select("book, chapter, read_at, plan_id, round").eq("user_id", user.id),
-          state.supabase.from("reading_plans").select("id, user_id, global_plan_id, name, start_date, end_date, target_books, preset_key, level, current_round, was_downgraded, downgrade_locked_until, upgrade_prompt_handled, current_round_started_at, is_fixed, reading_days_per_week, rest_weekdays, created_at").eq("user_id", user.id).order("created_at", { ascending: false })
+          state.supabase.from("reading_plans").select("id, user_id, global_plan_id, name, start_date, end_date, target_books, preset_key, current_round, upgrade_prompt_handled, current_round_started_at, is_fixed, reading_days_per_week, rest_weekdays, created_at").eq("user_id", user.id).order("created_at", { ascending: false })
         ]);
 
         // Only message/code — never the raw error object. A PostgrestError
@@ -1358,8 +1332,7 @@ const db = {
                   upgradePromptHandled: dbPlan.upgrade_prompt_handled,
                   logs: planLogs
                 });
-                const effectiveLevel = confirmedRound === storedRound ? (dbPlan.level || 'normal') : 'normal';
-                const planObj = generatePlanObject(dbPlan.name, dbPlan.start_date, dbPlan.end_date, dbPlan.target_books, key, effectiveLevel, isFixed, {
+                const planObj = generatePlanObject(dbPlan.name, dbPlan.start_date, dbPlan.end_date, dbPlan.target_books, key, isFixed, {
                   readingDaysPerWeek: dbPlan.reading_days_per_week,
                   restWeekdays: dbPlan.rest_weekdays,
                   planId: dbPlan.id,
@@ -1375,10 +1348,7 @@ const db = {
                 planObj.isHidden = Boolean(linkedGlobalPlan && (linkedGlobalPlan.isHidden || linkedGlobalPlan.is_hidden));
                 planObj.planKind = linkedGlobalPlan?.planKind || (campaignStageNo >= 1 ? "church_campaign_stage" : "standard");
                 planObj.stageNo = linkedGlobalPlan?.stageNo || campaignStageNo || null;
-                planObj.level = effectiveLevel;
                 planObj.currentRound = confirmedRound;
-                planObj.wasDowngraded = dbPlan.was_downgraded || false;
-                planObj.downgradeLockedUntil = dbPlan.downgrade_locked_until || getLocalPlanDowngradeLock(planObj);
                 planObj.upgradePromptHandled = !!dbPlan.upgrade_prompt_handled;
                 state.activePlans.push(planObj);
               } catch (err) {
@@ -1502,7 +1472,7 @@ const db = {
             if (isMissingProperties && typeof generatePlanObject === 'function') {
               const preset = CHURCH_PLAN_PRESETS[plan.presetKey];
               if (preset) {
-                const freshPlan = generatePlanObject(plan.name, plan.startDate, plan.endDate, plan.target_books || preset.books, plan.presetKey, plan.level || 'normal');
+                const freshPlan = generatePlanObject(plan.name, plan.startDate, plan.endDate, plan.target_books || preset.books, plan.presetKey);
                 const readKeys = new Set();
                 plan.days.forEach(d => {
                   if (d.chapters) {
@@ -1522,9 +1492,6 @@ const db = {
                 freshPlan.progress = plan.progress;
                 freshPlan.completedChapters = plan.completedChapters;
                 freshPlan.currentRound = plan.currentRound;
-                freshPlan.level = plan.level;
-                freshPlan.wasDowngraded = plan.wasDowngraded;
-                freshPlan.downgradeLockedUntil = plan.downgradeLockedUntil || getLocalPlanDowngradeLock(plan);
                 freshPlan.upgradePromptHandled = !!plan.upgradePromptHandled;
                 Object.assign(plan, freshPlan);
               }
@@ -2506,7 +2473,7 @@ const db = {
         if (profilesError) throw profilesError;
 
         const buildPlansQuery = () => {
-          let q = state.supabase.from("reading_plans").select("id, user_id, name, preset_key, global_plan_id, target_books, current_round, level, upgrade_prompt_handled");
+          let q = state.supabase.from("reading_plans").select("id, user_id, name, preset_key, global_plan_id, target_books, current_round, upgrade_prompt_handled");
           if (filterPresetKey) {
             const textConditions = planFilterAliases.flatMap(alias => [
               `preset_key.eq.${quotePostgrestValue(alias)}`,
@@ -2656,7 +2623,6 @@ const db = {
               presetKey: uPlan ? uPlan.preset_key : null,
               globalPlanId: uPlan ? uPlan.global_plan_id : null,
               current_round: confirmedRound,
-              level: uPlan && confirmedRound === Number(uPlan.current_round || 1) ? (uPlan.level || 'normal') : 'normal',
               today_devotional: notesByUser[profile.id] || null
             };
           }).filter(Boolean);
@@ -4277,10 +4243,7 @@ const db = {
             end_date: endDate,
             target_books: selectedBooks,
             preset_key: presetKey,
-            level: 'normal',
             current_round: 1,
-            was_downgraded: false,
-            downgrade_locked_until: null,
             upgrade_prompt_handled: false,
             is_fixed: isFixed,
             reading_days_per_week: weeklySchedule.readingDaysPerWeek,
@@ -4293,7 +4256,7 @@ const db = {
 
           let existingQuery = state.supabase
             .from("reading_plans")
-            .select("id, user_id, global_plan_id, name, start_date, end_date, target_books, preset_key, level, current_round, is_fixed, reading_days_per_week, rest_weekdays")
+            .select("id, user_id, global_plan_id, name, start_date, end_date, target_books, preset_key, current_round, is_fixed, reading_days_per_week, rest_weekdays")
             .eq("user_id", user.id);
           if (globalPlanId) existingQuery = existingQuery.eq("global_plan_id", globalPlanId);
           else existingQuery = existingQuery.eq("preset_key", presetKey).eq("name", planName);
@@ -4303,13 +4266,12 @@ const db = {
 
           if (existingPlan) {
             const existingIsFixed = existingPlan.is_fixed !== false;
-            newPlanObj = generatePlanObject(planName, existingPlan.start_date, existingPlan.end_date, selectedBooks, presetKey, 'normal', existingIsFixed, {
+            newPlanObj = generatePlanObject(planName, existingPlan.start_date, existingPlan.end_date, selectedBooks, presetKey, existingIsFixed, {
               readingDaysPerWeek: existingPlan.reading_days_per_week,
               restWeekdays: existingPlan.rest_weekdays
             });
             newPlanObj.id = existingPlan.id;
             newPlanObj.globalPlanId = existingPlan.global_plan_id || null;
-            newPlanObj.level = existingPlan.level || newPlanObj.level || "normal";
             newPlanObj.currentRound = existingPlan.current_round || 1;
             newPlanObj.isFixed = existingIsFixed;
             newPlanObj.is_fixed = existingIsFixed;
@@ -4321,7 +4283,7 @@ const db = {
             const { data: dbPlan, error } = await state.supabase
               .from("reading_plans")
               .insert(insertPayload)
-              .select("id, user_id, global_plan_id, name, start_date, end_date, target_books, preset_key, level, current_round, is_fixed, reading_days_per_week, rest_weekdays")
+              .select("id, user_id, global_plan_id, name, start_date, end_date, target_books, preset_key, current_round, is_fixed, reading_days_per_week, rest_weekdays")
               .single();
 
             if (error) {
@@ -4334,7 +4296,7 @@ const db = {
             if (!dbPlan) throw new Error("No plan returned after insert.");
 
             const dbIsFixed = dbPlan.is_fixed !== false;
-            newPlanObj = generatePlanObject(planName, dbPlan.start_date, dbPlan.end_date, selectedBooks, presetKey, 'normal', dbIsFixed, {
+            newPlanObj = generatePlanObject(planName, dbPlan.start_date, dbPlan.end_date, selectedBooks, presetKey, dbIsFixed, {
               readingDaysPerWeek: dbPlan.reading_days_per_week,
               restWeekdays: dbPlan.rest_weekdays
             });
@@ -4355,7 +4317,7 @@ const db = {
         return null;
       }
     } else {
-      newPlanObj = generatePlanObject(planName, startDate, endDate, selectedBooks, presetKey, 'normal', isFixed, weeklySchedule);
+      newPlanObj = generatePlanObject(planName, startDate, endDate, selectedBooks, presetKey, isFixed, weeklySchedule);
       newPlanObj.isFixed = isFixed;
       newPlanObj.is_fixed = isFixed;
       if (!state.activePlans) state.activePlans = [];
@@ -4443,7 +4405,6 @@ const db = {
       plan.endDate,
       plan.target_books || plan.targetBooks || [],
       plan.presetKey || plan.globalPlanId,
-      plan.level || "normal",
       isFixed,
       weeklySchedule
     );
@@ -4452,8 +4413,6 @@ const db = {
       globalPlanId: plan.globalPlanId || null,
       presetKey: plan.presetKey,
       currentRound: plan.currentRound || 1,
-      level: plan.level || "normal",
-      wasDowngraded: Boolean(plan.wasDowngraded),
       isFixed,
       is_fixed: isFixed
     };

@@ -1,4 +1,3 @@
-import { segmentScheduleDaysForRoundCount } from "./data/current-round-progress.mjs";
 import {
   getUserOnboardingBlock
 } from "./member-journey.mjs";
@@ -1472,25 +1471,8 @@ window.renderBadgeWall = renderBadgeWall;
 
 
 // === Moved Plan Helpers ===
-function getPlanLevelRounds(_level) {
-  // 「level（突破/興盛/讀N遍）」設定已廢除：日程永遠是教會原始的一遍，
-  // 多讀幾遍靠 current_round 累加、沿用同一份日程。這裡一律回 1，
-  // 讓 segmentScheduleDaysForRoundCount 不再把章數乘遍數。
-  return 1;
-}
-
-function getPlanLevelLabel(level) {
-  if (level === "breakthrough") return "突破";
-  if (level === "super") return "興盛";
-  if (level === "normal") return "一般";
-  const rounds = getPlanLevelRounds(level);
-  if (rounds > 3) return `Level ${rounds}`;
-  return "一般";
-}
-
-function getPlanLevelOrder(level) {
-  return getPlanLevelRounds(level);
-}
+// 「level（突破 / 興盛 / 讀 N 遍）」已廢除：日程永遠是教會原始的一遍，多讀幾遍
+// 靠 current_round 累加、沿用同一份日程。
 
 function addDaysIso(days) {
   const date = new Date();
@@ -1499,62 +1481,23 @@ function addDaysIso(days) {
   return date.toISOString();
 }
 
-function getDowngradeLockedUntil(plan) {
-  return (plan && plan.downgradeLockedUntil) || (typeof getLocalPlanDowngradeLock === "function" ? getLocalPlanDowngradeLock(plan) : null);
-}
-
-function isPlanUpgradeLocked(plan) {
-  const lockedUntil = getDowngradeLockedUntil(plan);
-  if (!lockedUntil) return false;
-  return new Date(lockedUntil).getTime() > Date.now();
-}
-
-function formatLockDate(lockedUntil) {
-  const date = new Date(lockedUntil);
-  if (isNaN(date)) return "兩週後";
-  return date.getFullYear() + "/" + String(date.getMonth() + 1).padStart(2, "0") + "/" + String(date.getDate()).padStart(2, "0");
-}
-
-async function persistPlanLevelState(plan) {
+async function persistPlanRoundState(plan) {
   if (!plan) return;
-  if (typeof setLocalPlanDowngradeLock === "function") {
-    setLocalPlanDowngradeLock(plan, plan.downgradeLockedUntil || null);
-  }
-
   if (state.isSupabaseMode && state.supabase && plan.id) {
     const payload = {
-      level: plan.level,
-      current_round: plan.currentRound || getPlanLevelOrder(plan.level),
-      was_downgraded: !!plan.wasDowngraded,
-      downgrade_locked_until: plan.downgradeLockedUntil || null,
+      current_round: plan.currentRound || 1,
       upgrade_prompt_handled: !!plan.upgradePromptHandled,
       current_round_started_at: plan.currentRoundStartedAt || null
     };
     const { error } = await state.supabase.from("reading_plans").update(payload).eq("id", plan.id);
-    if (error) {
-      console.warn("Failed to persist downgrade lock column, retrying without it", error);
-      const { error: retryError } = await state.supabase.from("reading_plans")
-        .update({
-          level: plan.level,
-          current_round: plan.currentRound || getPlanLevelOrder(plan.level),
-          was_downgraded: !!plan.wasDowngraded,
-          upgrade_prompt_handled: !!plan.upgradePromptHandled
-        })
-        .eq("id", plan.id);
-      if (retryError) throw retryError;
-    }
+    if (error) throw error;
   } else if (!state.isSupabaseMode) {
     localStorage.setItem("active_reading_plans", JSON.stringify(state.activePlans || []));
   }
 }
 
-function expandChaptersForLevel(chapters, level) {
-  const rounds = getPlanLevelRounds(level);
-  const expanded = [];
-  for (let round = 1; round <= rounds; round++) {
-    chapters.forEach(ch => expanded.push({ ...ch, round }));
-  }
-  return expanded;
+function toFirstRoundChapters(chapters) {
+  return chapters.map(ch => ({ ...ch, round: 1 }));
 }
 
 function distributeChaptersAcrossDays(chapters, readingDays) {
@@ -1595,7 +1538,7 @@ function normalizePlanScheduleSettings(isFixed, readingDaysPerWeek = 7, restWeek
   return { readingDaysPerWeek: requestedDays, restWeekdays: normalizedRestDays };
 }
 
-function rebuildPlanScheduleForLevel(plan, level) {
+function rebuildPlanSchedule(plan) {
   if (!plan) return plan;
   const rebuilt = generatePlanObject(
     plan.name,
@@ -1603,7 +1546,6 @@ function rebuildPlanScheduleForLevel(plan, level) {
     plan.endDate,
     plan.target_books || plan.targetBooks || [],
     plan.presetKey,
-    level,
     plan.isFixed !== false && plan.is_fixed !== false,
     {
       readingDaysPerWeek: plan.readingDaysPerWeek || plan.reading_days_per_week,
@@ -1617,8 +1559,6 @@ function rebuildPlanScheduleForLevel(plan, level) {
     totalDays: rebuilt.totalDays,
     totalChapters: rebuilt.totalChapters,
     days: rebuilt.days,
-    level,
-    currentRound: getPlanLevelOrder(level),
     target_books: plan.target_books || rebuilt.target_books,
     targetBooks: plan.targetBooks || rebuilt.targetBooks,
     isFixed: rebuilt.isFixed,
@@ -1653,102 +1593,26 @@ function resolveChurchCampaignDefinition(presetKey, name) {
   return stage ? window.cloneChurchCampaign(stage) : null;
 }
 
-function generateChurchCampaignPlanObject(definition, presetKey, scheduleSettings = null, level = "normal") {
+function generateChurchCampaignPlanObject(definition, presetKey, scheduleSettings = null) {
   const weeklySchedule = normalizePlanScheduleSettings(
     false,
     scheduleSettings && scheduleSettings.readingDaysPerWeek,
     scheduleSettings && scheduleSettings.restWeekdays
   );
-  const baseDays = window.buildChurchCampaignDays(definition, BIBLE_BOOKS, weeklySchedule.restWeekdays);
-  const roundCount = getPlanLevelRounds(level);
-  const startDate = new Date(`${definition.startDate}T00:00:00`);
-  const lastOffset = Math.max(0, baseDays.length - 1);
-  const completedRoundCount = Math.max(0, roundCount - 1);
-  const baseChapterKeys = new Set(baseDays.flatMap(day => (day.chapters || []).map(chapter =>
-    `${chapter.book}_${chapter.chapter}`
-  )));
-  const planId = scheduleSettings && scheduleSettings.planId;
-  const planPresetKey = scheduleSettings && scheduleSettings.presetKey || presetKey;
-  const matchingLogs = (state.readingLogs || []).filter(log => {
-    const chapterKey = `${log.book}_${log.chapter}`;
-    if (!baseChapterKeys.has(chapterKey)) return false;
-    const logPlanId = log.plan_id || null;
-    const logPresetKey = log.presetKey || log.preset_key || null;
-    if (planId && logPlanId) return String(logPlanId) === String(planId);
-    if (planPresetKey && logPresetKey) return String(logPresetKey) === String(planPresetKey);
-    return !logPlanId && !logPresetKey;
-  });
-  const nowForCampaignRounds = new Date();
-  const todayLocalStrForCampaignRounds = nowForCampaignRounds.getFullYear() + '-'
-    + String(nowForCampaignRounds.getMonth() + 1).padStart(2, '0') + '-'
-    + String(nowForCampaignRounds.getDate()).padStart(2, '0');
-  const todayOffsetForCampaignRounds = Math.max(0, Math.min(
-    lastOffset,
-    Math.floor((new Date(todayLocalStrForCampaignRounds + "T00:00:00") - startDate) / 86400000)
-  ));
-
-  // 目前正在進行中的那次「確認進入下一輪」，優先用使用者點選當下記錄的
-  // current_round_started_at，而不是下一輪第一次打卡的日期或今天——只有
-  // 舊資料還沒有這個欄位時才退回舊邏輯。
-  const confirmedRoundEntryAtCampaign = scheduleSettings && scheduleSettings.currentRoundStartedAt
-    ? new Date(String(scheduleSettings.currentRoundStartedAt).slice(0, 10) + "T00:00:00")
-    : null;
-  const hasConfirmedRoundEntryCampaign = confirmedRoundEntryAtCampaign && !Number.isNaN(confirmedRoundEntryAtCampaign.getTime());
-  const confirmedRoundEntryOffsetCampaign = hasConfirmedRoundEntryCampaign
-    ? Math.max(0, Math.min(lastOffset, Math.floor((confirmedRoundEntryAtCampaign - startDate) / 86400000)))
-    : null;
-
-  const completedChapterOffsets = [];
-  const roundEndOffsets = [];
-  for (let round = 1; round <= completedRoundCount; round += 1) {
-    const offsets = new Map();
-    matchingLogs.filter(log => Number(log.round || 1) === round).forEach(log => {
-      const readDate = new Date(String(log.read_at || log.readAt || "").slice(0, 10) + "T00:00:00");
-      if (Number.isNaN(readDate.getTime())) return;
-      const offset = Math.max(0, Math.min(lastOffset, Math.floor((readDate - startDate) / 86400000)));
-      offsets.set(`${log.book}_${log.chapter}`, offset);
-    });
-    completedChapterOffsets.push(offsets);
-
-    // 這一輪的結束界線：目前這次的下一輪(round+1 === roundCount)優先用
-    // 確認進入下一輪的時間點；再往前的歷史交界，仍用下一輪第一次打卡
-    // 那天決定，而不是這一輪自己最後一次打卡的隔天。
-    const prevBoundary = roundEndOffsets.length > 0 ? roundEndOffsets[roundEndOffsets.length - 1] : -1;
-    const isCurrentActiveTransitionCampaign = (round + 1) === roundCount;
-    let boundary;
-    if (isCurrentActiveTransitionCampaign && hasConfirmedRoundEntryCampaign) {
-      boundary = confirmedRoundEntryOffsetCampaign - 1;
-    } else {
-      const nextRoundOffsets = matchingLogs
-        .filter(log => Number(log.round || 1) === round + 1)
-        .map(log => {
-          const readDate = new Date(String(log.read_at || log.readAt || "").slice(0, 10) + "T00:00:00");
-          if (Number.isNaN(readDate.getTime())) return null;
-          return Math.max(0, Math.min(lastOffset, Math.floor((readDate - startDate) / 86400000)));
-        })
-        .filter(offset => offset !== null);
-      boundary = nextRoundOffsets.length > 0
-        ? Math.min(...nextRoundOffsets) - 1
-        : todayOffsetForCampaignRounds - 1;
-    }
-    roundEndOffsets.push(Math.max(prevBoundary + 1, boundary));
-  }
-  const days = segmentScheduleDaysForRoundCount(
-    baseDays,
-    roundCount,
-    roundEndOffsets,
-    completedChapterOffsets
-  );
-  days.forEach(day => {
-    day.chapters.forEach(chapter => {
-      chapter.key = chapter.book + "_" + chapter.chapter + "_" + (chapter.round || 1);
-    });
-  });
+  // 日程永遠是教會原始的一遍（restWeekdays 是使用者個人的休息日設定，保留）。
+  const days = baseDays.map(day => ({
+    ...day,
+    chapters: (day.chapters || []).map(chapter => ({
+      ...chapter,
+      round: 1,
+      key: `${chapter.book}_${chapter.chapter}_1`
+    }))
+  }));
   const targetBooks = Array.from(new Set(definition.segments.flatMap(segment =>
     segment.readings.map(reading => reading.book)
   )));
   const currentRoundTotalChapters = baseDays.reduce((sum, day) => sum + day.chapters.length, 0);
-  const totalChapters = currentRoundTotalChapters * roundCount;
+  const totalChapters = currentRoundTotalChapters;
   return {
     name: definition.name,
     description: definition.description || "",
@@ -1763,9 +1627,7 @@ function generateChurchCampaignPlanObject(definition, presetKey, scheduleSetting
     presetKey,
     target_books: targetBooks,
     targetBooks,
-    level,
-    currentRound: roundCount,
-    wasDowngraded: false,
+    currentRound: 1,
     isFixed: true,
     is_fixed: true,
     planKind: definition.planKind || (definition.stageNo ? "church_campaign_stage" : "church_campaign"),
@@ -1783,7 +1645,7 @@ function generateChurchCampaignPlanObject(definition, presetKey, scheduleSetting
   };
 }
 
-function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey = null, level = "normal", isFixed = true, scheduleSettings = null) {
+function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey = null, isFixed = true, scheduleSettings = null) {
   const preset = presetKey ? CHURCH_PLAN_PRESETS[presetKey] : null;
   const campaignDefinition = resolveChurchCampaignDefinition(presetKey, name);
   const weeklySchedule = normalizePlanScheduleSettings(
@@ -1799,8 +1661,7 @@ function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey =
         ...weeklySchedule,
         planId: scheduleSettings && scheduleSettings.planId,
         presetKey: scheduleSettings && scheduleSettings.presetKey || presetKey
-      },
-      level
+      }
     );
   }
   const restWeekdaySet = new Set(weeklySchedule.restWeekdays);
@@ -1821,8 +1682,8 @@ function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey =
   const end = parseLocalDate(endDate || '');
   const totalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
 
-  // 2. If level is normal AND it is a preset plan, use the original month-by-month calendar grid
-  if (isFixed && level === "normal" && preset && preset.months) {
+  // 2. Preset plan with a month-by-month calendar grid → use it as-is.
+  if (isFixed && preset && preset.months) {
     const days = [];
     let dayNumCounter = 1;
     let totalChaptersCount = 0;
@@ -1848,7 +1709,7 @@ function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey =
         }
       });
 
-      const expandedChapters = expandChaptersForLevel(allChapters, level);
+      const expandedChapters = toFirstRoundChapters(allChapters);
       totalChaptersCount += expandedChapters.length;
 
       const readingDays = mSpec.readingDays;
@@ -1904,9 +1765,7 @@ function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey =
       presetKey,
       target_books: selectedBooks,
       targetBooks: selectedBooks,
-      level,
       currentRound: 1,
-      wasDowngraded: false,
       isFixed,
       is_fixed: isFixed,
       readingDaysPerWeek: weeklySchedule.readingDaysPerWeek,
@@ -1916,7 +1775,7 @@ function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey =
     };
   }
 
-  // 3. Otherwise (custom plans, or upgraded preset plans), use the new segmented round-distribution logic!
+  // 3. Custom plans (non-preset): distribute the selected books across the date range.
   const allChapters = [];
   const booksToUse = (preset && preset.months ? preset.months.flatMap(m => m.books) : selectedBooks) || [];
   booksToUse.forEach(bookName => {
@@ -1938,73 +1797,20 @@ function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey =
     }
   });
 
-  // Calculate round completion days dynamically from reading logs
-  const maxRounds = getPlanLevelRounds(level);
-  const roundCompletionDays = []; // index 0 for round 1, index 1 for round 2, etc. (up to maxRounds-1)
-
-  // 下一遍的排程起點，優先用「使用者點選確認進入下一遍」當下記錄的
-  // current_round_started_at 時間點——不是讀完上一遍的隔天，也不是下一遍
-  // 第一次打卡的日期，避免確認進入前的空檔被當成落後。舊資料還沒有這個
-  // 欄位時，才退回「今天」當起點（同樣不會把等待期算成落後），確保這段
-  // 邏輯對還沒跑過遷移的既有計畫也不會壞掉。
+  // 一遍，平均分配到起訖範圍內的非休息日。
   start.setHours(0, 0, 0, 0);
-  const todayZeroForRounds = new Date();
-  todayZeroForRounds.setHours(0, 0, 0, 0);
-  const todayOffsetForRounds = Math.max(1, Math.floor((todayZeroForRounds - start) / (1000 * 60 * 60 * 24)) + 1);
-  const confirmedRoundEntryAt = scheduleSettings && scheduleSettings.currentRoundStartedAt
-    ? new Date(String(scheduleSettings.currentRoundStartedAt).slice(0, 10) + "T00:00:00")
-    : null;
-  const hasConfirmedRoundEntry = confirmedRoundEntryAt && !Number.isNaN(confirmedRoundEntryAt.getTime());
-
-  for (let r = 1; r < maxRounds; r++) {
-    const isCurrentActiveTransition = (r + 1) === maxRounds;
-    const prevD = r > 1 ? roundCompletionDays[r - 2] : 0;
-    let d_r = null;
-    if (isCurrentActiveTransition && hasConfirmedRoundEntry) {
-      d_r = Math.max(1, Math.floor((confirmedRoundEntryAt - start) / (1000 * 60 * 60 * 24)) + 1);
-      d_r = Math.max(d_r, prevD + 1);
-    } else {
-      const nextRoundLogs = (state.readingLogs || []).filter(l => (l.round || 1) === r + 1);
-      if (nextRoundLogs.length > 0) {
-        const minDateStr = nextRoundLogs.reduce((min, log) => log.read_at < min ? log.read_at : min, nextRoundLogs[0].read_at);
-        const minDate = new Date(minDateStr.substring(0, 10));
-        minDate.setHours(0, 0, 0, 0);
-        d_r = Math.max(1, Math.floor((minDate - start) / (1000 * 60 * 60 * 24)) + 1);
-        d_r = Math.max(d_r, prevD + 1);
-      } else {
-        d_r = Math.max(todayOffsetForRounds, prevD + 1);
-      }
-    }
-    d_r = Math.min(d_r, totalDays - (maxRounds - r));
-    roundCompletionDays.push(d_r);
-  }
-
-  let dailyChapters = Array.from({ length: totalDays }, () => []);
-  const allEligibleOffsets = Array.from({ length: totalDays }, (_, index) => index)
-    .filter(dayOffset => {
-      const date = new Date(start);
-      date.setDate(start.getDate() + dayOffset);
-      return !restWeekdaySet.has(date.getDay());
+  const roundChapters = toFirstRoundChapters(allChapters);
+  const dailyChapters = Array.from({ length: totalDays }, () => []);
+  const readingOffsets = Array.from({ length: totalDays }, (_, index) => index).filter(dayOffset => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + dayOffset);
+    return !restWeekdaySet.has(date.getDay());
+  });
+  if (readingOffsets.length > 0) {
+    const rDaily = distributeChaptersAcrossDays(roundChapters, readingOffsets.length);
+    readingOffsets.forEach((dayOffset, i) => {
+      dailyChapters[dayOffset] = dailyChapters[dayOffset].concat(rDaily[i]);
     });
-
-  for (let r = 1; r <= maxRounds; r++) {
-    const roundChapters = allChapters.map(ch => ({ ...ch, round: r }));
-    const roundStartDay = r > 1 ? roundCompletionDays[r - 2] : 0;
-    const roundEndDay = r < maxRounds ? roundCompletionDays[r - 1] : totalDays;
-    const calendarOffsets = Array.from(
-      { length: Math.max(0, roundEndDay - roundStartDay) },
-      (_, index) => roundStartDay + index
-    );
-    const eligibleOffsets = calendarOffsets.filter(dayOffset => allEligibleOffsets.includes(dayOffset));
-    const readingOffsets = eligibleOffsets.length > 0 ? eligibleOffsets : allEligibleOffsets;
-
-    if (readingOffsets.length > 0) {
-      const rDaily = distributeChaptersAcrossDays(roundChapters, readingOffsets.length);
-      for (let i = 0; i < readingOffsets.length; i++) {
-        const dayOffset = readingOffsets[i];
-        dailyChapters[dayOffset] = dailyChapters[dayOffset].concat(rDaily[i]);
-      }
-    }
   }
 
   const days = dailyChapters.map((chapters, index) => {
@@ -2034,15 +1840,13 @@ function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey =
     startDate,
     endDate,
     totalDays,
-    totalChapters: allChapters.length * getPlanLevelRounds(level),
+    totalChapters: allChapters.length,
     completedChapters: 0,
     progress: 0,
     days,
     presetKey,
     target_books: selectedBooks,
-    level,
-    currentRound: getPlanLevelRounds(level),
-    wasDowngraded: false,
+    currentRound: 1,
     isFixed,
     is_fixed: isFixed,
     readingDaysPerWeek: weeklySchedule.readingDaysPerWeek,
@@ -2142,33 +1946,18 @@ function calculateAllPlansProgress() {
       });
     }
 
-    const currentLevelOrder = getPlanLevelOrder(plan.level || "normal");
-    if (maxReadRound > currentLevelOrder) {
-      let newLevel = "normal";
-      if (maxReadRound === 2) newLevel = "breakthrough";
-      else if (maxReadRound === 3) newLevel = "super";
-      else newLevel = "level" + maxReadRound;
-
-      console.log(`[進度校正] 偵測到使用者已讀到第 ${maxReadRound} 遍，但計畫等級為 ${plan.level || "normal"}。自動修正等級為 ${newLevel}。`);
-      plan.level = newLevel;
+    // 讀到的最大遍數就是目前遍數（同一份日程重走）。落後就存回。
+    if (maxReadRound > (plan.currentRound || 1)) {
       plan.currentRound = maxReadRound;
-      // 異步儲存到資料庫/localStorage，避免資料不一致
-      if (typeof persistPlanLevelState === "function") {
-        persistPlanLevelState(plan).catch(console.error);
-      } else {
-        if (!state.isSupabaseMode) localStorage.setItem("active_reading_plans", JSON.stringify(state.activePlans || []));
+      if (typeof persistPlanRoundState === "function") {
+        persistPlanRoundState(plan).catch(console.error);
+      } else if (!state.isSupabaseMode) {
+        localStorage.setItem("active_reading_plans", JSON.stringify(state.activePlans || []));
       }
     }
 
     if (!plan.days || !Array.isArray(plan.days) || plan.days.length === 0) {
-      rebuildPlanScheduleForLevel(plan, plan.level || "normal");
-    }
-    if (!plan.days || !Array.isArray(plan.days)) return;
-
-    const targetRounds = getPlanLevelRounds(plan.level || "normal");
-    const hasMatchingRoundSchedule = plan.days.some(day => day && day.chapters && day.chapters.some(ch => (ch.round || 1) === targetRounds));
-    if (!hasMatchingRoundSchedule && targetRounds > 1) {
-      rebuildPlanScheduleForLevel(plan, plan.level || "normal");
+      rebuildPlanSchedule(plan);
     }
     if (!plan.days || !Array.isArray(plan.days)) return;
 
@@ -2255,12 +2044,6 @@ function calculateAllPlansProgress() {
     }, 0);
     plan.isRound2Completed = secondRoundChapters > 0 && secondRoundCompleted >= secondRoundChapters;
     if (!plan.isRound2Completed) plan.round2UpgradePromptHandled = false;
-
-    // Clear downgrade lock in memory if the current round is completed
-    if (isCurrentRoundCompleted) {
-      plan.wasDowngraded = false;
-      plan.downgradeLockedUntil = null;
-    }
   });
 
   if (!state.isSupabaseMode) {
@@ -2354,17 +2137,10 @@ function updateAdminNavVisibility() {
   });
 }
 
-window.getPlanLevelRounds = getPlanLevelRounds;
-window.getPlanLevelLabel = getPlanLevelLabel;
-window.getPlanLevelOrder = getPlanLevelOrder;
 window.addDaysIso = addDaysIso;
-window.getDowngradeLockedUntil = getDowngradeLockedUntil;
-window.isPlanUpgradeLocked = isPlanUpgradeLocked;
-window.formatLockDate = formatLockDate;
-window.persistPlanLevelState = persistPlanLevelState;
-window.expandChaptersForLevel = expandChaptersForLevel;
+window.persistPlanRoundState = persistPlanRoundState;
 window.distributeChaptersAcrossDays = distributeChaptersAcrossDays;
-window.rebuildPlanScheduleForLevel = rebuildPlanScheduleForLevel;
+window.rebuildPlanSchedule = rebuildPlanSchedule;
 window.generatePlanObject = generatePlanObject;
 window.normalizePlanScheduleSettings = normalizePlanScheduleSettings;
 window.calculatePlanProgress = calculatePlanProgress;

@@ -924,7 +924,6 @@ function initPlanControls() {
       try {
         const plan = state.activePlan;
         const planId = plan.id;
-        let persistedResetAt = null;
 
         // 1. Clear the persisted logs before changing local state. A Supabase
         // enrollment always has a UUID, so never query a non-existent preset_key
@@ -941,18 +940,11 @@ function initPlanControls() {
             throw new Error(deleteResult.error.message || deleteResult.error.error || String(deleteResult.error));
           }
 
-          // The database transition guard requires an explicit downgrade marker
-          // when a reset takes an upgraded plan back to round one. Using the
-          // current instant satisfies that guard without locking future upgrades.
-          persistedResetAt = new Date().toISOString();
           const { error: planResetError } = await state.supabase
             .from("reading_plans")
             .update({
-              level: "normal",
               current_round: 1,
-              upgrade_prompt_handled: false,
-              was_downgraded: true,
-              downgrade_locked_until: persistedResetAt
+              upgrade_prompt_handled: false
             })
             .eq("id", planId)
             .eq("user_id", user.id);
@@ -962,9 +954,7 @@ function initPlanControls() {
         // 2. Only update memory after the server reset succeeds.
         state.readingLogs = removePlanReadingLogs(state.readingLogs, plan);
         resetPlanProgressState(plan);
-        plan.wasDowngraded = Boolean(persistedResetAt);
-        plan.downgradeLockedUntil = persistedResetAt;
-        rebuildPlanScheduleForLevel(plan, "normal");
+        rebuildPlanSchedule(plan);
         const firstReadingDay = (plan.days || []).find(day => (day.chapters || []).some(ch => Number(ch.round || 1) === 1));
         if (firstReadingDay) state.selectedPlanDay = firstReadingDay.dayNum;
         window._cachedAllUsersList = null;
@@ -3810,15 +3800,13 @@ window.triggerPlanUpgradeFlow = async function() {
   const nextRound = upgradeAvailability.nextRound;
   const previousPlanState = {
     currentRound: plan.currentRound,
-    level: plan.level,
     days: plan.days,
     totalDays: plan.totalDays,
     totalChapters: plan.totalChapters,
     currentRoundTotalChapters: plan.currentRoundTotalChapters,
     completedChapters: plan.completedChapters,
     progress: plan.progress,
-    wasDowngraded: plan.wasDowngraded,
-    downgradeLockedUntil: plan.downgradeLockedUntil,
+    currentRoundStartedAt: plan.currentRoundStartedAt,
     lastUpgradedRound: plan.lastUpgradedRound,
     upgradePromptHandled: plan.upgradePromptHandled
   };
@@ -3851,23 +3839,18 @@ window.triggerPlanUpgradeFlow = async function() {
   if (typeof checkAchievements === "function") {
     checkAchievements().catch(console.error);
   }
-  let nextLevel = "level" + nextRound;
-  if (nextRound === 2) nextLevel = "breakthrough";
-  else if (nextRound === 3) nextLevel = "super";
 
-  loader.show("升級計畫中...");
+  loader.show("進入下一遍...");
   try {
     plan.currentRound = nextRound;
-    plan.wasDowngraded = false;
-    plan.downgradeLockedUntil = null;
     plan.lastUpgradedRound = currentRound;
     plan.upgradePromptHandled = true;
     // 下一遍的排程從「現在點選確認」這一刻算起，不是讀完上一遍的隔天，
     // 也不是之後第一次打卡下一遍的日期。
     plan.currentRoundStartedAt = new Date().toISOString();
 
-    rebuildPlanScheduleForLevel(plan, nextLevel);
-    await persistPlanLevelState(plan);
+    rebuildPlanSchedule(plan);
+    await persistPlanRoundState(plan);
 
     const firstNextRoundDay = plan.days.find(day => (day.chapters || []).some(chapter =>
       Number(chapter.round || 1) === nextRound
