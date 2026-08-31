@@ -20,14 +20,13 @@ export class SupabaseRepository extends EventTarget {
     this.cacheStore = cacheStore;
   }
 
-  async fetch({ cacheKey, query, onData = null } = {}) {
+  async fetch({ cacheKey, query, onData = null, pageSize = 200 } = {}) {
     if (typeof query !== "function") throw new TypeError("fetch requires a query callback.");
     const cached = cacheKey ? await this.readCache(cacheKey) : null;
     if (cached) this.publish(cached.data, { source: "indexeddb", stale: true, cacheKey, updatedAt: cached.updatedAt }, onData);
 
     try {
-      const result = await query(this.tableQuery());
-      const data = this.unwrap(result, "fetch");
+      const data = await this.fetchAllPages(query, pageSize);
       if (cacheKey) {
         try { await this.writeCache(cacheKey, data); }
         catch (cacheError) { console.warn(`[Repository:${this.table}] IndexedDB refresh failed.`, cacheError); }
@@ -40,6 +39,33 @@ export class SupabaseRepository extends EventTarget {
       if (cached) return { data: cached.data, error: normalized, meta: { source: "indexeddb", stale: true } };
       throw normalized;
     }
+  }
+
+  // Supabase/PostgREST caps rows per request (the project's configured
+  // db.max_rows, commonly 1000; the nlc-data Edge Function additionally
+  // hard-clamps any .range() span to 200). A single one-shot query silently
+  // truncates once a user's real row count passes that cap, so counts
+  // derived from it (e.g. cumulative chapters read) quietly stop growing
+  // instead of erroring. `query` must be a factory that returns a *fresh*
+  // query builder each call — .range() is appended per page, and builders
+  // here are single-use. Test/mocked `query` callbacks that return a plain
+  // promise (no chainable .range()) fall back to a single unpaged fetch.
+  async fetchAllPages(query, pageSize) {
+    const rows = [];
+    let from = 0;
+    while (true) {
+      const builder = query(this.tableQuery());
+      const paged = builder && typeof builder.range === "function"
+        ? builder.range(from, from + pageSize - 1)
+        : builder;
+      const result = await paged;
+      const page = this.unwrap(result, "fetch") || [];
+      if (typeof builder?.range !== "function") return page;
+      rows.push(...page);
+      if (page.length < pageSize) break;
+      from += pageSize;
+    }
+    return rows;
   }
 
   insert(payload, options = {}) {
