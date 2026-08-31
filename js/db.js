@@ -138,8 +138,26 @@ function createEmptyOrgStructure(revision = 0) {
     rawRegions: [],
     rawZones: [],
     rawGroups: [],
+    // 大區/牧區顯示順序統一以 great_regions/pastoral_zones.sort_order 為
+    // 唯一來源（見 migration 0133），不在前端寫死清單——name -> sort_order。
+    regionSortOrder: {},
+    zoneSortOrder: {},
     revision
   };
+}
+
+// 依 sort_order 排序，找不到對應值的名稱一律排到最後，彼此之間再照字母排序，
+// 確保沒被登記的大區/牧區還是會出現，不會被排序邏輯悄悄吃掉。
+function compareByOrgDisplayOrder(sortOrderMap) {
+  return (a, b) => {
+    const aOrder = Object.prototype.hasOwnProperty.call(sortOrderMap, a) ? sortOrderMap[a] : Infinity;
+    const bOrder = Object.prototype.hasOwnProperty.call(sortOrderMap, b) ? sortOrderMap[b] : Infinity;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return String(a).localeCompare(String(b), "zh-Hant");
+  };
+}
+if (typeof window !== "undefined") {
+  window.compareByOrgDisplayOrder = compareByOrgDisplayOrder;
 }
 
 /**
@@ -1664,6 +1682,18 @@ const db = {
 
           if (error) throw error;
 
+          // 大區/牧區的顯示順序統一從資料庫的 sort_order 抓（見 migration
+          // 0133），不在前端另外維護一份清單——教會要調整順序只要改資料庫。
+          // 抓失敗就靜默退回字母排序，不讓這個非必要的查詢卡住整個組織結構。
+          const [regionSortResult, zoneSortResult] = await Promise.all([
+            state.supabase.from("great_regions").select("name, sort_order"),
+            state.supabase.from("pastoral_zones").select("name, sort_order")
+          ]);
+          const regionSortOrder = {};
+          (regionSortResult?.data || []).forEach(row => { regionSortOrder[row.name] = row.sort_order; });
+          const zoneSortOrder = {};
+          (zoneSortResult?.data || []).forEach(row => { zoneSortOrder[row.name] = row.sort_order; });
+
           const regionsSet = new Set();
           const zonesMap = new Map(); // region -> Set of zones
           const groupsMap = new Map(); // zone -> Set of groups
@@ -1688,10 +1718,12 @@ const db = {
           });
 
           const nextOrgStructure = createEmptyOrgStructure(Number(state.orgStructure?.revision || 0) + 1);
-          nextOrgStructure.regions = Array.from(regionsSet).sort();
+          nextOrgStructure.regionSortOrder = regionSortOrder;
+          nextOrgStructure.zoneSortOrder = zoneSortOrder;
+          nextOrgStructure.regions = Array.from(regionsSet).sort(compareByOrgDisplayOrder(regionSortOrder));
           nextOrgStructure.regions.forEach(region => {
             nextOrgStructure.zones[region] = zonesMap.has(region)
-              ? Array.from(zonesMap.get(region)).sort()
+              ? Array.from(zonesMap.get(region)).sort(compareByOrgDisplayOrder(zoneSortOrder))
               : [];
           });
           zonesMap.forEach(zoneSet => {

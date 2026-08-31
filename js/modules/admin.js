@@ -255,43 +255,36 @@ function formatAdminUserSyncTime(value) {
 
 let adminUserDirectoryFilteredProfiles = [];
 
-// Fixed display order for church org units, used by every CSV export that
+// Display order for church org units, used by every CSV export that
 // includes 大區 or 牧區 data — matches the order leadership actually uses on
-// printed rosters, not alphabetical/insertion order. Anything outside these
-// lists is still exported, just sorted after the known names (never
-// silently dropped) and alphabetized among itself for determinism.
-const CHURCH_GREAT_REGION_ORDER = ["東區", "西區", "南區", "北區", "青少年", "慶典", "創藝", "花蓮", "桃園"];
-const CHURCH_PASTORAL_ZONE_ORDER = [
-  "大安1", "大安2", "大安3", "大安4", "大安6", "大安7", "大安8", "大安9", "大安10", "大安11", "大安12",
-  "中正1", "中正2", "中正3", "中正4", "中正5",
-  "中山1", "中山2", "中山3", "中山5",
-  "信義2", "信義3",
-  "士林",
-  "松山1", "松山2",
-  "南港", "內湖", "文山",
-  "新烏1", "新烏2", "新烏3", "新烏4",
-  "中永和", "三重",
-  "青少年教會",
-  "慶典1", "慶典2",
-  "創藝",
-  "新莊1", "新莊2", "新莊3",
-  "花蓮", "桃園", "桃1",
-  "未設定牧區"
-];
-
-function compareByChurchOrgOrder(orderList) {
-  const orderIndex = new Map(orderList.map((name, i) => [name, i]));
-  return (aLabel, bLabel) => {
-    const a = String(aLabel || "").trim();
-    const b = String(bLabel || "").trim();
-    const aIndex = orderIndex.has(a) ? orderIndex.get(a) : Infinity;
-    const bIndex = orderIndex.has(b) ? orderIndex.get(b) : Infinity;
-    if (aIndex !== bIndex) return aIndex - bIndex;
-    return a.localeCompare(b, "zh-Hant");
-  };
+// printed rosters, not alphabetical/insertion order. Anything outside the
+// known names is still exported, just sorted after them (never silently
+// dropped) and alphabetized among itself for determinism.
+//
+// The order itself is NOT hardcoded here — it's read live from
+// state.orgStructure.regionSortOrder / zoneSortOrder, which db.js's
+// loadOrgStructure() populates from great_regions/pastoral_zones.sort_order
+// (migration 0133). A single source of truth in the database means updating
+// the roster order only ever means updating that column, never chasing a
+// duplicate array that could drift out of sync with it.
+function compareByOrgOrder(sortOrderMap, aLabel, bLabel) {
+  const a = String(aLabel || "").trim();
+  const b = String(bLabel || "").trim();
+  if (typeof window.compareByOrgDisplayOrder === "function") {
+    return window.compareByOrgDisplayOrder(sortOrderMap || {})(a, b);
+  }
+  // db.js helper not loaded yet — alphabetical is still correct, just not
+  // custom-ordered until state.orgStructure/that helper are available.
+  return a.localeCompare(b, "zh-Hant");
 }
-const compareGreatRegions = compareByChurchOrgOrder(CHURCH_GREAT_REGION_ORDER);
-const comparePastoralZones = compareByChurchOrgOrder(CHURCH_PASTORAL_ZONE_ORDER);
+function compareGreatRegions(aLabel, bLabel) {
+  const orgStructure = typeof state !== "undefined" ? state.orgStructure : null;
+  return compareByOrgOrder(orgStructure && orgStructure.regionSortOrder, aLabel, bLabel);
+}
+function comparePastoralZones(aLabel, bLabel) {
+  const orgStructure = typeof state !== "undefined" ? state.orgStructure : null;
+  return compareByOrgOrder(orgStructure && orgStructure.zoneSortOrder, aLabel, bLabel);
+}
 
 function sortByChurchOrgOrder(items, orderComparator, extractLabel) {
   return [...items].sort((a, b) => orderComparator(extractLabel(a), extractLabel(b)));
