@@ -69,4 +69,25 @@ describe("SupabaseRepository", () => {
     const cache = { get: async () => undefined, put: async () => {}, delete: async () => { throw new Error("locked"); } };
     const repository = new SupabaseRepository({ table: "reading_logs", clientProvider: () => clientFor({ data: [{ id: 1 }], error: null }), cacheClient: cache });
     await expect(repository.insert({ chapter: 1 }, { invalidate: ["logs"] })).resolves.toEqual({ data: [{ id: 1 }], error: null });
-  });});
+  });
+
+  it("pages past the server's per-request row cap instead of silently truncating", async () => {
+    // Regression test: a one-shot query used to stop growing once a user's
+    // real reading_logs row count passed the backend's default row cap
+    // (surfaced as 累積閱讀章數 freezing at 1000). A chainable query builder
+    // with .range() must be paged through to completion.
+    const pageSize = 2;
+    const allRows = [{ chapter: 1 }, { chapter: 2 }, { chapter: 3 }, { chapter: 4 }, { chapter: 5 }];
+    const repository = new SupabaseRepository({ table: "reading_logs", clientProvider: () => ({ from: () => ({}) }) });
+
+    const query = () => ({
+      range(from, to) {
+        return Promise.resolve({ data: allRows.slice(from, to + 1), error: null });
+      }
+    });
+
+    const result = await repository.fetch({ query, pageSize });
+    expect(result.data).toEqual(allRows);
+    expect(result.error).toBeNull();
+  });
+});

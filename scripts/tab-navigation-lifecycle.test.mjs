@@ -25,7 +25,7 @@ describe("primary tab navigation lifecycle", () => {
     expect(stateSource).toContain('await window.setPlanState("LIST")');
     expect(stateSource).toContain('tabId === "profile-view"');
     expect(stateSource).toContain("window.closeBadgeDetailPage()");
-    expect(stateSource).toContain('data-profile-tab="settings"');
+    expect(stateSource).toContain("window.closeProfileDetail()");
   });
 
   it("scrolls an already-rooted active tab to the top", () => {

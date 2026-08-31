@@ -110,7 +110,9 @@ const state = {
     }
   })(),
   highlights: {}, // Mapping of "Book_Chapter_Verse" to color hex
+  highlightTimestamps: {}, // Mapping of "Book_Chapter_Verse" to ISO timestamp, for "我的螢光＆筆記" recency sort only
   verseNotes: {}, // Mapping of "Book_Chapter_Verse" to note content, for the currently loaded chapter only
+  profileDetailOpen: null, // null = profile-view root menu; otherwise the open subpage key ("highlights-notes"/"exams"/"badges"/"preferences")
   statsCharts: {
     rank: null,
     progress: null,
@@ -261,9 +263,7 @@ const appRouter = {
     if (tabId === "profile-view") {
       const badgeDetail = document.getElementById("badge-detail-page");
       const badgeDetailOpen = !!(badgeDetail && !badgeDetail.classList.contains("hidden"));
-      const selectedSection = document.querySelector(".profile-tab-trigger.active");
-      const settingsSelected = !selectedSection || selectedSection.getAttribute("data-profile-tab") === "settings";
-      return !badgeDetailOpen && settingsSelected;
+      return !badgeDetailOpen && !state.profileDetailOpen;
     }
 
     return true;
@@ -287,8 +287,7 @@ const appRouter = {
 
     if (tabId === "profile-view") {
       if (typeof window.closeBadgeDetailPage === "function") window.closeBadgeDetailPage();
-      const settingsTrigger = document.querySelector('.profile-tab-trigger[data-profile-tab="settings"]');
-      if (settingsTrigger && !settingsTrigger.classList.contains("active")) settingsTrigger.click();
+      if (typeof window.closeProfileDetail === "function") window.closeProfileDetail();
     }
   },
 
@@ -594,6 +593,10 @@ function loadLocalSettings() {
   const savedHighlights = localStorage.getItem("bible_highlights");
   if (savedHighlights) {
     state.highlights = JSON.parse(savedHighlights);
+  }
+  const savedHighlightTimestamps = localStorage.getItem("bible_highlight_timestamps");
+  if (savedHighlightTimestamps) {
+    try { state.highlightTimestamps = JSON.parse(savedHighlightTimestamps) || {}; } catch (_) { state.highlightTimestamps = {}; }
   }
 }
 

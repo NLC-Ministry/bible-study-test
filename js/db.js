@@ -1195,8 +1195,8 @@ const db = {
       if (user) {
         // 💡 效能優化：平行化載入 global_plans, profiles, reading_logs, reading_plans
         // 避開多個 sequential 網路請求產生的累積延遲與 cold start 問題！
-        const [globalPlansResult, profileResult, logsResult, plansResult] = await Promise.all([
-          state.supabase.from("global_plans").select("id, name, description, start_date, end_date, target_books, is_hidden, is_fixed, plan_kind, rules, rule_version, published_at, audience_regions").order("start_date", { ascending: true }),
+        const [globalPlansResult, profileResult, logsResult, plansResult, highlightsResult] = await Promise.all([
+          fetchAllRows(() => state.supabase.from("global_plans").select("id, name, description, start_date, end_date, target_books, is_hidden, is_fixed, plan_kind, rules, rule_version, published_at, audience_regions").order("start_date", { ascending: true })),
           state.supabase.from("profiles").select("id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, name_review_approved, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments, role_definition:role_definitions!profiles_role_definition_fkey(id, code, label, sort_order, is_assignable, can_manage_plans, can_manage_permissions, scope_type)").eq("id", user.id).maybeSingle(),
           window.readingLogRepository
             ? window.readingLogRepository.fetch({
@@ -1205,7 +1205,8 @@ const db = {
               onData: (rows, meta) => this.applyReadingLogsSnapshot(rows, { notify: true, source: meta.source })
             })
             : state.supabase.from("reading_logs").select("book, chapter, read_at, plan_id, round").eq("user_id", user.id),
-          state.supabase.from("reading_plans").select("id, user_id, global_plan_id, name, start_date, end_date, target_books, preset_key, current_round, upgrade_prompt_handled, current_round_started_at, is_fixed, reading_days_per_week, rest_weekdays, created_at").eq("user_id", user.id).order("created_at", { ascending: false })
+          state.supabase.from("reading_plans").select("id, user_id, global_plan_id, name, start_date, end_date, target_books, preset_key, current_round, upgrade_prompt_handled, current_round_started_at, is_fixed, reading_days_per_week, rest_weekdays, created_at").eq("user_id", user.id).order("created_at", { ascending: false }),
+          this.fetchAllHighlights()
         ]);
 
         // Only message/code — never the raw error object. A PostgrestError
@@ -1230,6 +1231,25 @@ const db = {
         // 失敗的查詢結果洗掉使用者原本看得到的內容。
         if (!globalPlansResult.error) {
           state.globalPlans = globalPlansResult.data ? globalPlansResult.data.map(mapGlobalPlanRecord) : [];
+        }
+
+        // 螢光筆雲端合併：伺服器資料補齊本機沒有的（換裝置/清資料的情況），
+        // 但本機既有的 key 維持不變——避免一筆剛按完、還沒同步成功的螢光筆
+        // 被稍慢抵達的舊伺服器回應蓋掉。
+        if (!highlightsResult.error && Array.isArray(highlightsResult.data)) {
+          const serverHighlights = {};
+          const serverHighlightTimestamps = {};
+          highlightsResult.data.forEach(row => {
+            const key = `${row.book}_${row.chapter}_${row.verse}`;
+            serverHighlights[key] = row.color;
+            serverHighlightTimestamps[key] = row.updated_at;
+          });
+          state.highlights = { ...serverHighlights, ...state.highlights };
+          state.highlightTimestamps = { ...serverHighlightTimestamps, ...state.highlightTimestamps };
+          try {
+            localStorage.setItem("bible_highlights", JSON.stringify(state.highlights));
+            localStorage.setItem("bible_highlight_timestamps", JSON.stringify(state.highlightTimestamps));
+          } catch (_) {}
         }
 
         // 1. Load / sync profile
@@ -2508,7 +2528,7 @@ const db = {
 
         // Fetch today's devotional notes (golden verses)
         const todayStr = new Date().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
-        const { data: todayNotes } = await state.supabase.from("devotional_notes").select("user_id, content").eq("note_date", todayStr);
+        const { data: todayNotes } = await fetchAllRows(() => state.supabase.from("devotional_notes").select("user_id, content").eq("note_date", todayStr));
         const notesByUser = {};
         if (todayNotes) {
           todayNotes.forEach(n => {
@@ -2964,6 +2984,87 @@ const db = {
     try { allNotes = JSON.parse(notesStr) || {}; } catch (e) { allNotes = {}; }
     delete allNotes[`${bookName}_${chapter}_${verse}`];
     localStorage.setItem("verse_notes", JSON.stringify(allNotes));
+  },
+
+  // 「我的螢光＆筆記」回顧畫面用：一次取回這個使用者「全部」的筆記，不像
+  // getVerseNotesForChapter() 只抓正在讀的那一章。走 fetchAllRows 分頁，避免
+  // 筆記數一多又重演「累積閱讀章數卡在1000」那個問題。
+  async getAllVerseNotesForUser() {
+    if (state.isSupabaseMode && state.supabase && !(state.currentUser && state.currentUser.is_demo)) {
+      const user = await this.getCurrentDbUser();
+      if (!user) return [];
+      const { data, error } = await fetchAllRows(() => state.supabase
+        .from("verse_notes")
+        .select("book, chapter, verse, content, updated_at")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false }));
+      if (error) {
+        console.warn("[db] getAllVerseNotesForUser failed:", error);
+        return [];
+      }
+      return data || [];
+    }
+    const notesStr = localStorage.getItem("verse_notes") || "{}";
+    let allNotes = {};
+    try { allNotes = JSON.parse(notesStr) || {}; } catch (e) { allNotes = {}; }
+    return Object.entries(allNotes).map(([key, entry]) => {
+      const [book, chapter, verse] = key.split("_");
+      return {
+        book,
+        chapter: Number(chapter),
+        verse: Number(verse),
+        content: entry?.content || "",
+        updated_at: entry?.updatedAt || null
+      };
+    }).sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+  },
+
+  // 螢光筆雲端同步：本機 localStorage（js/modules/bible.js 的
+  // state.highlights / "bible_highlights"）仍是點按當下立即生效、離線也能用
+  // 的來源；這裡只負責背景把同一筆資料 upsert/delete 到 Supabase，呼叫端
+  // （bible.js）刻意不 await，失敗也只是暫時沒同步，不影響畫面互動。
+  async saveHighlight(bookName, chapter, verse, color) {
+    if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) return;
+    const user = await this.getCurrentDbUser();
+    if (!user) return;
+    const { error } = await state.supabase
+      .from("highlights")
+      .upsert({
+        user_id: user.id,
+        book: bookName,
+        chapter: Number(chapter),
+        verse: Number(verse),
+        color
+      }, { onConflict: "user_id,book,chapter,verse" });
+    if (error) console.warn("[db] saveHighlight failed:", error);
+  },
+
+  async deleteHighlight(bookName, chapter, verse) {
+    if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) return;
+    const user = await this.getCurrentDbUser();
+    if (!user) return;
+    const { error } = await state.supabase
+      .from("highlights")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("book", bookName)
+      .eq("chapter", Number(chapter))
+      .eq("verse", Number(verse));
+    if (error) console.warn("[db] deleteHighlight failed:", error);
+  },
+
+  // 開機/登入時把伺服器上的螢光資料整批拉回來，跟本機 localStorage 合併
+  // （伺服器為準，換裝置或清過瀏覽器資料時才看得到舊標記）。
+  async fetchAllHighlights() {
+    if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) {
+      return { data: [], error: null };
+    }
+    const user = await this.getCurrentDbUser();
+    if (!user) return { data: [], error: null };
+    return fetchAllRows(() => state.supabase
+      .from("highlights")
+      .select("book, chapter, verse, color, updated_at")
+      .eq("user_id", user.id));
   },
 
   async toggleDevotionalLike(noteId) {
@@ -3555,17 +3656,17 @@ const db = {
       const client = state.supabase;
       if (!client) return { success: true, context: { summary: {}, plans: [] } };
 
-      const { data: teams, error: teamsErr } = await client
+      const { data: teams, error: teamsErr } = await fetchAllRows(() => client
         .from("reading_teams")
-        .select("id, global_plan_id, name, division, status, created_at");
+        .select("id, global_plan_id, name, division, status, created_at"));
       if (teamsErr || !Array.isArray(teams)) return { success: true, context: { summary: {}, plans: [] } };
 
       const teamIds = teams.map(t => t.id).filter(Boolean);
       let members = [];
       if (teamIds.length > 0) {
-        const { data: mRows, error: mErr } = await client
+        const { data: mRows, error: mErr } = await fetchAllRows(() => client
           .from("reading_team_members")
-          .select("team_id, user_id, member_role");
+          .select("team_id, user_id, member_role"));
         if (!mErr && Array.isArray(mRows)) members = mRows;
       }
 
@@ -3696,28 +3797,31 @@ const db = {
       return { success: true, context: { planId, planName: plan && plan.name || "", members: [] } };
     }
     try {
-      const { data: profiles, error: profilesError } = await state.supabase
+      const { data: profiles, error: profilesError } = await fetchAllRows(() => state.supabase
         .from("profiles")
         .select("id, name, great_region, pastoral_zone, small_group, is_active, is_demo")
         .eq("is_active", true)
-        .eq("is_demo", false);
+        .eq("is_demo", false));
       if (profilesError) throw profilesError;
 
       const aliases = [planId, plan && plan.presetKey, plan && plan.preset_key, plan && plan.name]
         .filter(Boolean).map(String);
-      let plansQuery = state.supabase
-        .from("reading_plans")
-        .select("user_id, global_plan_id, preset_key, name");
-      if (aliases.length > 0) {
-        const conditions = aliases.flatMap(alias => {
-          const quoted = quotePostgrestValue(alias);
-          const values = [`preset_key.eq.${quoted}`, `name.eq.${quoted}`];
-          if (isUuid(alias)) values.push(`global_plan_id.eq.${quoted}`);
-          return values;
-        });
-        plansQuery = plansQuery.or(conditions.join(","));
-      }
-      const { data: joinedPlans, error: plansError } = await plansQuery;
+      const buildPlansQuery = () => {
+        let plansQuery = state.supabase
+          .from("reading_plans")
+          .select("user_id, global_plan_id, preset_key, name");
+        if (aliases.length > 0) {
+          const conditions = aliases.flatMap(alias => {
+            const quoted = quotePostgrestValue(alias);
+            const values = [`preset_key.eq.${quoted}`, `name.eq.${quoted}`];
+            if (isUuid(alias)) values.push(`global_plan_id.eq.${quoted}`);
+            return values;
+          });
+          plansQuery = plansQuery.or(conditions.join(","));
+        }
+        return plansQuery;
+      };
+      const { data: joinedPlans, error: plansError } = await fetchAllRows(buildPlansQuery);
       if (plansError) throw plansError;
 
       const currentUser = state.currentUser || {};
@@ -3771,28 +3875,31 @@ const db = {
       return { success: true, context: { planId, planName: plan && plan.name || "", members: [] } };
     }
     try {
-      const { data: profiles, error: profilesError } = await state.supabase
+      const { data: profiles, error: profilesError } = await fetchAllRows(() => state.supabase
         .from("profiles")
         .select("id, name, great_region, pastoral_zone, small_group, is_active, is_demo")
         .eq("is_active", true)
-        .eq("is_demo", false);
+        .eq("is_demo", false));
       if (profilesError) throw profilesError;
 
       const aliases = [planId, plan && plan.presetKey, plan && plan.preset_key, plan && plan.name]
         .filter(Boolean).map(String);
-      let plansQuery = state.supabase
-        .from("reading_plans")
-        .select("user_id, global_plan_id, preset_key, name, created_at, current_round");
-      if (aliases.length > 0) {
-        const conditions = aliases.flatMap(alias => {
-          const quoted = quotePostgrestValue(alias);
-          const values = [`preset_key.eq.${quoted}`, `name.eq.${quoted}`];
-          if (isUuid(alias)) values.push(`global_plan_id.eq.${quoted}`);
-          return values;
-        });
-        plansQuery = plansQuery.or(conditions.join(","));
-      }
-      const { data: joinedPlans, error: plansError } = await plansQuery;
+      const buildPlansQuery = () => {
+        let plansQuery = state.supabase
+          .from("reading_plans")
+          .select("user_id, global_plan_id, preset_key, name, created_at, current_round");
+        if (aliases.length > 0) {
+          const conditions = aliases.flatMap(alias => {
+            const quoted = quotePostgrestValue(alias);
+            const values = [`preset_key.eq.${quoted}`, `name.eq.${quoted}`];
+            if (isUuid(alias)) values.push(`global_plan_id.eq.${quoted}`);
+            return values;
+          });
+          plansQuery = plansQuery.or(conditions.join(","));
+        }
+        return plansQuery;
+      };
+      const { data: joinedPlans, error: plansError } = await fetchAllRows(buildPlansQuery);
       if (plansError) throw plansError;
 
       const currentUser = state.currentUser || {};
@@ -3850,20 +3957,20 @@ const db = {
       const client = state.supabase;
       if (!client) throw new Error("Supabase client not initialized");
 
-      const { data: profiles, error: profilesError } = await client
+      const { data: profiles, error: profilesError } = await fetchAllRows(() => client
         .from("profiles")
         .select("id, name, email, great_region, pastoral_zone, small_group, is_active, is_demo")
         .eq("is_active", true)
-        .eq("is_demo", false);
+        .eq("is_demo", false));
 
       if (profilesError) throw profilesError;
 
       let memberships = [];
       if (planId) {
-        const { data: teamMembers, error: tmError } = await client
+        const { data: teamMembers, error: tmError } = await fetchAllRows(() => client
           .from("reading_team_members")
           .select("user_id, team_id, member_role, division, global_plan_id")
-          .eq("global_plan_id", planId);
+          .eq("global_plan_id", planId));
         if (!tmError && teamMembers) memberships = teamMembers;
       }
 
@@ -4492,10 +4599,10 @@ const db = {
     if (state.isSupabaseMode && state.supabase) {
       // ── Supabase 模式：資料完全來自資料庫，不混合硬寫的 CHURCH_PLAN_PRESETS ──
       try {
-        const { data, error } = await state.supabase
+        const { data, error } = await fetchAllRows(() => state.supabase
           .from("global_plans")
           .select("id, name, description, start_date, end_date, target_books, is_hidden, is_fixed, plan_kind, rules, rule_version, published_at, audience_regions")
-          .order("start_date", { ascending: true });
+          .order("start_date", { ascending: true }));
 
         if (error) {
           console.error("Failed to load global plans from Supabase:", error);
@@ -4619,10 +4726,10 @@ const db = {
         .select("id, rules, rule_version")
         .eq("id", campaignId)
         .single();
-      const stageResult = await state.supabase
+      const stageResult = await fetchAllRows(() => state.supabase
         .from("global_plans")
         .select("id, rules, rule_version, plan_kind")
-        .eq("plan_kind", "church_campaign_stage");
+        .eq("plan_kind", "church_campaign_stage"));
 
       const storedRules = parseStoredRules(masterResult.data && masterResult.data.rules);
       const storedStageNumbers = Array.isArray(storedRules.stages)
@@ -5232,11 +5339,39 @@ const db = {
     return { error: null };
   },
 
+  // 💌 getTodayCareReminderFor – 打開關心對話框時，先看看今天是否已經傳過
+  // 一則給這位成員，讓對話框可以直接顯示「已發送的內容」並開放編輯，而不是
+  // 讓使用者送出後就再也看不到自己寫了什麼。
+  async getTodayCareReminderFor(recipientId, planKey = "") {
+    if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) {
+      return { data: null, error: null };
+    }
+    const senderId = state.currentProfileId || (state.currentUser && state.currentUser.id) || null;
+    if (!senderId || !recipientId) return { data: null, error: null };
+    const todayStr = new Date().toISOString().slice(0, 10);
+    try {
+      const { data, error } = await state.supabase
+        .from("care_reminders")
+        .select("id, reason, message, status, sent_on")
+        .eq("sender_id", senderId)
+        .eq("recipient_id", recipientId)
+        .eq("plan_key", String(planKey || ""))
+        .eq("sent_on", todayStr)
+        .maybeSingle();
+      if (error) return { data: null, error };
+      return { data: data || null, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
   // 💌 sendCareReminder – 領袖對組員傳送關心提醒
   // recipientId: 收件人 profile ID (UUID)
   // reason: 'behind' | 'inactive' | 'care' | 'encouragement'
   // message: 關心訊息文字 (最多 300 字)
   // planKey: 計畫識別碼 (presetKey 或 globalPlanId)
+  // 同一天對同一人再送一次，server 端會視為「編輯今天已傳送的內容」，不會
+  // 再撞到「今天已經傳過」的唯一鍵錯誤。
   async sendCareReminder({ recipientId, reason, message, planKey = "" }) {
     // 輸入驗證
     const validReasons = ["behind", "inactive", "care", "encouragement"];
@@ -5291,15 +5426,22 @@ const db = {
         );
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
+          if (payload.error === "care_reminder_already_seen") {
+            return { error: new Error("這則關心已經被對方看過，無法再修改內容") };
+          }
+          // A genuine 23505 here would only be a narrow concurrent-request
+          // race (two requests both passing the exists-check before either
+          // insert lands) — the normal same-day-resend case is now handled
+          // as an edit server-side and no longer reaches this branch.
           if (payload.code === "23505" || response.status === 409) {
-            return { error: new Error("今日已傳送過關心提醒給此成員，明日再試") };
+            return { error: new Error("儲存時發生衝突，請重新整理後再試一次") };
           }
           if (response.status === 403 || payload.code === "42501" || (payload.error && payload.error.includes("policy"))) {
             return { error: new Error("此成員不在您的牧養範圍內") };
           }
           return { error: new Error(payload.error || "傳送失敗") };
         }
-        return { error: null };
+        return { error: null, data: payload.data || null };
       } catch (e) {
         return { error: e };
       }

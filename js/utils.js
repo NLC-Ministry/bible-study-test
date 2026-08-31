@@ -866,9 +866,8 @@ window.navigateToBadgeWall = function () {
     appRouter.switchTab("profile-view");
   }
   requestAnimationFrame(function () {
-    const badgesTrigger = document.querySelector('.profile-tab-trigger[data-profile-tab="badges"]');
-    if (badgesTrigger) {
-      badgesTrigger.click();
+    if (typeof window.openProfileDetail === "function") {
+      window.openProfileDetail("badges");
     }
     const target = document.getElementById("profile-badges-inner-card");
     if (target) {

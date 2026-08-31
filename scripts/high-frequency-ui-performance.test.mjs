@@ -20,7 +20,7 @@ describe("high-frequency UI performance", () => {
 
   it("uses stale-while-revalidate only for a user-scoped reading-log cache key", () => {
     expect(repository).toContain("this.publish(cached.data");
-    expect(repository).toContain("const result = await query(this.tableQuery())");
+    expect(repository).toContain("const data = await this.fetchAllPages(query, pageSize)");
     expect(db).toContain("`reading_logs:${user.id}`");
     expect(db).not.toContain('cacheKey: "reading_logs"');
   });
