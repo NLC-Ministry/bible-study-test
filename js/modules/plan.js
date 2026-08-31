@@ -8854,10 +8854,27 @@ window.togglePlanDetailSubTab = planToggleGroupProgress;
 
 
 // ==================== 關心戳一下 Dialog ====================
-window.openCareReminderDialog = function(member) {
+window.openCareReminderDialog = async function(member) {
   // Remove any existing dialog
   const existingDialog = document.getElementById("care-reminder-dialog-overlay");
   if (existingDialog) existingDialog.remove();
+
+  // 打開對話框時先看看今天是不是已經傳過一則給這個人——有的話直接把內容
+  // 帶進來顯示 + 開放編輯，而不是讓人送出後就再也看不到自己寫了什麼，
+  // 也不會因為「今天已經傳過」而卡死。
+  const planKeyForCare = state.activePlan ? (state.activePlan.presetKey || state.activePlan.globalPlanId || "") : "";
+  let existingReminder = null;
+  if (!member.readingTeamId && typeof db !== "undefined" && typeof db.getTodayCareReminderFor === "function") {
+    try {
+      const existingRes = await db.getTodayCareReminderFor(member.id, planKeyForCare);
+      existingReminder = existingRes && existingRes.data ? existingRes.data : null;
+    } catch (_) {
+      existingReminder = null;
+    }
+  }
+  // A dialog may have been opened again for someone else while this lookup
+  // was in flight — bail out rather than showing stale data on top of it.
+  if (document.getElementById("care-reminder-dialog-overlay")) return;
 
   const reasonLabels = {
     behind: "📉 進度落後",
@@ -8867,7 +8884,7 @@ window.openCareReminderDialog = function(member) {
   };
 
   // Auto-pick a default reason based on member status
-  const defaultReason = member.isBehind ? "behind" : member.isNotStarted ? "inactive" : "care";
+  const autoReason = member.isBehind ? "behind" : member.isNotStarted ? "inactive" : "care";
 
   const defaultMessages = {
     behind: `Hi ${member.name}！這週的讀經進度稍微落後囉，有任何困難都可以跟我說喔，加油！`,
@@ -8875,6 +8892,12 @@ window.openCareReminderDialog = function(member) {
     care: `${member.name} 你好，只是想關心一下你最近的讀經狀況，如果有任何需要都可以找我！`,
     encouragement: `${member.name}！你最近讀經很穩定，真的很棒！繼續加油哦，感謝主！`
   };
+
+  // 今天已經傳過 → 帶入已發送的內容，讓對話框一打開就看得到自己寫了什麼；
+  // 對方已讀/已關閉 → 鎖定不能再改，但內容還是看得到。
+  const defaultReason = existingReminder ? existingReminder.reason : autoReason;
+  const initialMessage = existingReminder ? existingReminder.message : defaultMessages[defaultReason];
+  const isLocked = !!(existingReminder && existingReminder.status !== "unread");
 
   const overlay = document.createElement("div");
   overlay.id = "care-reminder-dialog-overlay";
@@ -8905,6 +8928,10 @@ window.openCareReminderDialog = function(member) {
         &nbsp;・&nbsp;完成：${member.completed} 天
       </p>
 
+      ${existingReminder ? `<p id="care-existing-note" style="margin:0 0 1rem; font-size:0.875rem; color:var(--color-brand); background:var(--color-brand-subtle); border-radius:8px; padding:0.5rem 0.75rem;">
+        今天已經傳過一則給${escapeHTML(member.name)}${isLocked ? '，對方已經看過，內容鎖定無法修改' : '，以下是當時的內容，可以直接修改後更新'}
+      </p>` : ""}
+
       <label style="display:block; font-size:0.875rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.4rem;">
         關心原因
       </label>
@@ -8912,13 +8939,14 @@ window.openCareReminderDialog = function(member) {
         ${Object.entries(reasonLabels).map(([key, label]) => `
           <button type="button"
             data-reason="${key}"
+            ${isLocked ? "disabled" : ""}
             class="care-reason-btn${key === defaultReason ? ' active' : ''}"
             style="
               padding: 0.35rem 0.75rem; border-radius: 20px; font-size: 0.875rem; font-weight:500;
               border: 1.5px solid ${key === defaultReason ? 'var(--color-warning-text, rgb(217,119,6))' : 'var(--border-card)'};
               background: ${key === defaultReason ? 'var(--color-warning-muted,rgba(251,191,36,0.15))' : 'var(--bg-input)'};
               color: ${key === defaultReason ? 'var(--color-warning-text, rgb(217,119,6))' : 'var(--text-secondary)'};
-              cursor: pointer; transition: all 0.15s;
+              cursor: ${isLocked ? "not-allowed" : "pointer"}; opacity: ${isLocked ? "0.6" : "1"}; transition: all 0.15s;
             ">
             ${label}
           </button>
@@ -8932,6 +8960,7 @@ window.openCareReminderDialog = function(member) {
         rows="4"
         maxlength="300"
         placeholder="輸入關心訊息..."
+        ${isLocked ? "readonly" : ""}
         style="
           width:100%; box-sizing:border-box;
           padding: 0.65rem 0.75rem;
@@ -8944,10 +8973,11 @@ window.openCareReminderDialog = function(member) {
           outline: none;
           transition: border-color 0.15s;
           margin-bottom: 0.25rem;
+          ${isLocked ? "opacity: 0.7; cursor: not-allowed;" : ""}
         "
-      >${defaultMessages[defaultReason]}</textarea>
+      >${escapeHTML(initialMessage)}</textarea>
       <div id="care-char-count" style="text-align:right; font-size:0.875rem; color:var(--text-muted); margin-bottom:1rem;">
-        ${defaultMessages[defaultReason].length} / 300
+        ${initialMessage.length} / 300
       </div>
 
       <div id="care-dialog-error" style="display:none; color:var(--color-danger); font-size:0.875rem; margin-bottom:0.75rem; padding:0.5rem 0.75rem; background:var(--color-danger-muted,rgba(239,68,68,0.1)); border-radius:8px;"></div>
@@ -8957,16 +8987,16 @@ window.openCareReminderDialog = function(member) {
           padding:0.55rem 1.2rem; border-radius:10px; font-size:0.88rem; font-weight:600;
           border:1.5px solid var(--border-card); background:var(--bg-input);
           color:var(--text-secondary); cursor:pointer;
-        ">取消</button>
-        <button id="care-send-btn" type="button" style="
+        ">${isLocked ? "關閉" : "取消"}</button>
+        ${isLocked ? "" : `<button id="care-send-btn" type="button" style="
           padding:0.55rem 1.4rem; border-radius:10px; font-size:0.88rem; font-weight:600;
           border:none; background:var(--color-warning-text, rgb(217,119,6));
           color:white; cursor:pointer; display:flex; align-items:center; gap:0.4rem;
           transition: opacity 0.15s;
         ">
           <span class="nlc-icon nlc-icon--sm" data-icon="send" aria-hidden="true"></span>
-          傳送關心
-        </button>
+          <span id="care-send-btn-label">${existingReminder ? "更新關心內容" : "傳送關心"}</span>
+        </button>`}
       </div>
     </div>
   `;
@@ -9004,11 +9034,14 @@ window.openCareReminderDialog = function(member) {
   });
   overlay.querySelector("#care-cancel-btn").addEventListener("click", () => overlay.remove());
 
-  // Send
-  overlay.querySelector("#care-send-btn").addEventListener("click", async () => {
+  // Send / update — tracked locally so a second click in the same dialog
+  // session (after a first successful send) is labeled/announced as an
+  // edit instead of a brand new send.
+  let alreadySentToday = !!existingReminder;
+  const sendBtn = overlay.querySelector("#care-send-btn");
+  if (sendBtn) sendBtn.addEventListener("click", async () => {
     const message = msgInput.value.trim();
     const errorEl = overlay.querySelector("#care-dialog-error");
-    const sendBtn = overlay.querySelector("#care-send-btn");
 
     errorEl.style.display = "none";
 
@@ -9023,13 +9056,15 @@ window.openCareReminderDialog = function(member) {
       return;
     }
 
+    const wasEdit = alreadySentToday;
+    const idleLabel = wasEdit ? "更新關心內容" : "傳送關心";
     sendBtn.disabled = true;
     sendBtn.style.opacity = "0.6";
-    sendBtn.innerHTML = `<span class="nlc-icon nlc-icon--sm" data-icon="loader" aria-hidden="true"></span> 傳送中...`;
+    sendBtn.innerHTML = `<span class="nlc-icon nlc-icon--sm" data-icon="loader" aria-hidden="true"></span> ${wasEdit ? "更新中…" : "傳送中…"}`;
     if (typeof hydrateIcons === "function") hydrateIcons(sendBtn);
 
     try {
-      const { error } = member.readingTeamId
+      const result = member.readingTeamId
         ? await db.sendReadingTeamReminder({
             teamId: member.readingTeamId,
             recipientId: member.id,
@@ -9041,18 +9076,27 @@ window.openCareReminderDialog = function(member) {
             recipientId: member.id,
             reason: selectedReason,
             message: message,
-            planKey: state.activePlan ? (state.activePlan.presetKey || state.activePlan.globalPlanId || "") : ""
+            planKey: planKeyForCare
           });
 
-      if (error) throw error;
+      if (result.error) throw result.error;
 
-      overlay.remove();
-      if (typeof showToast === "function") showToast(`已傳送關心提醒給 ${member.name} 💛`);
+      alreadySentToday = true;
+      if (typeof showToast === "function") {
+        showToast(wasEdit ? `已更新給 ${member.name} 的關心內容 💛` : `已傳送關心提醒給 ${member.name} 💛`);
+      }
+      // Deliberately do NOT close the dialog — the whole point is that the
+      // text just sent stays visible right here, still editable, instead of
+      // disappearing the moment it's sent.
+      sendBtn.disabled = false;
+      sendBtn.style.opacity = "1";
+      sendBtn.innerHTML = `<span class="nlc-icon nlc-icon--sm" data-icon="send" aria-hidden="true"></span> <span id="care-send-btn-label">更新關心內容</span>`;
+      if (typeof hydrateIcons === "function") hydrateIcons(sendBtn);
     } catch (err) {
       console.error("sendCareReminder failed:", err);
       sendBtn.disabled = false;
       sendBtn.style.opacity = "1";
-      sendBtn.innerHTML = `<span class="nlc-icon nlc-icon--sm" data-icon="send" aria-hidden="true"></span> 傳送關心`;
+      sendBtn.innerHTML = `<span class="nlc-icon nlc-icon--sm" data-icon="send" aria-hidden="true"></span> <span id="care-send-btn-label">${idleLabel}</span>`;
       if (typeof hydrateIcons === "function") hydrateIcons(sendBtn);
 
       errorEl.textContent = `傳送失敗：${err.message || "請稍後再試"}`;

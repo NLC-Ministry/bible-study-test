@@ -5261,11 +5261,39 @@ const db = {
     return { error: null };
   },
 
+  // 💌 getTodayCareReminderFor – 打開關心對話框時，先看看今天是否已經傳過
+  // 一則給這位成員，讓對話框可以直接顯示「已發送的內容」並開放編輯，而不是
+  // 讓使用者送出後就再也看不到自己寫了什麼。
+  async getTodayCareReminderFor(recipientId, planKey = "") {
+    if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) {
+      return { data: null, error: null };
+    }
+    const senderId = state.currentProfileId || (state.currentUser && state.currentUser.id) || null;
+    if (!senderId || !recipientId) return { data: null, error: null };
+    const todayStr = new Date().toISOString().slice(0, 10);
+    try {
+      const { data, error } = await state.supabase
+        .from("care_reminders")
+        .select("id, reason, message, status, sent_on")
+        .eq("sender_id", senderId)
+        .eq("recipient_id", recipientId)
+        .eq("plan_key", String(planKey || ""))
+        .eq("sent_on", todayStr)
+        .maybeSingle();
+      if (error) return { data: null, error };
+      return { data: data || null, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
+  },
+
   // 💌 sendCareReminder – 領袖對組員傳送關心提醒
   // recipientId: 收件人 profile ID (UUID)
   // reason: 'behind' | 'inactive' | 'care' | 'encouragement'
   // message: 關心訊息文字 (最多 300 字)
   // planKey: 計畫識別碼 (presetKey 或 globalPlanId)
+  // 同一天對同一人再送一次，server 端會視為「編輯今天已傳送的內容」，不會
+  // 再撞到「今天已經傳過」的唯一鍵錯誤。
   async sendCareReminder({ recipientId, reason, message, planKey = "" }) {
     // 輸入驗證
     const validReasons = ["behind", "inactive", "care", "encouragement"];
@@ -5320,15 +5348,22 @@ const db = {
         );
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
+          if (payload.error === "care_reminder_already_seen") {
+            return { error: new Error("這則關心已經被對方看過，無法再修改內容") };
+          }
+          // A genuine 23505 here would only be a narrow concurrent-request
+          // race (two requests both passing the exists-check before either
+          // insert lands) — the normal same-day-resend case is now handled
+          // as an edit server-side and no longer reaches this branch.
           if (payload.code === "23505" || response.status === 409) {
-            return { error: new Error("今日已傳送過關心提醒給此成員，明日再試") };
+            return { error: new Error("儲存時發生衝突，請重新整理後再試一次") };
           }
           if (response.status === 403 || payload.code === "42501" || (payload.error && payload.error.includes("policy"))) {
             return { error: new Error("此成員不在您的牧養範圍內") };
           }
           return { error: new Error(payload.error || "傳送失敗") };
         }
-        return { error: null };
+        return { error: null, data: payload.data || null };
       } catch (e) {
         return { error: e };
       }

@@ -630,19 +630,56 @@ Deno.serve(async (req: Request) => {
           && valuesOverlap(recipient.pastoral_zone, profile.pastoral_zone)
           && valuesOverlap(recipient.small_group, profile.small_group));
       if (!withinScope) return jsonResponse({ error: "pastoral_reminder_scope_required" }, 403);
-      const { error } = await supabaseAdmin
+
+      const sentOn = new Date().toISOString().slice(0, 10);
+      const planKey = String(p.plan_key || "");
+
+      // A sender can only send one reminder per recipient per plan per day
+      // (care_reminders_daily_unique). Re-sending the same day used to just
+      // hit that unique-constraint error with no way to see or fix what was
+      // already sent. Instead: if today's reminder to this person is still
+      // unread, treat this as an edit (update it in place); if it's already
+      // been read/dismissed, tell the caller plainly rather than surfacing a
+      // raw constraint violation.
+      const { data: existing, error: existingError } = await supabaseAdmin
+        .from("care_reminders")
+        .select("id, status")
+        .eq("sender_id", profile.id)
+        .eq("recipient_id", p.recipient_id)
+        .eq("plan_key", planKey)
+        .eq("sent_on", sentOn)
+        .maybeSingle();
+      if (existingError) return jsonResponse({ error: existingError.message, code: existingError.code }, 400);
+
+      if (existing) {
+        if (existing.status !== "unread") {
+          return jsonResponse({ error: "care_reminder_already_seen" }, 409);
+        }
+        const { data: updated, error: updateError } = await supabaseAdmin
+          .from("care_reminders")
+          .update({ reason: p.reason, message: msg })
+          .eq("id", existing.id)
+          .select("id, reason, message, status, sent_on")
+          .single();
+        if (updateError) return jsonResponse({ error: updateError.message, code: updateError.code }, 400);
+        return jsonResponse({ data: { ...updated, edited: true } });
+      }
+
+      const { data: inserted, error } = await supabaseAdmin
         .from("care_reminders")
         .insert({
           sender_id: profile.id,           // always the authenticated caller
           recipient_id: p.recipient_id,
-          plan_key: String(p.plan_key || ""),
+          plan_key: planKey,
           reason: p.reason,
           message: msg,
           status: "unread",
-          sent_on: new Date().toISOString().slice(0, 10)
-        });
+          sent_on: sentOn
+        })
+        .select("id, reason, message, status, sent_on")
+        .single();
       if (error) return jsonResponse({ error: error.message, code: error.code }, 400);
-      return jsonResponse({ data: null });
+      return jsonResponse({ data: { ...inserted, edited: false } });
     }
 
     // ── mark_issue_report_reply_seen: the reporting member clears their own
