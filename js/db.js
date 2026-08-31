@@ -1196,7 +1196,7 @@ const db = {
         // 💡 效能優化：平行化載入 global_plans, profiles, reading_logs, reading_plans
         // 避開多個 sequential 網路請求產生的累積延遲與 cold start 問題！
         const [globalPlansResult, profileResult, logsResult, plansResult] = await Promise.all([
-          state.supabase.from("global_plans").select("id, name, description, start_date, end_date, target_books, is_hidden, is_fixed, plan_kind, rules, rule_version, published_at, audience_regions").order("start_date", { ascending: true }),
+          fetchAllRows(() => state.supabase.from("global_plans").select("id, name, description, start_date, end_date, target_books, is_hidden, is_fixed, plan_kind, rules, rule_version, published_at, audience_regions").order("start_date", { ascending: true })),
           state.supabase.from("profiles").select("id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, name_review_approved, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments, role_definition:role_definitions!profiles_role_definition_fkey(id, code, label, sort_order, is_assignable, can_manage_plans, can_manage_permissions, scope_type)").eq("id", user.id).maybeSingle(),
           window.readingLogRepository
             ? window.readingLogRepository.fetch({
@@ -2508,7 +2508,7 @@ const db = {
 
         // Fetch today's devotional notes (golden verses)
         const todayStr = new Date().toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
-        const { data: todayNotes } = await state.supabase.from("devotional_notes").select("user_id, content").eq("note_date", todayStr);
+        const { data: todayNotes } = await fetchAllRows(() => state.supabase.from("devotional_notes").select("user_id, content").eq("note_date", todayStr));
         const notesByUser = {};
         if (todayNotes) {
           todayNotes.forEach(n => {
@@ -3555,17 +3555,17 @@ const db = {
       const client = state.supabase;
       if (!client) return { success: true, context: { summary: {}, plans: [] } };
 
-      const { data: teams, error: teamsErr } = await client
+      const { data: teams, error: teamsErr } = await fetchAllRows(() => client
         .from("reading_teams")
-        .select("id, global_plan_id, name, division, status, created_at");
+        .select("id, global_plan_id, name, division, status, created_at"));
       if (teamsErr || !Array.isArray(teams)) return { success: true, context: { summary: {}, plans: [] } };
 
       const teamIds = teams.map(t => t.id).filter(Boolean);
       let members = [];
       if (teamIds.length > 0) {
-        const { data: mRows, error: mErr } = await client
+        const { data: mRows, error: mErr } = await fetchAllRows(() => client
           .from("reading_team_members")
-          .select("team_id, user_id, member_role");
+          .select("team_id, user_id, member_role"));
         if (!mErr && Array.isArray(mRows)) members = mRows;
       }
 
@@ -3696,28 +3696,31 @@ const db = {
       return { success: true, context: { planId, planName: plan && plan.name || "", members: [] } };
     }
     try {
-      const { data: profiles, error: profilesError } = await state.supabase
+      const { data: profiles, error: profilesError } = await fetchAllRows(() => state.supabase
         .from("profiles")
         .select("id, name, great_region, pastoral_zone, small_group, is_active, is_demo")
         .eq("is_active", true)
-        .eq("is_demo", false);
+        .eq("is_demo", false));
       if (profilesError) throw profilesError;
 
       const aliases = [planId, plan && plan.presetKey, plan && plan.preset_key, plan && plan.name]
         .filter(Boolean).map(String);
-      let plansQuery = state.supabase
-        .from("reading_plans")
-        .select("user_id, global_plan_id, preset_key, name");
-      if (aliases.length > 0) {
-        const conditions = aliases.flatMap(alias => {
-          const quoted = quotePostgrestValue(alias);
-          const values = [`preset_key.eq.${quoted}`, `name.eq.${quoted}`];
-          if (isUuid(alias)) values.push(`global_plan_id.eq.${quoted}`);
-          return values;
-        });
-        plansQuery = plansQuery.or(conditions.join(","));
-      }
-      const { data: joinedPlans, error: plansError } = await plansQuery;
+      const buildPlansQuery = () => {
+        let plansQuery = state.supabase
+          .from("reading_plans")
+          .select("user_id, global_plan_id, preset_key, name");
+        if (aliases.length > 0) {
+          const conditions = aliases.flatMap(alias => {
+            const quoted = quotePostgrestValue(alias);
+            const values = [`preset_key.eq.${quoted}`, `name.eq.${quoted}`];
+            if (isUuid(alias)) values.push(`global_plan_id.eq.${quoted}`);
+            return values;
+          });
+          plansQuery = plansQuery.or(conditions.join(","));
+        }
+        return plansQuery;
+      };
+      const { data: joinedPlans, error: plansError } = await fetchAllRows(buildPlansQuery);
       if (plansError) throw plansError;
 
       const currentUser = state.currentUser || {};
@@ -3771,28 +3774,31 @@ const db = {
       return { success: true, context: { planId, planName: plan && plan.name || "", members: [] } };
     }
     try {
-      const { data: profiles, error: profilesError } = await state.supabase
+      const { data: profiles, error: profilesError } = await fetchAllRows(() => state.supabase
         .from("profiles")
         .select("id, name, great_region, pastoral_zone, small_group, is_active, is_demo")
         .eq("is_active", true)
-        .eq("is_demo", false);
+        .eq("is_demo", false));
       if (profilesError) throw profilesError;
 
       const aliases = [planId, plan && plan.presetKey, plan && plan.preset_key, plan && plan.name]
         .filter(Boolean).map(String);
-      let plansQuery = state.supabase
-        .from("reading_plans")
-        .select("user_id, global_plan_id, preset_key, name, created_at, current_round");
-      if (aliases.length > 0) {
-        const conditions = aliases.flatMap(alias => {
-          const quoted = quotePostgrestValue(alias);
-          const values = [`preset_key.eq.${quoted}`, `name.eq.${quoted}`];
-          if (isUuid(alias)) values.push(`global_plan_id.eq.${quoted}`);
-          return values;
-        });
-        plansQuery = plansQuery.or(conditions.join(","));
-      }
-      const { data: joinedPlans, error: plansError } = await plansQuery;
+      const buildPlansQuery = () => {
+        let plansQuery = state.supabase
+          .from("reading_plans")
+          .select("user_id, global_plan_id, preset_key, name, created_at, current_round");
+        if (aliases.length > 0) {
+          const conditions = aliases.flatMap(alias => {
+            const quoted = quotePostgrestValue(alias);
+            const values = [`preset_key.eq.${quoted}`, `name.eq.${quoted}`];
+            if (isUuid(alias)) values.push(`global_plan_id.eq.${quoted}`);
+            return values;
+          });
+          plansQuery = plansQuery.or(conditions.join(","));
+        }
+        return plansQuery;
+      };
+      const { data: joinedPlans, error: plansError } = await fetchAllRows(buildPlansQuery);
       if (plansError) throw plansError;
 
       const currentUser = state.currentUser || {};
@@ -3850,20 +3856,20 @@ const db = {
       const client = state.supabase;
       if (!client) throw new Error("Supabase client not initialized");
 
-      const { data: profiles, error: profilesError } = await client
+      const { data: profiles, error: profilesError } = await fetchAllRows(() => client
         .from("profiles")
         .select("id, name, email, great_region, pastoral_zone, small_group, is_active, is_demo")
         .eq("is_active", true)
-        .eq("is_demo", false);
+        .eq("is_demo", false));
 
       if (profilesError) throw profilesError;
 
       let memberships = [];
       if (planId) {
-        const { data: teamMembers, error: tmError } = await client
+        const { data: teamMembers, error: tmError } = await fetchAllRows(() => client
           .from("reading_team_members")
           .select("user_id, team_id, member_role, division, global_plan_id")
-          .eq("global_plan_id", planId);
+          .eq("global_plan_id", planId));
         if (!tmError && teamMembers) memberships = teamMembers;
       }
 
@@ -4492,10 +4498,10 @@ const db = {
     if (state.isSupabaseMode && state.supabase) {
       // ── Supabase 模式：資料完全來自資料庫，不混合硬寫的 CHURCH_PLAN_PRESETS ──
       try {
-        const { data, error } = await state.supabase
+        const { data, error } = await fetchAllRows(() => state.supabase
           .from("global_plans")
           .select("id, name, description, start_date, end_date, target_books, is_hidden, is_fixed, plan_kind, rules, rule_version, published_at, audience_regions")
-          .order("start_date", { ascending: true });
+          .order("start_date", { ascending: true }));
 
         if (error) {
           console.error("Failed to load global plans from Supabase:", error);
@@ -4619,10 +4625,10 @@ const db = {
         .select("id, rules, rule_version")
         .eq("id", campaignId)
         .single();
-      const stageResult = await state.supabase
+      const stageResult = await fetchAllRows(() => state.supabase
         .from("global_plans")
         .select("id, rules, rule_version, plan_kind")
-        .eq("plan_kind", "church_campaign_stage");
+        .eq("plan_kind", "church_campaign_stage"));
 
       const storedRules = parseStoredRules(masterResult.data && masterResult.data.rules);
       const storedStageNumbers = Array.isArray(storedRules.stages)
