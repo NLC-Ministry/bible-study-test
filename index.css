@@ -11514,6 +11514,70 @@ body.dark-theme .plan-calendar .plan-day-cell.active .day-number, body.dark-them
   gap: 0.75rem;
 }
 
+.missed-chapters-list {
+  width: 100%;
+  margin: 0 0 1.25rem 0;
+  padding: 0.75rem 0.9rem;
+  list-style: none;
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  max-height: 40vh;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.missed-chapters-list li {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.3rem 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.missed-chapters-list li + li {
+  border-top: 1px dashed var(--border-card);
+}
+
+.missed-chapters-date {
+  flex: 0 0 3.2rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.missed-chapters-items {
+  color: var(--text-primary);
+}
+
+.missed-chapters-more {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.plan-round-advance-footer {
+  width: 100%;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.plan-round-advance-footer .congrats-upgrade-btn {
+  width: 100%;
+  max-width: 320px;
+}
+
+.plan-round-advance-hint {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 .congrats-inline-banner {
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12));
   border: 1px solid var(--border-card);

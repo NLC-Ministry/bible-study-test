@@ -3058,6 +3058,11 @@ async function renderPlanScheduleTracker(skipCarouselUpdate = false, signal = nu
     container.appendChild(taskItem);
   });
   void renderDailyQuizSection(state.activePlan, selectedDay, currentRequestId);
+
+  // 停在「本遍最後一個閱讀日」且已勾完、卻還沒 100% → 提醒前面有漏（本 session 一遍只跳一次）
+  maybePromptMissedRoundChapters(state.activePlan);
+  // 常駐「進入下一遍」按鈕（可重複手動觸發檢查）
+  renderRoundAdvanceButton(state.activePlan, selectedDay);
 }
 
 let dailyQuizRenderRequestId = 0;
@@ -3878,6 +3883,176 @@ window.triggerPlanUpgradeFlow = async function() {
   }
 };
 
+// ── 最後一天漏讀提醒 ─────────────────────────────────────────────
+// 使用者讀到「本遍最後一個閱讀日」、卻還沒 100% 時，前面一定有漏勾的章節。
+// 不提醒的話他會以為「明明讀完了卻進不了下一遍 ＝ 系統壞了」。
+
+function getCurrentRoundLastReadingDay(plan) {
+  if (!plan || !Array.isArray(plan.days)) return null;
+  const round = plan.currentRound || 1;
+  for (let i = plan.days.length - 1; i >= 0; i--) {
+    const day = plan.days[i];
+    if ((day.chapters || []).some(ch => Number(ch.round || round) === round)) return day;
+  }
+  return null;
+}
+
+function getCurrentRoundMissedChapters(plan) {
+  if (!plan || !Array.isArray(plan.days)) return [];
+  const round = plan.currentRound || 1;
+  const missed = [];
+  plan.days.forEach(day => {
+    (day.chapters || []).forEach(ch => {
+      if (Number(ch.round || round) !== round) return;
+      if (!ch["isReadR" + round]) {
+        missed.push({ book: ch.book, chapter: ch.chapter, dayNum: day.dayNum, date: day.date });
+      }
+    });
+  });
+  return missed;
+}
+
+function maybePromptMissedRoundChapters(plan) {
+  if (!plan || !Array.isArray(plan.days)) return;
+  const round = plan.currentRound || 1;
+
+  // 本遍已 100% → 不是這個情境（會走「進入下一遍」的恭喜 modal）
+  const total = plan.currentRoundTotalChapters || 0;
+  const done = plan.completedChapters || 0;
+  if (plan.isPlanCompleted || Number(plan.progress) >= 100 || (total > 0 && done >= total)) return;
+
+  // 本 session 這一遍已提醒過 → 不再跳
+  if (plan.missedRoundPromptedRound === round) return;
+
+  // 「本遍最後一個閱讀日」還沒全部勾完 → 使用者還在計畫中間，不打擾
+  const lastDay = getCurrentRoundLastReadingDay(plan);
+  if (!lastDay) return;
+  const lastDayDone = (lastDay.chapters || [])
+    .filter(ch => Number(ch.round || round) === round)
+    .every(ch => Boolean(ch["isReadR" + round]));
+  if (!lastDayDone) return;
+
+  const missed = getCurrentRoundMissedChapters(plan);
+  if (missed.length === 0) return; // 保險：有洞才會 progress<100，理論上到不了這
+
+  plan.missedRoundPromptedRound = round;
+  showMissedChaptersModal(plan, round, missed);
+}
+
+function showMissedChaptersModal(plan, round, missed) {
+  const oldModal = document.getElementById("missed-chapters-modal");
+  if (oldModal) oldModal.remove();
+
+  const roundLabel = round === 1 ? "第一遍" : `第${round}遍`;
+  const expired = isPlanExpired(plan);
+
+  const byDay = new Map();
+  missed.forEach(m => {
+    if (!byDay.has(m.dayNum)) byDay.set(m.dayNum, { date: m.date, items: [] });
+    byDay.get(m.dayNum).items.push(`${m.book}${m.chapter}`);
+  });
+  const groups = [...byDay.values()];
+  const shownGroups = groups.slice(0, 10);
+  const shownCount = shownGroups.reduce((sum, g) => sum + g.items.length, 0);
+  const restCount = missed.length - shownCount;
+  const listHtml = shownGroups.map(g =>
+    `<li><span class="missed-chapters-date">${escapeHTML(g.date || "")}</span><span class="missed-chapters-items">${escapeHTML(g.items.join("、"))}</span></li>`
+  ).join("") + (restCount > 0 ? `<li class="missed-chapters-more">…還有 ${restCount} 章</li>` : "");
+
+  const firstMissedDay = missed[0].dayNum;
+
+  const modal = document.createElement("div");
+  modal.id = "missed-chapters-modal";
+  modal.className = "congrats-modal-overlay";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.setAttribute("aria-labelledby", "missed-chapters-title");
+  modal.innerHTML = `
+    <div class="congrats-modal-box">
+      <span class="plan-upgrade-gate__icon" aria-hidden="true">
+        <span class="nlc-icon nlc-icon--lg" data-icon="bookOne"></span>
+      </span>
+      <h3 class="congrats-title" id="missed-chapters-title">還差 ${missed.length} 章才能${expired ? "完成本遍" : "進入下一遍"}</h3>
+      <p class="congrats-desc-secondary">你已經讀到${roundLabel}最後一天了，但前面有 ${missed.length} 章還沒打卡完成${expired ? "。計畫時間已過，補讀完可計入補讀章數，但無法再進入下一遍。" : "。補讀完這些章節，「進入下一遍」就會出現。"}</p>
+      <ul class="missed-chapters-list">${listHtml}</ul>
+      <div class="congrats-actions">
+        <button id="btn-missed-goto" type="button" class="congrats-upgrade-btn">去補讀第一個</button>
+        <button id="btn-missed-later" type="button" class="congrats-later-btn">知道了</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  if (typeof hydrateIcons === "function") hydrateIcons(modal);
+
+  modal.querySelector("#btn-missed-later")?.addEventListener("click", () => modal.remove());
+  modal.querySelector("#btn-missed-goto")?.addEventListener("click", () => {
+    modal.remove();
+    const day = (plan.days || []).find(d => d.dayNum === firstMissedDay);
+    if (!day) return;
+    state.selectedPlanDay = firstMissedDay;
+    state.calendarViewYear = day.year || new Date().getFullYear();
+    state.calendarViewMonth = day.month || (new Date().getMonth() + 1);
+    // 日曆整段一次渲染，目標格已在 DOM → 只切 active class + 捲動容器內部，不重繪、不整頁跳
+    const prev = document.querySelector(".plan-day-cell.active");
+    if (prev) { prev.classList.remove("active"); prev.setAttribute("aria-selected", "false"); }
+    const target = document.querySelector(`.plan-day-cell[data-day-num="${firstMissedDay}"]`);
+    if (target) {
+      target.classList.add("active");
+      target.setAttribute("aria-selected", "true");
+      const scroller = target.closest(".calendar-scroll-container");
+      if (scroller) {
+        requestAnimationFrame(() => {
+          scroller.scrollTop = target.offsetTop - (scroller.clientHeight / 2) + (target.offsetHeight / 2);
+        });
+      }
+    }
+    if (typeof renderPlanScheduleTracker === "function") renderPlanScheduleTracker(true);
+  });
+}
+
+// 常駐「進入下一遍」按鈕：停在「本遍最後一個閱讀日」且該日已勾完時出現，
+// 不管整體進度是否 100%。按下時即時重算漏章：
+//   有漏 → 再跳一次漏章清單（略過 session 旗標，這是使用者主動點的）
+//   沒漏 → 走既有 triggerPlanUpgradeFlow（過期計畫則只結算本遍）
+function renderRoundAdvanceButton(plan, selectedDay) {
+  const container = document.getElementById("plan-tasks-list");
+  if (!container) return;
+  container.querySelector("#plan-round-advance-footer")?.remove();
+  if (!plan || !selectedDay || !Array.isArray(plan.days)) return;
+
+  const round = plan.currentRound || 1;
+  const lastDay = getCurrentRoundLastReadingDay(plan);
+  if (!lastDay || lastDay.dayNum !== selectedDay.dayNum) return;
+
+  const lastDayChapters = (selectedDay.chapters || []).filter(ch => Number(ch.round || round) === round);
+  if (lastDayChapters.length === 0) return;
+  const lastDayDone = lastDayChapters.every(ch => Boolean(ch["isReadR" + round]));
+  if (!lastDayDone) return;
+
+  const expired = isPlanExpired(plan);
+  const footer = document.createElement("div");
+  footer.id = "plan-round-advance-footer";
+  footer.className = "plan-round-advance-footer";
+  footer.innerHTML = `
+    <button id="btn-plan-round-advance" type="button" class="congrats-upgrade-btn">${expired ? "結算本遍" : "進入下一遍"}</button>
+    <p class="plan-round-advance-hint">讀完最後一天了嗎？按這裡檢查前面有沒有漏勾，${expired ? "並結算本遍" : "沒漏就進入下一遍"}。</p>
+  `;
+  container.appendChild(footer);
+
+  footer.querySelector("#btn-plan-round-advance")?.addEventListener("click", () => {
+    if (typeof calculatePlanProgress === "function") calculatePlanProgress();
+    const missed = getCurrentRoundMissedChapters(plan);
+    if (missed.length > 0) {
+      showMissedChaptersModal(plan, round, missed);
+      return;
+    }
+    if (expired) {
+      showToast("本遍已全部讀完。計畫時間已過，無法再進入下一遍。");
+      return;
+    }
+    window.triggerPlanUpgradeFlow();
+  });
+}
+
 async function handleRoundCompletion(plan) {
   if (!plan) return;
   calculatePlanProgress();
@@ -3887,7 +4062,10 @@ async function handleRoundCompletion(plan) {
   const currentRoundCompleted = plan.completedChapters || 0;
   const isCurrentRoundCompleted = currentRoundTotal > 0 && currentRoundCompleted >= currentRoundTotal;
 
-  if (!isCurrentRoundCompleted) return;
+  if (!isCurrentRoundCompleted) {
+    maybePromptMissedRoundChapters(plan);
+    return;
+  }
 
   // Prevent multiple triggers for the same round completion in the same session
   if (plan.lastPromptedRound === currentRound) return;
