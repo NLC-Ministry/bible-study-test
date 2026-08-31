@@ -1546,7 +1546,7 @@ function getManagementPlans() {
     if ((!Array.isArray(plan.days) || plan.days.length === 0) && typeof generatePlanObject === 'function') {
       const books = plan.books || plan.target_books || [];
       if (books.length > 0) {
-        plan = generatePlanObject(plan.name, plan.startDate || plan.start_date, plan.endDate || plan.end_date, books, plan.presetKey || plan.id, plan.level || 'normal', plan.isFixed !== false && plan.is_fixed !== false);
+        plan = generatePlanObject(plan.name, plan.startDate || plan.start_date, plan.endDate || plan.end_date, books, plan.presetKey || plan.id, plan.isFixed !== false && plan.is_fixed !== false);
         plan.globalPlanId = sourcePlan.globalPlanId || sourcePlan.id;
         plan.id = sourcePlan.id || plan.id;
         plan.name = sourcePlan.name || plan.name;

@@ -40,10 +40,9 @@ describe("plan progress upgrade gate", () => {
       planSource.indexOf("// Reading From Plan")
     );
     expect(flow).toContain("setPlanUpgradeOverlayBusy(true");
-    expect(flow).toContain("await persistPlanLevelState(plan)");
+    expect(flow).toContain("await persistPlanRoundState(plan)");
     expect(flow).toContain("await renderPlanView()");
     expect(flow.indexOf("await renderPlanView()")).toBeLessThan(flow.lastIndexOf("modal.remove()"));
     expect(flow).toContain("Object.assign(plan, previousPlanState)");
-    expect(readFileSync("js/utils.js", "utf8")).toContain("if (retryError) throw retryError" );
   });
 });

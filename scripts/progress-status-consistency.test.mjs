@@ -30,8 +30,15 @@ describe("progress status consistency unit tests", () => {
     // daysCovered, so expectedDaysCount has to skip them the same way or a
     // member perfectly on schedule reads as behind by however many rest
     // days have passed.
-    expect(code).toContain("const expectedDaysCount = state.activePlan.days");
+    expect(code).toContain("const expectedDaysCount = baselineScheduleDays");
     expect(code).toContain(".filter(day => day.chapters && day.chapters.length > 0)");
+    // The comparison yardstick must be the church's canonical stage schedule
+    // (round 1, 7 days/week), NOT the viewer's own state.activePlan.days —
+    // that is reshaped by the viewer's personal rest days / (removed) level
+    // and would contaminate every ranked member's 落後/超前 figure.
+    expect(code).toContain("baselineScheduleDays = ");
+    expect(code).toContain("window.getCanonicalStageScheduleDays(state.activePlan)");
+    expect(code).toContain("countExactDaysCoveredByChapters(baselineScheduleDays, completed)");
   });
 
   it("verifies round 2+ progress displays '第2遍進行中' when progress is 0%", () => {

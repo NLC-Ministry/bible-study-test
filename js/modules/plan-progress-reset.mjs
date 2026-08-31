@@ -80,7 +80,6 @@ export function cleanPlanAssociatedBadges(plan) {
 
 export function resetPlanProgressState(plan) {
   if (!plan) return plan;
-  plan.level = "normal";
   plan.currentRound = 1;
   plan.upgradePromptHandled = false;
   plan.lastUpgradedRound = null;

@@ -136,19 +136,19 @@ describe("getPlanProgressStatus labels", () => {
   });
 
   it("labels 1 day behind schedule as 今日未完成", () => {
+    // makePlan(): 3 chapters read (isReadR1: i < 3), 1 chapter/day baseline → 3 days covered.
     const plan = makePlan();
     const status = getPlanProgressStatus(plan, {
-      getExpected: () => 5,
-      getNextDay: () => plan.days[4],
+      getExpected: () => 4,
     });
     expect(status.label).toBe("今日未完成");
   });
 
-  it("shows the current round and its completion percentage after round one", () => {
+  it("shows only the current round and its completion percentage after round one", () => {
     const plan = makePlan({ currentRound: 2, progress: 38 });
     const status = getPlanProgressStatus(plan);
     expect(status).toMatchObject({
-      label: "超前第2遍完成38%",
+      label: "第2遍完成38%",
       badgeClass: "stat-badge--success",
     });
   });

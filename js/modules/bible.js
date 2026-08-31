@@ -907,6 +907,7 @@ export async function navigateToChapter(direction, options = {}) {
             state.readerState.bookId = nextBook.id;
             state.readerState.chapter = Number(nextChInfo.chapter);
             state.readerState.planDayNum = nextChInfo.dayNum;
+            saveReaderPreferences();
             const rendered = await renderReaderText({ preserveAudio: autoContinue, autoContinue });
             if (autoContinue && rendered !== true) return false;
             if (!autoContinue) resetReaderAudioAfterManualChapterChange(hadAudioPosition);
@@ -920,6 +921,7 @@ export async function navigateToChapter(direction, options = {}) {
       if (nextBook) {
         state.readerState.bookId = nextBook.id;
         state.readerState.chapter = Number(nextCh.chapter);
+        saveReaderPreferences();
         const rendered = await renderReaderText({ preserveAudio: autoContinue, autoContinue });
         if (autoContinue && rendered !== true) return false;
         if (!autoContinue) resetReaderAudioAfterManualChapterChange(hadAudioPosition);

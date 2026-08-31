@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
+import { isCampaignStageKind } from "../js/data/campaign-stage-kinds.mjs";
 
 const utilsSource = readFileSync(new URL("../js/utils.js", import.meta.url), "utf8");
 
@@ -33,8 +34,9 @@ describe("badge unlock state stays synced with the live reading plan", () => {
     getCampaignStageCompletedRounds = new Function(
       "state",
       "localStorage",
+      "isCampaignStageKind",
       `${getCampaignStageCompletedRoundsSrc}\nreturn getCampaignStageCompletedRounds;`
-    )(state, localStorage);
+    )(state, localStorage, isCampaignStageKind);
   });
 
   it("ignores a stale localStorage value when the plan is genuinely still on round 1", () => {
