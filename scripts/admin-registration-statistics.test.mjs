@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 const migration = readFileSync("supabase/migrations/0052_admin_registration_statistics.sql", "utf8");
 const summaryMigration = readFileSync("supabase/migrations/0055_admin_registration_summary.sql", "utf8");
 const teamCountsMigration = readFileSync("supabase/migrations/0080_admin_registration_team_counts.sql", "utf8");
+const orgSortOrderMigration = readFileSync("supabase/migrations/0133_org_display_sort_order.sql", "utf8");
 const edge = readFileSync("supabase/functions/nlc-data/index.ts", "utf8");
 const db = readFileSync("js/db.js", "utf8");
 const admin = readFileSync("js/modules/admin.js", "utf8");
@@ -70,23 +71,51 @@ describe("admin registration statistics", () => {
     expect(html).not.toContain("匯出文字檔");
   });
 
-  it("orders great regions and pastoral zones by the fixed roster order, not insertion order", () => {
-    expect(admin).toContain('const CHURCH_GREAT_REGION_ORDER = ["東區", "西區", "南區", "北區", "青少年", "慶典", "創藝", "花蓮", "桃園"];');
-    expect(admin).toContain('"大安1", "大安2", "大安3", "大安4", "大安6", "大安7", "大安8", "大安9", "大安10", "大安11", "大安12",');
-    expect(admin).toContain("function compareByChurchOrgOrder(orderList)");
-    // Rows outside the fixed list must still be exported, not silently dropped — sorted after via Infinity.
-    expect(admin).toContain('const aIndex = orderIndex.has(a) ? orderIndex.get(a) : Infinity;');
+  it("orders great regions and pastoral zones by sort_order read live from state.orgStructure, not a hardcoded array", () => {
+    // The roster order used to be two hardcoded arrays duplicated in this
+    // file — now the database (great_regions/pastoral_zones.sort_order,
+    // migration 0133) is the single source of truth, loaded once by
+    // db.js's loadOrgStructure() into state.orgStructure.regionSortOrder /
+    // zoneSortOrder. Updating the roster order only ever means updating
+    // that column, never chasing a second array that could drift out of
+    // sync with it.
+    expect(admin).not.toContain("CHURCH_GREAT_REGION_ORDER");
+    expect(admin).not.toContain("CHURCH_PASTORAL_ZONE_ORDER");
+    expect(admin).toContain("function compareByOrgOrder(sortOrderMap, aLabel, bLabel)");
+    expect(admin).toContain("window.compareByOrgDisplayOrder(sortOrderMap || {})(a, b)");
+    expect(admin).toContain('typeof state !== "undefined" ? state.orgStructure : null');
+    expect(admin).toContain("orgStructure && orgStructure.regionSortOrder");
+    expect(admin).toContain("orgStructure && orgStructure.zoneSortOrder");
     expect(admin).toContain("sortByChurchOrgOrder(greatRegions, compareGreatRegions, row => row.label)");
+    expect(db).toContain("function compareByOrgDisplayOrder(sortOrderMap)");
+    // Rows outside the known roster must still be exported, not silently
+    // dropped — sorted after via Infinity.
+    expect(db).toContain("? sortOrderMap[a] : Infinity");
   });
 
-  it("pins the exact pastoral-zone roster order the user provided 2026-08-11 (松山1 before 松山2, plus 花蓮/桃園/桃1/未設定牧區 at the tail)", () => {
-    // Locked to the literal array text (not just prefix substrings elsewhere
-    // in this file) so any future edit that reorders/drops an entry here
-    // fails loudly instead of silently drifting from the roster again.
-    const start = admin.indexOf("const CHURCH_PASTORAL_ZONE_ORDER = [");
-    const end = admin.indexOf("];", start);
-    const zoneOrderSource = admin.slice(start, end);
-    const zones = [...zoneOrderSource.matchAll(/"([^"]+)"/g)].map(m => m[1]);
+  it("db.js populates state.orgStructure's region/zone sort order from great_regions/pastoral_zones.sort_order", () => {
+    expect(db).toContain('state.supabase.from("great_regions").select("name, sort_order")');
+    expect(db).toContain('state.supabase.from("pastoral_zones").select("name, sort_order")');
+    expect(db).toContain("nextOrgStructure.regionSortOrder = regionSortOrder;");
+    expect(db).toContain("nextOrgStructure.zoneSortOrder = zoneSortOrder;");
+    expect(db).toContain("nextOrgStructure.regions = Array.from(regionsSet).sort(compareByOrgDisplayOrder(regionSortOrder));");
+  });
+
+  it("pins the exact great-region/pastoral-zone roster order the user provided 2026-08-31 in the sort_order migration (松山1 before 松山2, plus 花蓮/桃園/未設定牧區 at the tail, no 桃1)", () => {
+    // Locked to the literal VALUES list text so any future edit that
+    // reorders/drops an entry here fails loudly instead of silently
+    // drifting from the roster again — this migration is now the one and
+    // only place this roster order is allowed to live.
+    const regionStart = orgSortOrderMigration.indexOf("WITH great_region_order(name, display_order) AS (");
+    const regionEnd = orgSortOrderMigration.indexOf("UPDATE public.great_regions", regionStart);
+    const regionSource = orgSortOrderMigration.slice(regionStart, regionEnd);
+    const regions = [...regionSource.matchAll(/'([^']+)'/g)].map(m => m[1]);
+    expect(regions).toEqual(["東區", "西區", "南區", "北區", "青少年", "慶典", "創藝", "花蓮", "桃園", "未設定"]);
+
+    const zoneStart = orgSortOrderMigration.indexOf("WITH pastoral_zone_order(name, display_order) AS (");
+    const zoneEnd = orgSortOrderMigration.indexOf("UPDATE public.pastoral_zones", zoneStart);
+    const zoneSource = orgSortOrderMigration.slice(zoneStart, zoneEnd);
+    const zones = [...zoneSource.matchAll(/'([^']+)'/g)].map(m => m[1]);
     expect(zones).toEqual([
       "大安1", "大安2", "大安3", "大安4", "大安6", "大安7", "大安8", "大安9", "大安10", "大安11", "大安12",
       "中正1", "中正2", "中正3", "中正4", "中正5",
@@ -101,7 +130,7 @@ describe("admin registration statistics", () => {
       "慶典1", "慶典2",
       "創藝",
       "新莊1", "新莊2", "新莊3",
-      "花蓮", "桃園", "桃1",
+      "花蓮", "桃園",
       "未設定牧區"
     ]);
   });
