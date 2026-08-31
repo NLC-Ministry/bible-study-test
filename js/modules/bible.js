@@ -122,14 +122,14 @@ function getCurrentPlanReaderTask() {
   if (!plan || !state.readerState || !state.readerState.fromPlan) return null;
 
   const book = BIBLE_BOOKS.find(item => Number(item.id) === Number(state.readerState.bookId));
-  // 日程只有一份（第一遍章節）；使用者實際在讀的遍數看 plan.currentRound。
-  const round = Number(plan.currentRound || 1);
+  const round = Number(state.readerState.planRound || plan.currentRound || 1);
   if (!book || !Array.isArray(plan.days)) return null;
 
   const findChapter = day => Array.isArray(day?.chapters)
     ? day.chapters.find(item =>
       item.book === book.name &&
-      Number(item.chapter) === Number(state.readerState.chapter)
+      Number(item.chapter) === Number(state.readerState.chapter) &&
+      Number(item.round || round) === round
     )
     : null;
 
@@ -176,7 +176,7 @@ async function autoMarkCurrentPlanReaderTaskRead(expectedTargetKey) {
   state.readerState.autoMarked = true;
   state.readerState.autoMarkInFlight = true;
   taskContext.chapter[readKey] = true;
-  taskContext.chapter.isRead = true;
+  if (taskContext.round === 1) taskContext.chapter.isRead = true;
   try {
     window.renderPlanScheduleTracker?.();
     calculatePlanProgress();
@@ -2762,9 +2762,13 @@ function isTodayScheduleCompleted() {
   if (!todayDayObj || !todayDayObj.chapters || todayDayObj.chapters.length === 0) return false;
 
   const currentRound = state.activePlan.currentRound || 1;
-  return todayDayObj.chapters.every(ch =>
-    Boolean(ch["isReadR" + currentRound] || (currentRound === 1 && ch.isRead))
-  );
+  return todayDayObj.chapters.every(ch => {
+    const r = ch.round || currentRound;
+    if (r === 1) return Boolean(ch.isReadR1 || ch.isRead);
+    if (r === 2) return Boolean(ch.isReadR2);
+    if (r >= 3) return Boolean(ch.isReadR3);
+    return Boolean(ch.isRead);
+  });
 }
 
 function showPlanNavigationPrompt(options = {}) {

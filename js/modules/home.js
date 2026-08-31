@@ -348,9 +348,15 @@ export function updateDashboardView() {
       // 彈性時間計畫：指向第一個未完成的讀經天數
       todayDayObj = planDays.find(d => {
         const currentRound = state.activePlan.currentRound || 1;
-        return d.chapters && d.chapters.some(ch =>
-          !Boolean(ch["isReadR" + currentRound] || (currentRound === 1 && ch.isRead))
-        );
+        return d.chapters && d.chapters.some(ch => {
+          const taskRound = ch.round || currentRound;
+          let isRead = false;
+          if (taskRound === 1) isRead = ch.isReadR1 || ch.isRead;
+          else if (taskRound === 2) isRead = ch.isReadR2;
+          else if (taskRound >= 3) isRead = ch.isReadR3;
+          else isRead = ch.isRead;
+          return !isRead;
+        });
       });
       if (!todayDayObj && planDays.length > 0) {
         todayDayObj = planDays[planDays.length - 1];
@@ -361,9 +367,15 @@ export function updateDashboardView() {
     let todayReadCount = 0;
     if (todayDayObj && todayDayObj.chapters) {
       todayTotalCount = todayDayObj.chapters.length;
-      const currentRound = state.activePlan.currentRound || 1;
       todayDayObj.chapters.forEach(ch => {
-        if (Boolean(ch["isReadR" + currentRound] || (currentRound === 1 && ch.isRead))) todayReadCount++;
+        const currentRound = state.activePlan.currentRound || 1;
+        const taskRound = ch.round || currentRound;
+        let isRead = false;
+        if (taskRound === 1) isRead = ch.isReadR1 || ch.isRead;
+        else if (taskRound === 2) isRead = ch.isReadR2;
+        else if (taskRound >= 3) isRead = ch.isReadR3;
+        else isRead = ch.isRead;
+        if (isRead) todayReadCount++;
       });
     }
 
@@ -1099,9 +1111,13 @@ window.checkAndPromptTodayCompletion = async function () {
   if (!todayDayObj || !todayDayObj.chapters || todayDayObj.chapters.length === 0) return;
 
   const currentRound = state.activePlan.currentRound || 1;
-  const isTodayComplete = todayDayObj.chapters.every(ch =>
-    Boolean(ch["isReadR" + currentRound] || (currentRound === 1 && ch.isRead))
-  );
+  const isTodayComplete = todayDayObj.chapters.every(ch => {
+    const r = ch.round || currentRound;
+    if (r === 1) return Boolean(ch.isReadR1 || ch.isRead);
+    if (r === 2) return Boolean(ch.isReadR2);
+    if (r >= 3) return Boolean(ch.isReadR3);
+    return Boolean(ch.isRead);
+  });
 
   if (!isTodayComplete) return;
 
@@ -2053,8 +2069,8 @@ window.startReadingCurrentChapter = function () {
 
   if (state.activePlan.days) {
     for (const day of state.activePlan.days) {
-      // 日程只有一份（第一遍章節）；每一遍都走它。
       const unread = day.chapters.find(ch =>
+        Number(ch.round || targetRound) === targetRound &&
         !ch[`isReadR${targetRound}`] &&
         !(targetRound === 1 && ch.isRead)
       );
@@ -2070,7 +2086,7 @@ window.startReadingCurrentChapter = function () {
 
   if (!found && Array.isArray(state.activePlan.days)) {
     for (const day of state.activePlan.days) {
-      const firstForRound = (day.chapters || [])[0];
+      const firstForRound = (day.chapters || []).find(ch => Number(ch.round || targetRound) === targetRound);
       if (!firstForRound) continue;
       targetBook = firstForRound.book;
       targetChapter = Number(firstForRound.chapter);
