@@ -57,6 +57,7 @@ export async function maybeResumeExam() {
 const SECTION_TARGET_DEFAULT = { truefalse: 20, single: 20, multiple: 10, matching: 10, ordering: 10, shortanswer: 3 };
 let examAdminSubview = "bank";          // notice | bank | meta | grade | stats
 let examAdminGradeFilter = "pending";   // pending | graded | all
+let examAdminGradeSearchQuery = "";     // 批改名單的姓名搜尋關鍵字
 let examAdminPaperId = null;            // 目前選中的試卷（null = 最新那份）
 
 const toLocalInput = (iso) => {
@@ -1072,6 +1073,9 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
         ${["pending", "graded", "all"].map((f) => `<button type="button" data-gf="${f}" class="${examAdminGradeFilter === f ? "active" : ""}">${{ pending: "待批", graded: "已批", all: "全部" }[f]}</button>`).join("")}
       </span>
     </div>
+    <div class="exam-admin__grade-search">
+      <input type="search" class="form-control" data-grade-search placeholder="搜尋作答者姓名…" value="${esc(examAdminGradeSearchQuery)}">
+    </div>
     ${items.length ? renderGradeGroups(items, paperId) : '<div class="admin-user-directory__empty">沒有符合的簡答作答。</div>'}
     ${items.length && !locked ? `<div class="exam-admin__grade-batch-bar">
       <span class="exam-admin__meta" data-grade-dirty-count>目前沒有未儲存的修改</span>
@@ -1083,6 +1087,30 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
     if (dirty && !confirm(`目前有 ${dirty} 筆修改尚未儲存，切換後會放棄這些修改。確定？`)) return;
     examAdminGradeFilter = b.dataset.gf; renderExamGrading(host, paperId, locked, paperStatus);
   }));
+  // 姓名搜尋：純前端過濾已渲染的卡片，不重新打 API，避免打字打到一半就把
+  // 尚未儲存的批改內容(is-dirty)沖掉。符合搜尋的題組自動展開；不符合的
+  // 卡片跟整組（該組底下沒有任何符合的作答者）都直接隱藏。
+  const applyGradeSearchFilter = (query) => {
+    const q = String(query || "").trim().toLowerCase();
+    host.querySelectorAll(".exam-admin__grade-card").forEach((card) => {
+      const name = String(card.dataset.examineeName || "").toLowerCase();
+      card.hidden = q.length > 0 && !name.includes(q);
+    });
+    host.querySelectorAll(".exam-admin__grade-group").forEach((group) => {
+      const cards = group.querySelectorAll(".exam-admin__grade-card");
+      const visibleCount = [...cards].filter((c) => !c.hidden).length;
+      group.hidden = q.length > 0 && visibleCount === 0;
+      if (q.length > 0 && visibleCount > 0) group.open = true;
+    });
+  };
+  const gradeSearchInput = host.querySelector("[data-grade-search]");
+  if (gradeSearchInput) {
+    applyGradeSearchFilter(examAdminGradeSearchQuery);
+    gradeSearchInput.addEventListener("input", () => {
+      examAdminGradeSearchQuery = gradeSearchInput.value;
+      applyGradeSearchFilter(examAdminGradeSearchQuery);
+    });
+  }
   // 分組跳轉：點題號 chip 展開該題並捲過去
   host.querySelectorAll("[data-grade-jump]").forEach((b) => b.addEventListener("click", () => {
     const g = host.querySelector(`details.exam-admin__grade-group[data-grade-group="${CSS.escape(b.dataset.gradeJump)}"]`);
@@ -1272,7 +1300,7 @@ function renderGradeGroups(items, paperId) {
 
 function gradeCard(it, grouped = false, paperId = "") {
   const who = [it.greatRegion, it.pastoralZone, it.smallGroup].filter(Boolean).join(" / ");
-  return `<div class="exam-admin__grade-card" data-answer-id="${esc(it.answerId)}" data-was-graded="${it.awardedPoints != null}">
+  return `<div class="exam-admin__grade-card" data-answer-id="${esc(it.answerId)}" data-was-graded="${it.awardedPoints != null}" data-examinee-name="${esc(it.examineeName || "")}">
     <p class="exam-admin__grade-who"><strong>${esc(it.examineeName || "（未具名）")}</strong>${who ? `　<span class="exam-admin__meta">${esc(who)}</span>` : ""}
       ${it.awardedPoints != null ? `　<span class="stat-badge stat-badge--success" data-grade-status>已批 ${it.awardedPoints}</span>` : '　<span class="stat-badge stat-badge--warning" data-grade-status>待批</span>'}</p>
     ${grouped ? "" : `<p class="exam-admin__grade-stem">第 ${it.position} 題（${it.points} 分）：${esc(it.stem || "")}</p>`}
