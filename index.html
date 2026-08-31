@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260901_highlights_notes_review" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260901_plan_list_toolbar" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -174,7 +174,7 @@
         <div id="top-bar-title-area" style="display: flex; align-items: center; justify-content: center; flex-grow: 1;">
           <span class="brand-text">新生命聖經速讀計畫</span>
           <span id="top-bar-plan-name" class="hidden"
-            style="display: none; max-width: 58vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95rem; font-weight: 500; color: var(--text-primary); text-align: center;">
+            style="display: none; max-width: 58vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1.0625rem; font-weight: 500; color: var(--text-primary); text-align: center;">
             計畫
           </span>
         </div>
@@ -638,16 +638,20 @@
         </div>
         <!-- 子檢視 1: 計畫列表 (預設顯示) -->
         <div id="plan-list-subview" class="grid-layout">
-          <!-- Top YouVersion Style Header -->
-          <div class="card-col span-12"
-            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; padding: 0 0.5rem;">
-            <h2
-              style="font-size: 2.2rem; font-weight: 500; color: var(--text-primary); margin: 0; font-family: 'Outfit', sans-serif;">
-              計畫</h2>
-            <button class="circular-action-btn" id="btn-toggle-plan-search" type="button" title="搜尋計畫"
-              aria-label="搜尋計畫" aria-expanded="false" aria-controls="plan-search-panel">
-              <span class="nlc-icon nlc-icon--sm" data-icon="search" aria-hidden="true"></span>
-            </button>
+          <!-- 標題已經在頂部 App Bar 顯示過（appRouter.getTabLabel），這裡不再重複；
+               狀態切換 pill 與搜尋鈕改成同一列，取代原本各自佔一列的設計 -->
+          <div class="card-col span-12">
+            <div class="plan-list-toolbar">
+              <div class="status-pills-row" id="plan-list-status-pills">
+                <button class="pill-btn active" data-filter="mine">我的計畫</button>
+                <button class="pill-btn" data-filter="saved">探索計畫</button>
+                <button class="pill-btn" data-filter="completed">已結束</button>
+              </div>
+              <button class="circular-action-btn" id="btn-toggle-plan-search" type="button" title="搜尋計畫"
+                aria-label="搜尋計畫" aria-expanded="false" aria-controls="plan-search-panel">
+                <span class="nlc-icon nlc-icon--sm" data-icon="search" aria-hidden="true"></span>
+              </button>
+            </div>
           </div>
 
           <div class="card-col span-12 plan-search-panel hidden" id="plan-search-panel">
@@ -673,15 +677,6 @@
             <button class="primary-btn plan-team-invite-shortcut__action" id="btn-open-plan-team-invite" type="button" aria-controls="join-team-container" aria-expanded="false">
               <span class="btn-with-icon"><span class="nlc-icon" data-icon="chevronRight" aria-hidden="true"></span><span>輸入邀請碼</span></span>
             </button>
-          </div>
-
-          <!-- Status Pills Row -->
-          <div class="card-col span-12">
-            <div class="status-pills-row" id="plan-list-status-pills">
-              <button class="pill-btn active" data-filter="mine">我的計畫</button>
-              <button class="pill-btn" data-filter="saved">探索計畫</button>
-              <button class="pill-btn" data-filter="completed">已結束</button>
-            </div>
           </div>
 
           <!-- Left Column: Joined Plans List -->

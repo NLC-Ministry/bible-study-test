@@ -4552,6 +4552,21 @@ button.logout-btn:hover {
 .status-pills-row::-webkit-scrollbar {
   display: none;
 }
+
+/* 計畫頁頂部：狀態切換 pill 與搜尋鈕同列，取代原本各自佔一列、又跟頂部 App
+   Bar 標題重複的大標題設計 */
+.plan-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+}
+.plan-list-toolbar .status-pills-row {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
 .pill-btn {
   padding: 0.45rem 1.1rem;
   border-radius: 20px;
@@ -7566,7 +7581,7 @@ select,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.875rem;
+  font-size: 1.0625rem;
   font-weight: var(--type-weight-strong);
   letter-spacing: normal;
   text-align: center;
