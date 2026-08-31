@@ -1998,8 +1998,9 @@ function calculateAllPlansProgress() {
           ch[`isReadR${r}`] = checkRoundLog(r);
         }
 
-        const targetRound = ch.round || plan.currentRound || 1;
-        const isRead = Boolean(ch["isReadR" + targetRound]);
+        // 日程只有一份（第一遍的章節）；每一遍都走同一份，「這一章這一遍讀了沒」
+        // 一律看 isReadR{目前遍數}。
+        const isRead = Boolean(ch["isReadR" + (plan.currentRound || 1)]);
         ch.isRead = isRead;
         if (isRead) completed++;
       });
@@ -2015,15 +2016,13 @@ function calculateAllPlansProgress() {
     plan.firstRoundTotalChapters = firstRoundTotalChapters;
     plan.isPlanCompleted = firstRoundTotalChapters > 0 && firstRoundCompletedChapters >= firstRoundTotalChapters;
 
-    // Calculate current round progress dynamically
+    // 每一遍都走同一份日程 → 「本遍」總數 = 日程章數；完成 = 有 isReadR{目前遍數} 的章。
+    const currentRound = plan.currentRound || 1;
     const currentRoundTotal = plan.days.reduce((sum, day) => {
-      return sum + ((day.chapters || []).filter(ch => (ch.round || 1) === plan.currentRound).length);
+      return sum + ((day.chapters || []).length);
     }, 0) || plan.totalChapters;
     const currentRoundCompleted = plan.days.reduce((sum, day) => {
-      const isCompleted = (ch) => {
-        return Boolean(ch["isReadR" + plan.currentRound]);
-      };
-      return sum + ((day.chapters || []).filter(ch => (ch.round || 1) === plan.currentRound && isCompleted(ch)).length);
+      return sum + ((day.chapters || []).filter(ch => Boolean(ch["isReadR" + currentRound])).length);
     }, 0);
 
     plan.currentRoundTotalChapters = currentRoundTotal;
@@ -2037,11 +2036,12 @@ function calculateAllPlansProgress() {
     if (!plan.isPlanCompleted) plan.upgradePromptHandled = false;
 
     // Track second-round completion for the round-2 → round-3 upgrade prompt
+    // （同一份日程；第二遍完成 = 每一章都有 isReadR2）
     const secondRoundChapters = plan.days.reduce((sum, day) => {
-      return sum + ((day.chapters || []).filter(ch => (ch.round || 1) === 2).length);
+      return sum + ((day.chapters || []).length);
     }, 0);
     const secondRoundCompleted = plan.days.reduce((sum, day) => {
-      return sum + ((day.chapters || []).filter(ch => (ch.round || 1) === 2 && ch.isReadR2).length);
+      return sum + ((day.chapters || []).filter(ch => ch.isReadR2).length);
     }, 0);
     plan.isRound2Completed = secondRoundChapters > 0 && secondRoundCompleted >= secondRoundChapters;
     if (!plan.isRound2Completed) plan.round2UpgradePromptHandled = false;

@@ -1075,7 +1075,8 @@ function initPlanControls() {
       if (!state.activePlan || !state.selectedPlanDay) return;
       const day = state.activePlan.days.find(d => d.dayNum === state.selectedPlanDay);
       const currentRound = Number(state.activePlan.currentRound || 1);
-      const chapters = (day && day.chapters || []).filter(ch => Number(ch.round || currentRound) === currentRound);
+      // 日程只有一份（第一遍章節）；每一遍都走它。
+      const chapters = (day && day.chapters || []).filter(ch => Number(ch.round || 1) === 1);
       if (chapters.length === 0) return;
 
       const firstUnread = chapters.find(ch => !ch[`isReadR${currentRound}`]) || chapters[0];
@@ -2496,11 +2497,10 @@ function renderPresetPlansList() {
 }
 
 function isChapterReadForRound(ch, round) {
+  // 日程只有一份（第一遍章節）；每一遍都走它，「這遍讀了沒」看 isReadR{round}。
   if (!ch) return false;
-  const chRound = ch.round || 1;
-  if (chRound < round) return true;
-  if (chRound > round) return false;
-  return Boolean(ch["isReadR" + round] || ch.isRead);
+  const r = Number(round) || 1;
+  return Boolean(ch["isReadR" + r] || (r === 1 && ch.isRead));
 }
 
 function isPlanDayCompletedForRound(day, round) {
@@ -2673,7 +2673,7 @@ function renderHorizontalDateStrip() {
       if (totalChapters > 0) {
         day.chapters.forEach(ch => {
           const currentRound = state.activePlan.currentRound || 1;
-          const taskRound = ch.round || currentRound;
+          const taskRound = currentRound;
           const isRead = Boolean(ch["isReadR" + taskRound] || ch.isRead);
 
           if (isRead) completedChapters++;
@@ -2893,8 +2893,9 @@ async function renderPlanScheduleTracker(skipCarouselUpdate = false, signal = nu
     return;
   }
   const currentRound = Number(state.activePlan.currentRound || 1);
+  // 日程只有一份（第一遍章節）；每一遍都走它，勾選狀態看 isReadR{currentRound}。
   const visibleChapters = (selectedDay.chapters || []).filter(ch =>
-    Number(ch.round || currentRound) === currentRound
+    Number(ch.round || 1) === 1
   );
 
   // Render day subtitle
@@ -2943,7 +2944,7 @@ async function renderPlanScheduleTracker(skipCarouselUpdate = false, signal = nu
     } else {
       const allDone = visibleChapters.every(ch => {
         const currentRound = state.activePlan.currentRound || 1;
-        const taskRound = ch.round || currentRound;
+        const taskRound = currentRound;
         return Boolean(ch["isReadR" + taskRound] || ch.isRead);
       });
       if (allDone) {
@@ -2961,7 +2962,7 @@ async function renderPlanScheduleTracker(skipCarouselUpdate = false, signal = nu
   if (activeCard && state.activePlan) {
     const isDayCompleted = visibleChapters && visibleChapters.length > 0 && visibleChapters.every(ch => {
       const currentRound = state.activePlan.currentRound || 1;
-      const taskRound = ch.round || currentRound;
+      const taskRound = currentRound;
       return Boolean(ch["isReadR" + taskRound] || ch.isRead);
     });
 
@@ -2975,7 +2976,7 @@ async function renderPlanScheduleTracker(skipCarouselUpdate = false, signal = nu
       let completedCh = 0;
       visibleChapters.forEach(ch => {
         const currentRound = state.activePlan.currentRound || 1;
-        const taskRound = ch.round || currentRound;
+        const taskRound = currentRound;
         const isRead = Boolean(ch["isReadR" + taskRound] || ch.isRead);
         if (isRead) completedCh++;
       });
@@ -3013,7 +3014,7 @@ async function renderPlanScheduleTracker(skipCarouselUpdate = false, signal = nu
     const taskItem = document.createElement("div");
     taskItem.className = "plan-task-item";
 
-    const taskRound = ch.round || currentRound;
+    const taskRound = currentRound;
     const { cssClass, content } = getChapterCheckboxState(ch, taskRound);
     const roundLabelHtml = taskRound >= 2
       ? `<span class="task-round-label round-${taskRound}">第${taskRound}遍</span>`
@@ -3604,7 +3605,7 @@ window.toggleYouVersionChapter = function (checkboxEl, book, chapter, taskRound 
     ? state.activePlan.days.find(d => d.dayNum === state.selectedPlanDay)
     : null;
   const chapterObj = selectedDay && selectedDay.chapters
-    ? selectedDay.chapters.find(ch => ch.book === book && Number(ch.chapter) === Number(chapter) && (ch.round || currentRound) === currentRound)
+    ? selectedDay.chapters.find(ch => ch.book === book && Number(ch.chapter) === Number(chapter))
     : null;
 
   const applyLocalReadState = (ch, checked) => {
@@ -3852,9 +3853,8 @@ window.triggerPlanUpgradeFlow = async function() {
     rebuildPlanSchedule(plan);
     await persistPlanRoundState(plan);
 
-    const firstNextRoundDay = plan.days.find(day => (day.chapters || []).some(chapter =>
-      Number(chapter.round || 1) === nextRound
-    ));
+    // 下一遍走同一份日程 → 跳到第一個閱讀日重新開始。
+    const firstNextRoundDay = plan.days.find(day => (day.chapters || []).length > 0);
     if (firstNextRoundDay) state.selectedPlanDay = firstNextRoundDay.dayNum;
     window._cachedAllUsersList = null;
     window._cachedAllUsersListKey = null;
@@ -4546,8 +4546,9 @@ window.openPlanInlineReader = async function (bookName, chapter, dayNum, round =
 
   const day = (state.activePlan.days || []).find(d => d.dayNum === dayNum);
   const targetRound = Number(round || state.activePlan.currentRound || 1);
+  // 日程只有一份（第一遍章節）；每一遍都走它。
   const chaptersForRound = (day && day.chapters || []).filter(ch =>
-    Number(ch.round || targetRound) === targetRound
+    Number(ch.round || 1) === 1
   );
   if (chaptersForRound.length === 0) return;
 
@@ -7252,7 +7253,7 @@ window.showPlanStatsModal = function () {
     todayTotalCount = todayDayObj.chapters.length;
     todayDayObj.chapters.forEach(ch => {
       const currentRound = plan.currentRound || 1;
-      const taskRound = ch.round || currentRound;
+      const taskRound = currentRound;
       let isRead = false;
       if (taskRound === 1) isRead = ch.isReadR1 || ch.isRead;
       else if (taskRound === 2) isRead = ch.isReadR2;
@@ -7326,7 +7327,7 @@ window.showPlanStatsModal = function () {
     if (!day.chapters || day.chapters.length === 0) return false;
     return day.chapters.every(ch => {
       const currentRound = plan.currentRound || 1;
-      const taskRound = ch.round || currentRound;
+      const taskRound = currentRound;
       if (taskRound === 1) return ch.isReadR1 || ch.isRead;
       if (taskRound === 2) return ch.isReadR2;
       if (taskRound >= 3) return ch.isReadR3;
