@@ -1080,7 +1080,7 @@ function initPlanControls() {
       if (chapters.length === 0) return;
 
       const firstUnread = chapters.find(ch => !ch[`isReadR${currentRound}`]) || chapters[0];
-      window.openPlanInlineReader(firstUnread.book, firstUnread.chapter, state.selectedPlanDay, firstUnread.round || 1);
+      window.openPlanInlineReader(firstUnread.book, firstUnread.chapter, state.selectedPlanDay, currentRound);
     });
   }
 
@@ -3134,10 +3134,8 @@ function getDailyQuizReadingProgress(plan, quizDate) {
   const day = Array.isArray(plan?.days)
     ? plan.days.find(item => String(item?.isoDate || "") === String(quizDate || ""))
     : null;
-  const chapters = Array.isArray(day?.chapters)
-    ? day.chapters.filter(chapter => Number(chapter?.round || round) === round)
-    : [];
-  const completed = chapters.filter(chapter => Boolean(chapter?.[`isReadR${round}`] || chapter?.isRead)).length;
+  const chapters = Array.isArray(day?.chapters) ? day.chapters : [];
+  const completed = chapters.filter(chapter => Boolean(chapter?.[`isReadR${round}`] || (round === 1 && chapter?.isRead))).length;
   return {
     total: chapters.length,
     completed,
@@ -4391,7 +4389,8 @@ function getCurrentInlineReaderTask() {
   if (!plan || !reader?.active) return null;
   const chapter = reader.chaptersList[reader.currentIndex];
   if (!chapter) return null;
-  const round = Number(chapter.round || plan.currentRound || 1);
+  // 日程只有一份（第一遍章節）；使用者實際在讀的遍數看 plan.currentRound。
+  const round = Number(plan.currentRound || 1);
   return { plan, chapter, round };
 }
 
@@ -4439,7 +4438,7 @@ async function autoMarkInlineReaderTaskRead(expectedTargetKey) {
   state.inlineReader.autoMarked = true;
   state.inlineReader.autoMarkInFlight = true;
   task.chapter[readKey] = true;
-  if (task.round === 1) task.chapter.isRead = true;
+  task.chapter.isRead = true;
 
   try {
     calculatePlanProgress();
@@ -4558,8 +4557,7 @@ window.openPlanInlineReader = async function (bookName, chapter, dayNum, round =
   state.inlineReader.chaptersList = chaptersForRound;
   state.inlineReader.currentIndex = chaptersForRound.findIndex(ch =>
     ch.book === bookName &&
-    Number(ch.chapter) === Number(chapter) &&
-    (round == null || Number(ch.round || 1) === Number(round))
+    Number(ch.chapter) === Number(chapter)
   );
   if (state.inlineReader.currentIndex === -1) state.inlineReader.currentIndex = 0;
 
@@ -5256,11 +5254,8 @@ async function renderPlanStatsView() {
     const countCompletedDaysForRound = (rTarget) => {
       return state.activePlan.days.filter(d => {
         if (!d.chapters || d.chapters.length === 0) return false;
-        // For round 1 use isReadR1, round 2 use isReadR2, etc.
-        if (rTarget === 1) return d.chapters.every(ch => ch.isReadR1);
-        if (rTarget === 2) return d.chapters.every(ch => ch.isReadR2);
-        if (rTarget === 3) return d.chapters.every(ch => ch.isReadR3);
-        return d.chapters.every(ch => ch.isRead);
+        // 同一份日程；某一遍完成 = 每章都有 isReadR{rTarget}。
+        return d.chapters.every(ch => Boolean(ch["isReadR" + rTarget] || (rTarget === 1 && ch.isRead)));
       }).length;
     };
 
@@ -7253,13 +7248,7 @@ window.showPlanStatsModal = function () {
     todayTotalCount = todayDayObj.chapters.length;
     todayDayObj.chapters.forEach(ch => {
       const currentRound = plan.currentRound || 1;
-      const taskRound = currentRound;
-      let isRead = false;
-      if (taskRound === 1) isRead = ch.isReadR1 || ch.isRead;
-      else if (taskRound === 2) isRead = ch.isReadR2;
-      else if (taskRound >= 3) isRead = ch.isReadR3;
-      else isRead = ch.isRead;
-      if (isRead) todayReadCount++;
+      if (Boolean(ch["isReadR" + currentRound] || (currentRound === 1 && ch.isRead))) todayReadCount++;
     });
   }
 
@@ -7327,11 +7316,7 @@ window.showPlanStatsModal = function () {
     if (!day.chapters || day.chapters.length === 0) return false;
     return day.chapters.every(ch => {
       const currentRound = plan.currentRound || 1;
-      const taskRound = currentRound;
-      if (taskRound === 1) return ch.isReadR1 || ch.isRead;
-      if (taskRound === 2) return ch.isReadR2;
-      if (taskRound >= 3) return ch.isReadR3;
-      return ch.isRead;
+      return Boolean(ch["isReadR" + currentRound] || (currentRound === 1 && ch.isRead));
     });
   }).length;
 
