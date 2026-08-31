@@ -9,10 +9,11 @@ import {
 } from "../data/schedule-progress.mjs";
 
 export function isChapterReadForRound(ch, round) {
-  // 日程只有一份（第一遍章節）；每一遍都走它，「這遍讀了沒」看 isReadR{round}。
   if (!ch) return false;
-  const r = Number(round) || 1;
-  return Boolean(ch["isReadR" + r] || (r === 1 && ch.isRead));
+  const chRound = ch.round || 1;
+  if (chRound < round) return true;
+  if (chRound > round) return false;
+  return Boolean(ch["isReadR" + round] || ch.isRead);
 }
 
 export function isPlanDayCompletedForRound(day, round) {

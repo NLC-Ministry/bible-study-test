@@ -1337,6 +1337,7 @@ const db = {
                   restWeekdays: dbPlan.rest_weekdays,
                   planId: dbPlan.id,
                   presetKey: key,
+                  currentRound: confirmedRound,
                   currentRoundStartedAt: dbPlan.current_round_started_at || null
                 });
                 planObj.id = dbPlan.id;
@@ -1472,7 +1473,12 @@ const db = {
             if (isMissingProperties && typeof generatePlanObject === 'function') {
               const preset = CHURCH_PLAN_PRESETS[plan.presetKey];
               if (preset) {
-                const freshPlan = generatePlanObject(plan.name, plan.startDate, plan.endDate, plan.target_books || preset.books, plan.presetKey);
+                const freshPlan = generatePlanObject(plan.name, plan.startDate, plan.endDate, plan.target_books || preset.books, plan.presetKey, plan.isFixed !== false && plan.is_fixed !== false, {
+                  readingDaysPerWeek: plan.readingDaysPerWeek || plan.reading_days_per_week,
+                  restWeekdays: plan.restWeekdays || plan.rest_weekdays,
+                  currentRound: plan.currentRound || 1,
+                  currentRoundStartedAt: plan.currentRoundStartedAt || plan.current_round_started_at || null
+                });
                 const readKeys = new Set();
                 plan.days.forEach(d => {
                   if (d.chapters) {
@@ -4268,7 +4274,9 @@ const db = {
             const existingIsFixed = existingPlan.is_fixed !== false;
             newPlanObj = generatePlanObject(planName, existingPlan.start_date, existingPlan.end_date, selectedBooks, presetKey, existingIsFixed, {
               readingDaysPerWeek: existingPlan.reading_days_per_week,
-              restWeekdays: existingPlan.rest_weekdays
+              restWeekdays: existingPlan.rest_weekdays,
+              currentRound: existingPlan.current_round || 1,
+              currentRoundStartedAt: existingPlan.current_round_started_at || null
             });
             newPlanObj.id = existingPlan.id;
             newPlanObj.globalPlanId = existingPlan.global_plan_id || null;
@@ -4406,7 +4414,11 @@ const db = {
       plan.target_books || plan.targetBooks || [],
       plan.presetKey || plan.globalPlanId,
       isFixed,
-      weeklySchedule
+      {
+        ...weeklySchedule,
+        currentRound: plan.currentRound || 1,
+        currentRoundStartedAt: plan.currentRoundStartedAt || plan.current_round_started_at || null
+      }
     );
     const preserved = {
       id: plan.id,

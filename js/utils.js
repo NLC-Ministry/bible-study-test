@@ -2,6 +2,7 @@ import {
   getUserOnboardingBlock
 } from "./member-journey.mjs";
 import { isCampaignStageKind, isCanonicalCampaignStageKind } from "./data/campaign-stage-kinds.mjs";
+import { segmentScheduleDaysForRoundCount } from "./data/current-round-progress.mjs";
 
 // ============================================================
 // utils.js — Shared utilities used across all view controllers
@@ -1552,6 +1553,7 @@ function rebuildPlanSchedule(plan) {
       restWeekdays: plan.restWeekdays || plan.rest_weekdays,
       planId: plan.id,
       presetKey: plan.presetKey,
+      currentRound: plan.currentRound || 1,
       currentRoundStartedAt: plan.currentRoundStartedAt || plan.current_round_started_at || null
     }
   );
@@ -1600,20 +1602,94 @@ function generateChurchCampaignPlanObject(definition, presetKey, scheduleSetting
     scheduleSettings && scheduleSettings.restWeekdays
   );
   const baseDays = window.buildChurchCampaignDays(definition, BIBLE_BOOKS, weeklySchedule.restWeekdays);
-  // 日程永遠是教會原始的一遍（restWeekdays 是使用者個人的休息日設定，保留）。
-  const days = baseDays.map(day => ({
-    ...day,
-    chapters: (day.chapters || []).map(chapter => ({
-      ...chapter,
-      round: 1,
-      key: `${chapter.book}_${chapter.chapter}_1`
-    }))
-  }));
+  // 讀到第幾遍就把 1..N 遍鋪在同一條日曆上：已完成的遍落在實際讀的日期，
+  // 目前這遍從「確認進入」那一刻起鋪到階段迄。由 current_round 驅動（level 已廢）。
+  const roundCount = Math.max(1, Number(scheduleSettings && scheduleSettings.currentRound) || 1);
+  const startDate = new Date(`${definition.startDate}T00:00:00`);
+  const lastOffset = Math.max(0, baseDays.length - 1);
+  const completedRoundCount = Math.max(0, roundCount - 1);
+  const baseChapterKeys = new Set(baseDays.flatMap(day => (day.chapters || []).map(chapter =>
+    `${chapter.book}_${chapter.chapter}`
+  )));
+  const planId = scheduleSettings && scheduleSettings.planId;
+  const planPresetKey = scheduleSettings && scheduleSettings.presetKey || presetKey;
+  const matchingLogs = (state.readingLogs || []).filter(log => {
+    const chapterKey = `${log.book}_${log.chapter}`;
+    if (!baseChapterKeys.has(chapterKey)) return false;
+    const logPlanId = log.plan_id || null;
+    const logPresetKey = log.presetKey || log.preset_key || null;
+    if (planId && logPlanId) return String(logPlanId) === String(planId);
+    if (planPresetKey && logPresetKey) return String(logPresetKey) === String(planPresetKey);
+    return !logPlanId && !logPresetKey;
+  });
+  const nowForCampaignRounds = new Date();
+  const todayLocalStrForCampaignRounds = nowForCampaignRounds.getFullYear() + '-'
+    + String(nowForCampaignRounds.getMonth() + 1).padStart(2, '0') + '-'
+    + String(nowForCampaignRounds.getDate()).padStart(2, '0');
+  const todayOffsetForCampaignRounds = Math.max(0, Math.min(
+    lastOffset,
+    Math.floor((new Date(todayLocalStrForCampaignRounds + "T00:00:00") - startDate) / 86400000)
+  ));
+
+  // 目前正在進行中的那次「確認進入下一輪」，優先用使用者點選當下記錄的
+  // current_round_started_at，而不是下一輪第一次打卡的日期或今天——只有
+  // 舊資料還沒有這個欄位時才退回舊邏輯。
+  const confirmedRoundEntryAtCampaign = scheduleSettings && scheduleSettings.currentRoundStartedAt
+    ? new Date(String(scheduleSettings.currentRoundStartedAt).slice(0, 10) + "T00:00:00")
+    : null;
+  const hasConfirmedRoundEntryCampaign = confirmedRoundEntryAtCampaign && !Number.isNaN(confirmedRoundEntryAtCampaign.getTime());
+  const confirmedRoundEntryOffsetCampaign = hasConfirmedRoundEntryCampaign
+    ? Math.max(0, Math.min(lastOffset, Math.floor((confirmedRoundEntryAtCampaign - startDate) / 86400000)))
+    : null;
+
+  const completedChapterOffsets = [];
+  const roundEndOffsets = [];
+  for (let round = 1; round <= completedRoundCount; round += 1) {
+    const offsets = new Map();
+    matchingLogs.filter(log => Number(log.round || 1) === round).forEach(log => {
+      const readDate = new Date(String(log.read_at || log.readAt || "").slice(0, 10) + "T00:00:00");
+      if (Number.isNaN(readDate.getTime())) return;
+      const offset = Math.max(0, Math.min(lastOffset, Math.floor((readDate - startDate) / 86400000)));
+      offsets.set(`${log.book}_${log.chapter}`, offset);
+    });
+    completedChapterOffsets.push(offsets);
+
+    const prevBoundary = roundEndOffsets.length > 0 ? roundEndOffsets[roundEndOffsets.length - 1] : -1;
+    const isCurrentActiveTransitionCampaign = (round + 1) === roundCount;
+    let boundary;
+    if (isCurrentActiveTransitionCampaign && hasConfirmedRoundEntryCampaign) {
+      boundary = confirmedRoundEntryOffsetCampaign - 1;
+    } else {
+      const nextRoundOffsets = matchingLogs
+        .filter(log => Number(log.round || 1) === round + 1)
+        .map(log => {
+          const readDate = new Date(String(log.read_at || log.readAt || "").slice(0, 10) + "T00:00:00");
+          if (Number.isNaN(readDate.getTime())) return null;
+          return Math.max(0, Math.min(lastOffset, Math.floor((readDate - startDate) / 86400000)));
+        })
+        .filter(offset => offset !== null);
+      boundary = nextRoundOffsets.length > 0
+        ? Math.min(...nextRoundOffsets) - 1
+        : todayOffsetForCampaignRounds - 1;
+    }
+    roundEndOffsets.push(Math.max(prevBoundary + 1, boundary));
+  }
+  const days = segmentScheduleDaysForRoundCount(
+    baseDays,
+    roundCount,
+    roundEndOffsets,
+    completedChapterOffsets
+  );
+  days.forEach(day => {
+    day.chapters.forEach(chapter => {
+      chapter.key = chapter.book + "_" + chapter.chapter + "_" + (chapter.round || 1);
+    });
+  });
   const targetBooks = Array.from(new Set(definition.segments.flatMap(segment =>
     segment.readings.map(reading => reading.book)
   )));
   const currentRoundTotalChapters = baseDays.reduce((sum, day) => sum + day.chapters.length, 0);
-  const totalChapters = currentRoundTotalChapters;
+  const totalChapters = currentRoundTotalChapters * roundCount;
   return {
     name: definition.name,
     description: definition.description || "",
@@ -1628,7 +1704,7 @@ function generateChurchCampaignPlanObject(definition, presetKey, scheduleSetting
     presetKey,
     target_books: targetBooks,
     targetBooks,
-    currentRound: 1,
+    currentRound: roundCount,
     isFixed: true,
     is_fixed: true,
     planKind: definition.planKind || (definition.stageNo ? "church_campaign_stage" : "church_campaign"),
@@ -1661,7 +1737,9 @@ function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey =
       {
         ...weeklySchedule,
         planId: scheduleSettings && scheduleSettings.planId,
-        presetKey: scheduleSettings && scheduleSettings.presetKey || presetKey
+        presetKey: scheduleSettings && scheduleSettings.presetKey || presetKey,
+        currentRound: scheduleSettings && scheduleSettings.currentRound,
+        currentRoundStartedAt: scheduleSettings && scheduleSettings.currentRoundStartedAt
       }
     );
   }
@@ -1798,20 +1876,70 @@ function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey =
     }
   });
 
-  // 一遍，平均分配到起訖範圍內的非休息日。
+  // 讀到第幾遍就把 1..N 遍鋪在同一條日曆上（level 已廢，用 current_round 驅動）。
+  const maxRounds = Math.max(1, Number(scheduleSettings && scheduleSettings.currentRound) || 1);
+  const roundCompletionDays = []; // index 0 = round 1 結束日, ... (共 maxRounds-1 個)
+
+  // 下一遍的排程起點，優先用「使用者點選確認進入下一遍」當下記錄的
+  // current_round_started_at；沒有就退回「今天」。
   start.setHours(0, 0, 0, 0);
-  const roundChapters = toFirstRoundChapters(allChapters);
-  const dailyChapters = Array.from({ length: totalDays }, () => []);
-  const readingOffsets = Array.from({ length: totalDays }, (_, index) => index).filter(dayOffset => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + dayOffset);
-    return !restWeekdaySet.has(date.getDay());
-  });
-  if (readingOffsets.length > 0) {
-    const rDaily = distributeChaptersAcrossDays(roundChapters, readingOffsets.length);
-    readingOffsets.forEach((dayOffset, i) => {
-      dailyChapters[dayOffset] = dailyChapters[dayOffset].concat(rDaily[i]);
+  const todayZeroForRounds = new Date();
+  todayZeroForRounds.setHours(0, 0, 0, 0);
+  const todayOffsetForRounds = Math.max(1, Math.floor((todayZeroForRounds - start) / (1000 * 60 * 60 * 24)) + 1);
+  const confirmedRoundEntryAt = scheduleSettings && scheduleSettings.currentRoundStartedAt
+    ? new Date(String(scheduleSettings.currentRoundStartedAt).slice(0, 10) + "T00:00:00")
+    : null;
+  const hasConfirmedRoundEntry = confirmedRoundEntryAt && !Number.isNaN(confirmedRoundEntryAt.getTime());
+
+  for (let r = 1; r < maxRounds; r++) {
+    const isCurrentActiveTransition = (r + 1) === maxRounds;
+    const prevD = r > 1 ? roundCompletionDays[r - 2] : 0;
+    let d_r = null;
+    if (isCurrentActiveTransition && hasConfirmedRoundEntry) {
+      d_r = Math.max(1, Math.floor((confirmedRoundEntryAt - start) / (1000 * 60 * 60 * 24)) + 1);
+      d_r = Math.max(d_r, prevD + 1);
+    } else {
+      const nextRoundLogs = (state.readingLogs || []).filter(l => (l.round || 1) === r + 1);
+      if (nextRoundLogs.length > 0) {
+        const minDateStr = nextRoundLogs.reduce((min, log) => log.read_at < min ? log.read_at : min, nextRoundLogs[0].read_at);
+        const minDate = new Date(minDateStr.substring(0, 10));
+        minDate.setHours(0, 0, 0, 0);
+        d_r = Math.max(1, Math.floor((minDate - start) / (1000 * 60 * 60 * 24)) + 1);
+        d_r = Math.max(d_r, prevD + 1);
+      } else {
+        d_r = Math.max(todayOffsetForRounds, prevD + 1);
+      }
+    }
+    d_r = Math.min(d_r, totalDays - (maxRounds - r));
+    roundCompletionDays.push(d_r);
+  }
+
+  let dailyChapters = Array.from({ length: totalDays }, () => []);
+  const allEligibleOffsets = Array.from({ length: totalDays }, (_, index) => index)
+    .filter(dayOffset => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + dayOffset);
+      return !restWeekdaySet.has(date.getDay());
     });
+
+  for (let r = 1; r <= maxRounds; r++) {
+    const roundChapters = allChapters.map(ch => ({ ...ch, round: r }));
+    const roundStartDay = r > 1 ? roundCompletionDays[r - 2] : 0;
+    const roundEndDay = r < maxRounds ? roundCompletionDays[r - 1] : totalDays;
+    const calendarOffsets = Array.from(
+      { length: Math.max(0, roundEndDay - roundStartDay) },
+      (_, index) => roundStartDay + index
+    );
+    const eligibleOffsets = calendarOffsets.filter(dayOffset => allEligibleOffsets.includes(dayOffset));
+    const readingOffsets = eligibleOffsets.length > 0 ? eligibleOffsets : allEligibleOffsets;
+
+    if (readingOffsets.length > 0) {
+      const rDaily = distributeChaptersAcrossDays(roundChapters, readingOffsets.length);
+      for (let i = 0; i < readingOffsets.length; i++) {
+        const dayOffset = readingOffsets[i];
+        dailyChapters[dayOffset] = dailyChapters[dayOffset].concat(rDaily[i]);
+      }
+    }
   }
 
   const days = dailyChapters.map((chapters, index) => {
@@ -1841,13 +1969,13 @@ function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey =
     startDate,
     endDate,
     totalDays,
-    totalChapters: allChapters.length,
+    totalChapters: allChapters.length * maxRounds,
     completedChapters: 0,
     progress: 0,
     days,
     presetKey,
     target_books: selectedBooks,
-    currentRound: 1,
+    currentRound: maxRounds,
     isFixed,
     is_fixed: isFixed,
     readingDaysPerWeek: weeklySchedule.readingDaysPerWeek,
@@ -1962,6 +2090,15 @@ function calculateAllPlansProgress() {
     }
     if (!plan.days || !Array.isArray(plan.days)) return;
 
+    // 目前這一遍的章節還沒鋪進日程（例如剛進下一遍）→ 依 current_round 重排一次，
+    // 讓 1..N 遍鋪在同一條日曆上（已完成的遍在過去、這一遍從今天/確認點起）。
+    const targetRounds = plan.currentRound || 1;
+    const hasMatchingRoundSchedule = plan.days.some(day => day && day.chapters && day.chapters.some(ch => (ch.round || 1) === targetRounds));
+    if (!hasMatchingRoundSchedule && targetRounds > 1) {
+      rebuildPlanSchedule(plan);
+    }
+    if (!plan.days || !Array.isArray(plan.days)) return;
+
     // 💡 效能關鍵升級：建立 logSet 雜湊比對表 (O(1))，代替巨量迴圈重複比對
     const logSet = new Set();
     if (Array.isArray(state.readingLogs)) {
@@ -1998,9 +2135,8 @@ function calculateAllPlansProgress() {
           ch[`isReadR${r}`] = checkRoundLog(r);
         }
 
-        // 日程只有一份（第一遍的章節）；每一遍都走同一份，「這一章這一遍讀了沒」
-        // 一律看 isReadR{目前遍數}。
-        const isRead = Boolean(ch["isReadR" + (plan.currentRound || 1)]);
+        const targetRound = ch.round || plan.currentRound || 1;
+        const isRead = Boolean(ch["isReadR" + targetRound]);
         ch.isRead = isRead;
         if (isRead) completed++;
       });
@@ -2016,13 +2152,12 @@ function calculateAllPlansProgress() {
     plan.firstRoundTotalChapters = firstRoundTotalChapters;
     plan.isPlanCompleted = firstRoundTotalChapters > 0 && firstRoundCompletedChapters >= firstRoundTotalChapters;
 
-    // 每一遍都走同一份日程 → 「本遍」總數 = 日程章數；完成 = 有 isReadR{目前遍數} 的章。
-    const currentRound = plan.currentRound || 1;
+    // 本遍的章節就是日程上 round === current_round 的那些。
     const currentRoundTotal = plan.days.reduce((sum, day) => {
-      return sum + ((day.chapters || []).length);
+      return sum + ((day.chapters || []).filter(ch => (ch.round || 1) === plan.currentRound).length);
     }, 0) || plan.totalChapters;
     const currentRoundCompleted = plan.days.reduce((sum, day) => {
-      return sum + ((day.chapters || []).filter(ch => Boolean(ch["isReadR" + currentRound])).length);
+      return sum + ((day.chapters || []).filter(ch => (ch.round || 1) === plan.currentRound && Boolean(ch["isReadR" + plan.currentRound])).length);
     }, 0);
 
     plan.currentRoundTotalChapters = currentRoundTotal;
@@ -2036,12 +2171,11 @@ function calculateAllPlansProgress() {
     if (!plan.isPlanCompleted) plan.upgradePromptHandled = false;
 
     // Track second-round completion for the round-2 → round-3 upgrade prompt
-    // （同一份日程；第二遍完成 = 每一章都有 isReadR2）
     const secondRoundChapters = plan.days.reduce((sum, day) => {
-      return sum + ((day.chapters || []).length);
+      return sum + ((day.chapters || []).filter(ch => (ch.round || 1) === 2).length);
     }, 0);
     const secondRoundCompleted = plan.days.reduce((sum, day) => {
-      return sum + ((day.chapters || []).filter(ch => ch.isReadR2).length);
+      return sum + ((day.chapters || []).filter(ch => (ch.round || 1) === 2 && ch.isReadR2).length);
     }, 0);
     plan.isRound2Completed = secondRoundChapters > 0 && secondRoundCompleted >= secondRoundChapters;
     if (!plan.isRound2Completed) plan.round2UpgradePromptHandled = false;
