@@ -211,7 +211,7 @@ BEGIN
         ),
         updated_at = NOW()
       WHERE id = row_rec.id;
-      RAISE NOTICE '[0140] 已回填 cohort 列 % (%%)', row_rec.id, row_rec.name;
+      RAISE NOTICE '[0140] 已回填 cohort 列 % (%)', row_rec.id, row_rec.name;
     ELSE
       RAISE WARNING '[0140] cohort 列 % (stageNo=%) 無法在 SQL 端回填，請從後台「延後大區梯次」重新送出一次。',
         row_rec.id, row_rec.rules->>'stageNo';

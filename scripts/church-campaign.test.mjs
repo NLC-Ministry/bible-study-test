@@ -149,6 +149,22 @@ describe("versioned church Bible campaign", () => {
       .toBe(new Set(stage2.segments.flatMap(s => s.readings.map(r => r.book))).size);
   });
 
+  it("scopes plan progress to the plan — an 8月正辦 read must not count toward a 9月延後梯次", () => {
+    // calculateAllPlansProgress matches reading_logs by plan_id / global_plan_id /
+    // presetKey only. The legacy fallback is for logs with NO attribution at all,
+    // never a blanket "any log for this chapter" wildcard (which would merge the
+    // canonical stage and its region cohort — same books, different windows).
+    const utils = readFileSync(join(root, "js", "utils.js"), "utf8");
+    const block = utils.slice(
+      utils.indexOf("const logSet = new Set();"),
+      utils.indexOf("plan.completedChapters = completed;")
+    );
+    expect(block).not.toMatch(/logSet\.add\(`\*_/);
+    expect(block).not.toMatch(/logSet\.has\(`\*_/);
+    expect(block).toContain("__unattributed__");
+    expect(block).toContain("!l.plan_id && !l.global_plan_id && !l.presetKey && !l.preset_key");
+  });
+
   it("removes the old monthly selection flow while preserving compatibility hiding", () => {
     const state = readFileSync(join(root, "js", "state.js"), "utf8");
     const plan = readFileSync(join(root, "js", "modules", "plan.js"), "utf8");

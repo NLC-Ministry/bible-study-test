@@ -2119,6 +2119,9 @@ function calculateAllPlansProgress() {
     if (!plan.days || !Array.isArray(plan.days)) return;
 
     // 💡 效能關鍵升級：建立 logSet 雜湊比對表 (O(1))，代替巨量迴圈重複比對
+    // 進度嚴格以「這個計畫」為範圍比對（plan_id / global_plan_id / presetKey）。
+    // 「*_」通配只給『完全沒有歸屬』的舊日誌當相容退路——不能讓別的計畫（例如
+    // 8 月正辦階段）的同章打卡混進 9 月延後梯次，兩者是獨立計畫。
     const logSet = new Set();
     if (Array.isArray(state.readingLogs)) {
       for (let i = 0; i < state.readingLogs.length; i++) {
@@ -2130,7 +2133,9 @@ function calculateAllPlansProgress() {
         if (l.global_plan_id) logSet.add(`${l.global_plan_id}_${r}_${b}_${c}`);
         if (l.presetKey) logSet.add(`${l.presetKey}_${r}_${b}_${c}`);
         if (l.preset_key) logSet.add(`${l.preset_key}_${r}_${b}_${c}`);
-        logSet.add(`*_${r}_${b}_${c}`);
+        if (!l.plan_id && !l.global_plan_id && !l.presetKey && !l.preset_key) {
+          logSet.add(`__unattributed___${r}_${b}_${c}`);
+        }
       }
     }
 
@@ -2146,7 +2151,7 @@ function calculateAllPlansProgress() {
           return (pId && logSet.has(`${pId}_${rTarget}_${ch.book}_${ch.chapter}`)) ||
                  (pGlobalId && logSet.has(`${pGlobalId}_${rTarget}_${ch.book}_${ch.chapter}`)) ||
                  (pKey && logSet.has(`${pKey}_${rTarget}_${ch.book}_${ch.chapter}`)) ||
-                 logSet.has(`*_${rTarget}_${ch.book}_${ch.chapter}`);
+                 logSet.has(`__unattributed___${rTarget}_${ch.book}_${ch.chapter}`);
         };
 
         const totalRounds = Math.max(plan.currentRound || 1, maxReadRound || 1, 3);
