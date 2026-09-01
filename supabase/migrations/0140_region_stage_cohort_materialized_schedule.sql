@@ -1,39 +1,40 @@
 -- ============================================================================
 -- 0140_region_stage_cohort_materialized_schedule.sql
--- 「延後大區梯次」修正：把壓縮後的排程 materialize 進 global_plans.rules。
+-- （檔名沿用，實際內容：延後大區梯次改走「普通固定日期計畫 + 沿用獎勵」）
+-- 「延後大區梯次」修正：梯次是「普通固定日期計畫 + 沿用獎勵」。
 --
--- 事故：0128 的 create_region_stage_cohort 複製 src.rules 時，rules 裡沒有
---   stages[] / segments[] 陣列（那些活在前端 CHURCH_CAMPAIGN.segments）。
---   前端 mapGlobalPlanRecord 因此退回 getChurchCampaignStageDefinition(N)——
---   canonical 定義的日期還停在原始月份（例：階段 1 = 8/1~8/31、創世記），
---   plan.days 整個生在錯的月份，桃園梯次 9 月每天都「補讀與休息日」、0/0。
+-- 設計定案：延後大區梯次 = 一個獨立的固定日期計畫（自己的名稱 / 起訖 / 經卷），
+--   排程走一般路徑（target_books 平均鋪進 [start,end]）。**唯一**跟正式階段共用
+--   的是「完成給哪個獎」——靠 rules.stageNo + rules.cohortSourceStageNo 帶著。
+--   不需要 campaignDefinition / stages / segments materialize。
 --
--- 修法（決策：梯次 = 一個日曆月，把來源階段整份經卷壓進 [start,end]、
---   examDate 清 null 由領袖日後自訂、每列獨立算）：
---   1. create_region_stage_cohort 新增 p_cohort_definition JSONB——前端用
---      buildCohortStageDefinition(sourceStage, start, end) 算好（單一 segment
---      涵蓋整個視窗、stages[0] 起訖 = 視窗、examDate = null），後端只驗證 +
---      存進 rules，並以它的起訖為 row 的 start_date / end_date。
---   2. 回填現有那一列（桃園｜階段 1｜創世記 1-50）的 rules.stages / rules.segments。
---   3. 收尾斷言：任何 cohort 列若 rules 仍缺 segments → migration 失敗。
+-- 事故根因：
+--   1. 0128 建 cohort 列時沒有明確寫 rules.stageNo（只寫 cohortSourceStageNo），
+--      前端舊版只讀 rules.stageNo → 推不出階段序 → 發獎失效 + 排程走錯路。
+--   2. 若來源正式階段列的 target_books 是空的，cohort 列也空 → 一般排程路徑
+--      沒有經卷可鋪 → 每天都空。
 --
--- 部署：Supabase SQL editor 執行（或 supabase db push）。
---   前端（buildCohortStageDefinition + mapGlobalPlanRecord 保底）要先上線；
---   本檔後上。nlc-data 不用改（create_region_stage_cohort 已在 allowlist，
---   p_cohort_definition 走 body.args 直接轉發，p_actor_id 仍自動注入）。
+-- 本檔：
+--   A. 還原 create_region_stage_cohort 為 0128 的簽章（若曾被改成帶 JSONB 版），
+--      並在 new_rules 明確補上 stageNo；target_books 一律用來源階段列的
+--      （空的話由前端退回 getChurchCampaignStageDefinition(N).books，不在此處理）。
+--   B. 回填現有 cohort 列：補 rules.stageNo，target_books 空的話從來源階段列補。
+--
+-- 部署：Supabase SQL editor 執行（或 supabase db push）。前端（db.js /
+--   church_campaign.js / utils.js / plan.js）要一起上。nlc-data 不用改。
 -- ============================================================================
 
--- 舊 5+1 參數簽章要先 DROP，否則新的 5+2 參數會變成 overload、命名參數呼叫時 ambiguous。
+-- 若之前跑過帶 JSONB 參數的版本，先 DROP 掉那個 overload，回到 0128 簽章。
+DROP FUNCTION IF EXISTS public.create_region_stage_cohort(TEXT, INTEGER, DATE, DATE, BOOLEAN, JSONB, UUID);
 DROP FUNCTION IF EXISTS public.create_region_stage_cohort(TEXT, INTEGER, DATE, DATE, BOOLEAN, UUID);
 
 CREATE OR REPLACE FUNCTION public.create_region_stage_cohort(
-  p_great_region      TEXT,
-  p_source_stage_no   INTEGER,
-  p_start_date        DATE,
-  p_end_date          DATE,
-  p_is_hidden         BOOLEAN DEFAULT TRUE,
-  p_cohort_definition JSONB   DEFAULT NULL,
-  p_actor_id          UUID    DEFAULT NULL
+  p_great_region    TEXT,
+  p_source_stage_no INTEGER,
+  p_start_date      DATE,
+  p_end_date        DATE,
+  p_is_hidden       BOOLEAN DEFAULT TRUE,
+  p_actor_id        UUID DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -49,7 +50,6 @@ DECLARE
   dst_id     UUID;
   dst_name   TEXT;
   preset     TEXT := 'church_stage_cohort_' || lpad(COALESCE(p_source_stage_no, 0)::TEXT, 2, '0');
-  def        JSONB := p_cohort_definition;
   new_rules  JSONB;
   did_create BOOLEAN := FALSE;
 BEGIN
@@ -74,23 +74,6 @@ BEGIN
     RAISE EXCEPTION 'invalid_date_range';
   END IF;
 
-  -- 排程定義必須由前端 buildCohortStageDefinition 算好帶進來。
-  IF def IS NULL OR jsonb_typeof(def) <> 'object' THEN
-    RAISE EXCEPTION 'cohort_definition_required';
-  END IF;
-  IF jsonb_typeof(def->'stages') <> 'array' OR jsonb_array_length(def->'stages') < 1
-     OR jsonb_typeof(def->'segments') <> 'array' OR jsonb_array_length(def->'segments') < 1 THEN
-    RAISE EXCEPTION 'cohort_definition_malformed';
-  END IF;
-  IF (def->>'startDate') <> p_start_date::TEXT OR (def->>'endDate') <> p_end_date::TEXT THEN
-    RAISE EXCEPTION 'cohort_definition_window_mismatch: def % ~ %, args % ~ %',
-      def->>'startDate', def->>'endDate', p_start_date, p_end_date;
-  END IF;
-  IF NULLIF(def->'examDate', 'null'::jsonb) IS NOT NULL
-     OR NULLIF(def->'stages'->0->'examDate', 'null'::jsonb) IS NOT NULL THEN
-    RAISE EXCEPTION 'cohort_definition_exam_date_must_be_null';
-  END IF;
-
   src_id := format('00000000-0000-0000-c026-%s', lpad(p_source_stage_no::TEXT, 12, '0'))::UUID;
   SELECT * INTO src FROM public.global_plans
   WHERE id = src_id AND plan_kind = 'church_campaign_stage';
@@ -100,16 +83,19 @@ BEGIN
 
   dst_name := src.name || '（' || region || '延後梯次）';
 
-  -- rules = 前端算好的完整壓縮定義（含 stages/segments/startDate/endDate/examDate=null）
-  --         疊上梯次專屬欄位。stageNo 明確保留（發獎 + 冪等 key 都靠它）。
-  new_rules := (def - 'id') || jsonb_build_object(
+  -- 沿用來源階段的 rules，明確補上 stageNo / cohortSourceStageNo（發獎靠這兩個），
+  -- 疊上梯次專屬欄位。不含 stages / segments —— 梯次不走 campaign 排程機制。
+  new_rules := COALESCE(src.rules, '{}'::jsonb) || jsonb_build_object(
     'planKind',            'church_campaign_stage_cohort',
     'presetKey',           preset,
     'name',                dst_name,
+    'startDate',           p_start_date::TEXT,
+    'endDate',             p_end_date::TEXT,
     'stageNo',             p_source_stage_no,
     'cohortRegion',        region,
     'cohortSourceStageNo', p_source_stage_no
   );
+  new_rules := (new_rules - 'id') - 'stages' - 'segments';
 
   SELECT id INTO dst_id FROM public.global_plans
   WHERE plan_kind = 'church_campaign_stage_cohort'
@@ -160,74 +146,71 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.create_region_stage_cohort(TEXT, INTEGER, DATE, DATE, BOOLEAN, JSONB, UUID) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.create_region_stage_cohort(TEXT, INTEGER, DATE, DATE, BOOLEAN, JSONB, UUID) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.create_region_stage_cohort(TEXT, INTEGER, DATE, DATE, BOOLEAN, UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.create_region_stage_cohort(TEXT, INTEGER, DATE, DATE, BOOLEAN, UUID) TO authenticated, service_role;
 
 
--- ── 回填：現有沒有 materialize segments 的 cohort 列 ─────────────────────────
--- 目前正式站只有「桃園｜階段 1」一列。階段 1 的排程 = 創世記 1-50（Genesis 剛好
--- 50 章），單一 segment 涵蓋該列自己的 [start_date, end_date]、examDate = null。
--- 其他 stageNo 的 cohort 列（若有）無法在 SQL 端安全重建經卷清單 → 留給操作者
--- 從後台「延後大區梯次」重新送出一次（前端已會帶 p_cohort_definition）。
+-- ── 回填現有 cohort 列 ────────────────────────────────────────────────────
+-- 1) rules.stageNo：缺的話從 cohortSourceStageNo 補（前端讀這個推階段序 → 發獎）。
+-- 2) target_books：空的話從來源正式階段列補（前端排程靠它；空也可，前端會退回
+--    getChurchCampaignStageDefinition(N).books，但盡量在 DB 補齊比較乾淨）。
 DO $backfill$
 DECLARE
-  row_rec   RECORD;
-  seg       JSONB;
-  stg       JSONB;
-  seg_label TEXT;
+  row_rec    RECORD;
+  src_books  TEXT[];
+  fixed_no   INTEGER;
+  n_updated  INTEGER := 0;
 BEGIN
   FOR row_rec IN
-    SELECT id, name, start_date, end_date, rules
-    FROM public.global_plans
-    WHERE plan_kind = 'church_campaign_stage_cohort'
-      AND (jsonb_typeof(rules->'segments') <> 'array'
-           OR jsonb_array_length(COALESCE(rules->'segments', '[]'::jsonb)) < 1)
+    SELECT gp.id, gp.rules, gp.target_books
+    FROM public.global_plans gp
+    WHERE gp.plan_kind = 'church_campaign_stage_cohort'
   LOOP
-    IF (row_rec.rules->>'stageNo')::INTEGER = 1 THEN
-      -- 「每月／階段章節安排」標題：同年同月 → 「2026年9月」，跨月 → 起訖範圍
-      IF date_trunc('month', row_rec.start_date) = date_trunc('month', row_rec.end_date) THEN
-        seg_label := to_char(row_rec.start_date, 'FMYYYY"年"FMMM"月"');
-      ELSE
-        seg_label := row_rec.start_date::TEXT || ' ~ ' || row_rec.end_date::TEXT;
-      END IF;
-      seg := jsonb_build_array(jsonb_build_object(
-        'stageNo',   1,
-        'roundNo',   1,
-        'label',     seg_label,
-        'startDate', row_rec.start_date::TEXT,
-        'endDate',   row_rec.end_date::TEXT,
-        'readings',  jsonb_build_array(jsonb_build_object('book', '創世記', 'from', 1, 'to', 50))
-      ));
-      stg := jsonb_build_array(jsonb_build_object(
-        'stageNo',   1,
-        'roundNo',   1,
-        'phase',     'warmup',
-        'name',      '第一輪熱身賽',
-        'startDate', row_rec.start_date::TEXT,
-        'endDate',   row_rec.end_date::TEXT,
-        'awardName', '磐石獎',
-        'examDate',  NULL
-      ));
-      UPDATE public.global_plans SET
-        rules = row_rec.rules || jsonb_build_object(
-          'startDate', row_rec.start_date::TEXT,
-          'endDate',   row_rec.end_date::TEXT,
-          'examDate',  NULL,
-          'stages',    stg,
-          'segments',  seg
-        ),
-        updated_at = NOW()
-      WHERE id = row_rec.id;
-      RAISE NOTICE '[0140] 已回填 cohort 列 % (%)', row_rec.id, row_rec.name;
-    ELSE
-      RAISE WARNING '[0140] cohort 列 % (stageNo=%) 無法在 SQL 端回填，請從後台「延後大區梯次」重新送出一次。',
-        row_rec.id, row_rec.rules->>'stageNo';
+    fixed_no := COALESCE(
+      NULLIF(row_rec.rules->>'stageNo', '')::INTEGER,
+      NULLIF(row_rec.rules->>'cohortSourceStageNo', '')::INTEGER
+    );
+
+    IF fixed_no IS NULL THEN
+      RAISE WARNING '[0140] cohort 列 % 沒有 stageNo / cohortSourceStageNo，無法回填，請從後台重新送出一次。', row_rec.id;
+      CONTINUE;
     END IF;
+
+    SELECT sp.target_books INTO src_books
+    FROM public.global_plans sp
+    WHERE sp.id = format('00000000-0000-0000-c026-%s', lpad(fixed_no::TEXT, 12, '0'))::UUID;
+
+    UPDATE public.global_plans SET
+      rules = (row_rec.rules - 'stages' - 'segments')
+              || jsonb_build_object('stageNo', fixed_no, 'cohortSourceStageNo', fixed_no),
+      target_books = CASE
+        WHEN row_rec.target_books IS NULL OR cardinality(row_rec.target_books) = 0
+        THEN src_books
+        ELSE row_rec.target_books
+      END,
+      updated_at = NOW()
+    WHERE id = row_rec.id;
+
+    -- enrollment 也補 target_books（一般排程路徑靠它）
+    UPDATE public.reading_plans rp SET
+      target_books = CASE
+        WHEN rp.target_books IS NULL OR cardinality(rp.target_books) = 0
+        THEN src_books
+        ELSE rp.target_books
+      END,
+      updated_at = NOW()
+    WHERE rp.global_plan_id = row_rec.id
+      AND (rp.target_books IS NULL OR cardinality(rp.target_books) = 0)
+      AND src_books IS NOT NULL;
+
+    n_updated := n_updated + 1;
+    RAISE NOTICE '[0140] 回填 cohort 列 % (stageNo=%)', row_rec.id, fixed_no;
   END LOOP;
+  RAISE NOTICE '[0140] 共回填 % 列 cohort 計畫。', n_updated;
 END;
 $backfill$;
 
--- ── 收尾斷言：任何 stageNo=1 的 cohort 列若仍缺 segments → migration 失敗 ──
+-- ── 收尾斷言：每個 cohort 列都要有 rules.stageNo（發獎的依據）──────────────
 DO $assert$
 DECLARE
   bad_count INTEGER;
@@ -235,11 +218,9 @@ BEGIN
   SELECT COUNT(*) INTO bad_count
   FROM public.global_plans
   WHERE plan_kind = 'church_campaign_stage_cohort'
-    AND (rules->>'stageNo')::INTEGER = 1
-    AND (jsonb_typeof(rules->'segments') <> 'array'
-         OR jsonb_array_length(COALESCE(rules->'segments', '[]'::jsonb)) < 1);
+    AND NULLIF(rules->>'stageNo', '') IS NULL;
   IF bad_count > 0 THEN
-    RAISE EXCEPTION '[0140] 仍有 % 列 stageNo=1 的 cohort 計畫沒有 materialize segments。', bad_count;
+    RAISE EXCEPTION '[0140] 仍有 % 列 cohort 計畫沒有 rules.stageNo。', bad_count;
   END IF;
 END;
 $assert$;

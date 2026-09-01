@@ -39,21 +39,23 @@
 1. **0122**：`global_plans_plan_kind_check` 加 `'church_campaign_stage_cohort'`；`global_plans` 加 `audience_regions TEXT[]`。
 2. **0123**：`enforce_reading_log_stage_progress_open`、`assert_campaign_stage_open` CREATE OR REPLACE——把 `plan_kind = 'church_campaign_stage'` 的判斷改成 `IN ('church_campaign_stage', 'church_campaign_stage_cohort')`（`is_hidden` / `start_date` 邏輯不變）。
 3. **0124**：`create_region_stage_cohort(p_great_region, p_source_stage_no, p_start_date, p_end_date, p_actor_id)`——admin/pastor；找對應正式階段複製內容，插一列 cohort `global_plans`（`audience_regions = {p_great_region}`、`is_hidden` 可帶參數、`rules.stageNo = p_source_stage_no`）；以 `(audience_regions, stageNo)` 冪等（重跑就 UPDATE 日期）。回 `{planId}`。
-4. **0140（修正）**：0124 複製 `src.rules` 時 **`rules` 裡沒有 `stages[]` / `segments[]`**（排程活在前端 `CHURCH_CAMPAIGN.segments`），前端因此退回 canonical 定義的**原始月份**排程 → cohort 每天「補讀與休息日」、0/0。修法：
-   - **排程語意：一個日曆月。** 梯次 = 把來源階段的**整份經卷清單**壓進梯次自訂的 `[start_date, end_date]` 視窗（收斂成**單一 segment 涵蓋整個視窗**，由 `buildChurchCampaignDays` 平均鋪、跳週休）。**不逐段平移日期**。
-   - **`examDate` 一律清成 `null`**——日後由該大區領袖自行訂（另做小 RPC）。
-   - **每個梯次列各自算**，不串接、不累加；delta 只看自己這一列。
-   - `create_region_stage_cohort` 新增 `p_cohort_definition JSONB`——前端 `buildCohortStageDefinition(sourceStage, start, end)` 算好帶進來，後端只**驗證**（有 `stages`/`segments` 陣列、`startDate`/`endDate` = 參數、`examDate` 為 null）+ 存進 `rules`，並以它為 row 的 `start_date` / `end_date`。舊 5+1 參數簽章 `DROP`（避免 overload ambiguous）。
-   - migration 內回填現有那一列（桃園｜階段 1｜創世記 1-50），收尾斷言任何 `stageNo=1` 的 cohort 列都有 materialize 的 `segments`。
+4. **0140（修正・定案）**：**延後大區梯次 = 「普通固定日期計畫 + 沿用獎勵」，其他全部獨立。**
+   - **不掛 `campaignDefinition`、不走 campaign 排程機制。** 它就是一個固定日期計畫：自己的名稱 / 起訖 / 經卷，排程走 `generatePlanObject` 一般路徑（`target_books` 平均鋪進 `[start_date, end_date]`、跳週休）。
+   - **唯一共用的是「完成給哪個獎」**：靠 `rules.stageNo` + `rules.cohortSourceStageNo`（發獎 `getCampaignStageCompletedRounds` 靠 `plan.stageNo`）。`awardName` / `roundNo` / `parentCampaignId` 從來源正式階段帶。
+   - **`examDate` 建立時為 `null`**——日後由該大區領袖自訂（另做小 RPC）。
+   - **落後/超前/補讀基準** = 該梯次自己的 `plan.days`（`getCanonicalStageScheduleDays` 在 `campaignDefinition` 為 null 時就回 `plan.days`）。
+   - **每個梯次列各自算**，不串接。
+   - 事故根因：0128 沒明確寫 `rules.stageNo`（只寫 `cohortSourceStageNo`），前端舊版只讀 `rules.stageNo` → 推不出階段序 → 發獎失效 + 排程走錯路；且來源階段列 `target_books` 若空，梯次也空 → 一般排程沒經卷可鋪。
+   - 0140：RPC 還原成 0128 簽章（若曾被改成帶 JSONB 版就 DROP），`new_rules` 明確補 `stageNo`、剔除 `stages`/`segments`；回填現有 cohort 列（補 `rules.stageNo`、`target_books` 空的話從來源階段補，enrollment 也補）；收尾斷言每個 cohort 列都有 `rules.stageNo`。
 
 ### nlc-data
 
 - `create_region_stage_cohort` 進 allowlist（admin set）。`global_plans` 讀取已允許。**重部署。**
-- **0140 不用再動 nlc-data**：`p_cohort_definition` 走 `body.args` 直接轉發，`p_actor_id` 仍自動注入（`index.ts` 既有清單已含 `create_region_stage_cohort`）。
+- **0140 不用動 nlc-data**：RPC 簽章回到 0128 的（`p_actor_id` 仍在既有注入清單）。
 
 ### 前端
 
-0. **排程定義（0140）**：`js/data/church_campaign.js` 的 `buildCohortStageDefinition(sourceStageDef, startISO, endISO)`——純函式，把來源階段壓進視窗、收斂單一 segment、`examDate` 清 null。`js/db.js` `mapGlobalPlanRecord` 的 cohort 分支：`rules` 已 materialize（含 `stages`/`segments` 且起訖對得上這一列）→ 直接用；否則前端即時 `buildCohortStageDefinition` 保底 + `console.error` 提醒該列尚未 materialize。`generatePlanObject` / `generateChurchCampaignPlanObject` 對「傳入視窗 ≠ campaignDefinition 視窗」「排程建完沒有任何一天有章」都 `console.error`（把靜默失敗變大聲）。`plan.js` 每日清單：整個計畫每天都空 → 顯示「進度尚未就緒，請聯絡同工」而非「補讀與休息日」。
+0. **排程（0140 定案）**：`js/db.js` `mapGlobalPlanRecord` 的 cohort 分支：**`campaignDefinition = null`**；`stageNo` / `roundNo` / `awardName` / `parentCampaignId` 從 `getChurchCampaignStageDefinition(rules.stageNo ?? rules.cohortSourceStageNo)` 帶（發獎用）；`books` 用 `dbPlan.target_books`，空的話退回來源階段的 `books`。`js/utils.js` `resolveChurchCampaignDefinition`：cohort 的 globalPlan 找到但 `campaignDefinition` 為 null → **回 `null`，不退回整份 MASTER**（否則會走進 campaign 排程機制）。`db.js` enrollment 對映：`generatePlanObject` 傳的 `selectedBooks` 用 `dbPlan.target_books || linkedGlobalPlan.books`；`planObj.awardName` / `roundNo` / `parentCampaignId` 從 `linkedGlobalPlan` 帶。`plan.js` 計畫詳情：獎章卡改用 `plan.awardName`（不再只看 `isCampaignStage`）；每日清單整個計畫都空 → 顯示「進度尚未就緒，請聯絡同工」。`utils.js` `generateChurchCampaignPlanObject` 排程建完沒有任何一天有章 → `console.error`（靜默失敗變大聲）。
 4. **可見性過濾**：計畫清單（`db.js` 抓計畫 ~1286、`getVisiblePlans` / `isPlanHidden` 一帶、`plan.js` preset / 可加入清單渲染）——`audience_regions` 非空的計畫，只有 `state.currentUser.great_region ∈ audience_regions` 或 `canManageHiddenPlans()` 才顯示。
 5. **階段 UI**：cohort 計畫要跟正式階段一樣進「階段卡」清單、依 `stageNo` 排序。目標大區的人「目前階段 / 下一階段」邏輯要在 cohort 計畫之間選，而不是正式階段。
 6. **後台**：計畫管理加「大區延後梯次」小區塊——選大區 + 來源階段 + 起訖日 → 呼叫 `create_region_stage_cohort`；列出已建立的 cohort 計畫、可改日期 / 開放狀態（沿用既有的 `setGlobalPlanHidden`，它是泛用的 `global_plans` 更新）。

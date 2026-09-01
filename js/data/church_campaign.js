@@ -128,53 +128,6 @@ function getChurchCampaignStageDefinition(stageNo, definition = CHURCH_CAMPAIGN)
     .find(stage => Number(stage.stageNo) === Number(stageNo)) || null;
 }
 
-// 延後大區梯次（church_campaign_stage_cohort）的排程定義：
-// 拿「正式階段」的整份經卷清單，壓進梯次自訂的視窗 [startISO, endISO]，
-// 收斂成「單一 segment 涵蓋整個視窗」——由 buildChurchCampaignDays 平均鋪、
-// 跳週休。這是「一個日曆月」語意：不逐段平移，而是重新分配。
-// examDate 一律清成 null（日後由該大區領袖自行訂）。
-// 每個梯次列各自呼叫、各自算，不串接、不累加。
-function buildCohortStageDefinition(sourceStageDef, startISO, endISO) {
-  if (!sourceStageDef || !startISO || !endISO) return null;
-  const clone = cloneChurchCampaign(sourceStageDef);
-  const sourceStage = (Array.isArray(clone.stages) && clone.stages[0]) || {
-    stageNo: clone.stageNo,
-    roundNo: clone.roundNo,
-    phase: clone.phase,
-    name: clone.name,
-    awardName: clone.awardName
-  };
-  const readings = (Array.isArray(clone.segments) ? clone.segments : [])
-    .flatMap(segment => Array.isArray(segment.readings) ? segment.readings : [])
-    .map(reading => ({ ...reading }));
-
-  // 「每月／階段章節安排」那一段的標題：同年同月 → 「2026年9月」，跨月 → 起訖範圍。
-  const [sy, sm] = String(startISO).split("-");
-  const [ey, em] = String(endISO).split("-");
-  const label = (sy === ey && sm === em)
-    ? `${sy}年${Number(sm)}月`
-    : `${startISO} ~ ${endISO}`;
-
-  clone.startDate = startISO;
-  clone.endDate = endISO;
-  clone.examDate = null;
-  clone.stages = [{
-    ...sourceStage,
-    startDate: startISO,
-    endDate: endISO,
-    examDate: null
-  }];
-  clone.segments = [{
-    stageNo: Number(sourceStage.stageNo),
-    roundNo: Number(sourceStage.roundNo),
-    label,
-    startDate: startISO,
-    endDate: endISO,
-    readings
-  }];
-  return clone;
-}
-
 function parseCampaignDate(value) {
   const date = new Date(value + "T00:00:00");
   return Number.isNaN(date.getTime()) ? null : date;
@@ -341,7 +294,6 @@ window.getChurchCampaignStageId = getChurchCampaignStageId;
 window.getChurchCampaignStagePresetKey = getChurchCampaignStagePresetKey;
 window.createChurchCampaignStageDefinitions = createChurchCampaignStageDefinitions;
 window.getChurchCampaignStageDefinition = getChurchCampaignStageDefinition;
-window.buildCohortStageDefinition = buildCohortStageDefinition;
 window.cloneChurchCampaign = cloneChurchCampaign;
 window.validateChurchCampaign = validateChurchCampaign;
 window.buildChurchCampaignDays = buildChurchCampaignDays;

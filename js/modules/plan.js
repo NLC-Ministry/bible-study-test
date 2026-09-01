@@ -2101,8 +2101,10 @@ function openPlanDetailsDialog(plan, options = {}) {
   const books = plan.target_books || plan.targetBooks || plan.books || [];
   const scheduleText = (plan.startDate + " ～ " + plan.endDate) + "；" + formatFlexibleScheduleSummary(plan);
   const segments = isCampaignStage && Array.isArray(definition.segments) ? definition.segments : [];
-  const awardName = isCampaignStage ? (plan.awardName || definition.awardName || "") : "";
-  const awardEarned = isCampaignStage && ((plan.currentRound || 1) > 1 || Number(plan.progress || 0) >= 100);
+  // 延後大區梯次沒有 campaignDefinition，但一樣要顯示「完成可獲得的獎」——用 plan.awardName。
+  const awardName = plan.awardName || (isCampaignStage ? (definition.awardName || "") : "");
+  const showAward = Boolean(awardName);
+  const awardEarned = showAward && ((plan.currentRound || 1) > 1 || Number(plan.progress || 0) >= 100);
   const segmentHtml = segments.map(segment => `
     <section style="padding:.9rem;border:1px solid var(--border-card);border-radius:12px;background:var(--bg-secondary);">
       <div style="display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;">
@@ -2128,7 +2130,7 @@ function openPlanDetailsDialog(plan, options = {}) {
       </button>
 
       <h3 id="plan-details-title" style="margin:0 0 1rem;font-size:1.15rem;font-weight:500;color:var(--text-primary);padding-right:2rem;">${escapeHTML(plan.name || "讀經計畫")}</h3>
-      ${isCampaignStage ? `<div style="display:flex;align-items:center;gap:.75rem;padding:.9rem;margin-bottom:1rem;border-radius:14px;background:var(--bg-secondary);border:1px solid var(--border-card);"><div style="width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:var(--primary-color);color:white;"><span class="nlc-icon" data-icon="award" aria-hidden="true"></span></div><div><div style="font-size:0.875rem;color:var(--text-muted);">${awardEarned ? "已完成並獲得" : "完成本階段可獲得"}</div><strong style="font-size:1rem;color:var(--text-primary);">${escapeHTML(awardName)}</strong></div></div>` : ""}
+      ${showAward ? `<div style="display:flex;align-items:center;gap:.75rem;padding:.9rem;margin-bottom:1rem;border-radius:14px;background:var(--bg-secondary);border:1px solid var(--border-card);"><div style="width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:var(--primary-color);color:white;"><span class="nlc-icon" data-icon="award" aria-hidden="true"></span></div><div><div style="font-size:0.875rem;color:var(--text-muted);">${awardEarned ? "已完成並獲得" : "完成本階段可獲得"}</div><strong style="font-size:1rem;color:var(--text-primary);">${escapeHTML(awardName)}</strong></div></div>` : ""}
       ${plan.description ? `<p style="margin:0 0 1rem;font-size:0.875rem;line-height:1.6;color:var(--text-secondary);">${escapeHTML(plan.description)}</p>` : ""}
       <dl style="display:grid;grid-template-columns:auto 1fr;gap:.65rem .9rem;margin:0;font-size:0.875rem;">
         <dt style="color:var(--text-muted);">計畫類型</dt><dd style="margin:0;color:var(--text-primary);">${isCampaignStage ? "教會分階段計畫" : (isFlexible ? "非固定日期" : "固定日期")}</dd>

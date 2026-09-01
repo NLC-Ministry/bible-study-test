@@ -210,87 +210,66 @@ function mapGlobalPlanRecord(dbPlan) {
   const isCampaignMaster = dbPlan.plan_kind === "church_campaign"
     || dbPlan.id === window.CHURCH_CAMPAIGN_ID;
   const isCampaignStage = dbPlan.plan_kind === "church_campaign_stage";
-  // 延後大區梯次：平行的階段計畫，內容比照 church_campaign_stage，但名稱 / 日期
-  // 用 DB 這一列的（往後挪過的），planKind 保持 cohort。
+  // 延後大區梯次（church_campaign_stage_cohort）：**只沿用獎勵，其他都獨立**。
+  // 它是一個普通的固定日期計畫（自己的名稱 / 起訖 / 經卷），排程走一般路徑；
+  // 唯一跟正式階段共用的是「完成給哪個獎」——靠 stageNo / awardName 帶著，
+  // 不掛 campaignDefinition，不進 campaign 排程機制。
   const isCohortStage = dbPlan.plan_kind === "church_campaign_stage_cohort";
   let campaignDefinition = null;
+  let cohortStageNo = null;
+  let cohortSourceStage = null;
 
   if (isCampaignMaster) {
     const stored = dbPlan.rules && Array.isArray(dbPlan.rules.stages) && Array.isArray(dbPlan.rules.segments)
       ? dbPlan.rules
       : window.CHURCH_CAMPAIGN;
     campaignDefinition = window.cloneChurchCampaign(stored);
-  } else if (isCampaignStage || isCohortStage) {
-    // 正式階段的 id 尾 12 碼就是階段序（…c026-00000000000N）；cohort 是隨機 UUID，
-    // 只能靠 rules 裡的 stageNo / cohortSourceStageNo。
+  } else if (isCampaignStage) {
+    // 正式階段的 id 尾 12 碼就是階段序（…c026-00000000000N）。
+    const storedStageNo = Number(dbPlan.rules && dbPlan.rules.stageNo)
+      || Number(String(dbPlan.id || "").slice(-12));
+    const stored = dbPlan.rules && Array.isArray(dbPlan.rules.stages) && Array.isArray(dbPlan.rules.segments)
+      ? dbPlan.rules
+      : window.getChurchCampaignStageDefinition(storedStageNo);
+    if (stored) campaignDefinition = window.cloneChurchCampaign(stored);
+  } else if (isCohortStage) {
+    // cohort 是隨機 UUID，階段序只能靠 rules 裡的 stageNo / cohortSourceStageNo。
     const rulesStageNo = Number(
-      (dbPlan.rules && (dbPlan.rules.stageNo ?? dbPlan.rules.cohortSourceStageNo ?? dbPlan.rules.cohortStageNo))
+      dbPlan.rules && (dbPlan.rules.stageNo ?? dbPlan.rules.cohortSourceStageNo ?? dbPlan.rules.cohortStageNo)
     );
-    const storedStageNo = Number.isFinite(rulesStageNo) && rulesStageNo > 0
-      ? rulesStageNo
-      : (isCohortStage ? NaN : Number(String(dbPlan.id || "").slice(-12)));
-    const cohortStart = isCohortStage ? String(dbPlan.start_date || "").slice(0, 10) : null;
-    const cohortEnd = isCohortStage ? String(dbPlan.end_date || "").slice(0, 10) : null;
-    const rulesHasSchedule = dbPlan.rules
-      && Array.isArray(dbPlan.rules.stages) && Array.isArray(dbPlan.rules.segments);
-    // 延後大區梯次：DB rules 若已 materialize（含 stages/segments 陣列且起訖對得上這一列）
-    // 就直接用；否則從正式階段即時壓縮成梯次視窗（前端保底，讓舊列 / 未跑 migration 的列
-    // 也能正確顯示），並吼一聲提醒該列尚未 materialize。
-    if (isCohortStage) {
-      const materialized = rulesHasSchedule
-        && String(dbPlan.rules.startDate || "").slice(0, 10) === cohortStart
-        && String(dbPlan.rules.endDate || "").slice(0, 10) === cohortEnd;
-      if (materialized) {
-        campaignDefinition = window.cloneChurchCampaign(dbPlan.rules);
-      } else {
-        const sourceStage = Number.isFinite(storedStageNo)
-          ? window.getChurchCampaignStageDefinition(storedStageNo)
-          : null;
-        campaignDefinition = sourceStage && typeof window.buildCohortStageDefinition === "function"
-          ? window.buildCohortStageDefinition(sourceStage, cohortStart, cohortEnd)
-          : null;
-        if (campaignDefinition) {
-          console.error(
-            `[cohort] global_plan ${dbPlan.id} 尚未 materialize（rules 缺平移後 stages/segments），` +
-            `已於前端即時壓縮階段 ${storedStageNo} 排程至 ${cohortStart}~${cohortEnd}。請重跑 create_region_stage_cohort。`
-          );
-        } else {
-          console.error(
-            `[cohort] global_plan ${dbPlan.id} 無法建立排程定義：storedStageNo=${storedStageNo}，` +
-            `rules keys=${dbPlan.rules ? Object.keys(dbPlan.rules).join(",") : "(none)"}。` +
-            `請確認 rules.stageNo / cohortSourceStageNo，並重跑 0140 + create_region_stage_cohort。`
-          );
-        }
-      }
-      if (campaignDefinition
-        && (campaignDefinition.startDate !== cohortStart || campaignDefinition.endDate !== cohortEnd)) {
-        console.error(
-          `[cohort] global_plan ${dbPlan.id} 排程視窗與 DB 起訖不一致：` +
-          `def ${campaignDefinition.startDate}~${campaignDefinition.endDate} vs row ${cohortStart}~${cohortEnd}`
-        );
-      }
-    } else {
-      const stored = rulesHasSchedule
-        ? dbPlan.rules
-        : window.getChurchCampaignStageDefinition(storedStageNo);
-      if (stored) campaignDefinition = window.cloneChurchCampaign(stored);
+    cohortStageNo = Number.isFinite(rulesStageNo) && rulesStageNo > 0 ? rulesStageNo : null;
+    cohortSourceStage = cohortStageNo && typeof window.getChurchCampaignStageDefinition === "function"
+      ? window.getChurchCampaignStageDefinition(cohortStageNo)
+      : null;
+    if (!cohortStageNo) {
+      console.error(
+        `[cohort] global_plan ${dbPlan.id} 找不到來源階段序（rules 缺 stageNo / cohortSourceStageNo）；` +
+        `發獎會失效。rules keys=${dbPlan.rules ? Object.keys(dbPlan.rules).join(",") : "(none)"}`
+      );
     }
   }
-  // cohort 用 DB 列的名稱 / 起訖（延後版），其餘（大題、獎項、階段序）沿用 campaignDefinition
-  const useCampaignSchedule = Boolean(campaignDefinition) && !isCohortStage;
 
+  const useCampaignSchedule = Boolean(campaignDefinition);
   const campaignBooks = campaignDefinition
     ? Array.from(new Set(campaignDefinition.segments.flatMap(segment => segment.readings.map(reading => reading.book))))
+    : [];
+  // cohort 沒有 campaignDefinition：經卷用 DB 這一列的 target_books，缺的話退回來源階段的書卷。
+  const cohortBooks = (cohortSourceStage && Array.isArray(cohortSourceStage.books) && cohortSourceStage.books.length)
+    ? cohortSourceStage.books.slice()
     : [];
   return {
     id: dbPlan.id,
     globalPlanId: dbPlan.id,
-    parentCampaignId: campaignDefinition && campaignDefinition.parentCampaignId,
+    parentCampaignId: campaignDefinition
+      ? campaignDefinition.parentCampaignId
+      : (cohortSourceStage && cohortSourceStage.parentCampaignId) || null,
     name: isCampaignMaster ? "教會階段規則設定" : (useCampaignSchedule ? campaignDefinition.name : dbPlan.name),
     description: useCampaignSchedule ? campaignDefinition.description : dbPlan.description,
     startDate: useCampaignSchedule ? campaignDefinition.startDate : dbPlan.start_date,
     endDate: useCampaignSchedule ? campaignDefinition.endDate : dbPlan.end_date,
-    books: Array.isArray(dbPlan.target_books) && dbPlan.target_books.length > 0 ? dbPlan.target_books : campaignBooks,
+    books: Array.isArray(dbPlan.target_books) && dbPlan.target_books.length > 0
+      ? dbPlan.target_books
+      : (isCohortStage ? cohortBooks : campaignBooks),
     presetKey: isCohortStage
       ? ((dbPlan.rules && dbPlan.rules.presetKey) || dbPlan.id)
       : (campaignDefinition && campaignDefinition.presetKey ? campaignDefinition.presetKey : dbPlan.id),
@@ -302,12 +281,20 @@ function mapGlobalPlanRecord(dbPlan) {
     planKind: isCampaignMaster ? "church_campaign"
       : (isCampaignStage ? "church_campaign_stage"
       : (isCohortStage ? "church_campaign_stage_cohort" : (dbPlan.plan_kind || "standard"))),
-    stageNo: campaignDefinition && Number(campaignDefinition.stageNo),
-    roundNo: campaignDefinition && Number(campaignDefinition.roundNo),
-    phase: campaignDefinition && campaignDefinition.phase,
-    awardName: campaignDefinition && campaignDefinition.awardName,
-    examDate: campaignDefinition && campaignDefinition.examDate,
-    ruleVersion: Number(dbPlan.rule_version || campaignDefinition && campaignDefinition.version || 1),
+    // cohort：階段序 / 獎名 / 輪次沿用來源正式階段（發獎靠這些），其餘獨立。
+    stageNo: campaignDefinition ? Number(campaignDefinition.stageNo) : (cohortStageNo || null),
+    roundNo: campaignDefinition
+      ? Number(campaignDefinition.roundNo)
+      : (cohortSourceStage && Number(cohortSourceStage.roundNo)) || null,
+    phase: campaignDefinition
+      ? campaignDefinition.phase
+      : (cohortSourceStage && cohortSourceStage.phase) || null,
+    awardName: campaignDefinition
+      ? campaignDefinition.awardName
+      : (cohortSourceStage && cohortSourceStage.awardName) || null,
+    // cohort 的考試日期由該大區領袖日後自訂——建立時不帶。
+    examDate: campaignDefinition ? campaignDefinition.examDate : null,
+    ruleVersion: Number(dbPlan.rule_version || (campaignDefinition && campaignDefinition.version) || 1),
     publishedAt: dbPlan.published_at || null,
     campaignDefinition
   };
@@ -1400,7 +1387,15 @@ const db = {
                   upgradePromptHandled: dbPlan.upgrade_prompt_handled,
                   logs: planLogs
                 });
-                const planObj = generatePlanObject(dbPlan.name, dbPlan.start_date, dbPlan.end_date, dbPlan.target_books, key, isFixed, {
+                const linkedGlobalPlan = (state.globalPlans || []).find(p => p.id === globalPlanId || p.presetKey === key || p.name === dbPlan.name);
+                // 延後大區梯次是普通固定日期計畫：排程靠 target_books。enrollment 自己
+                // 沒帶書卷時，退回對應 global_plan 的 books（來源正式階段的經卷）。
+                const effectiveBooks = (Array.isArray(dbPlan.target_books) && dbPlan.target_books.length > 0)
+                  ? dbPlan.target_books
+                  : (linkedGlobalPlan && Array.isArray(linkedGlobalPlan.books) && linkedGlobalPlan.books.length
+                    ? linkedGlobalPlan.books
+                    : dbPlan.target_books);
+                const planObj = generatePlanObject(dbPlan.name, dbPlan.start_date, dbPlan.end_date, effectiveBooks, key, isFixed, {
                   readingDaysPerWeek: dbPlan.reading_days_per_week,
                   restWeekdays: dbPlan.rest_weekdays,
                   planId: dbPlan.id,
@@ -1413,10 +1408,15 @@ const db = {
                 planObj.globalPlanId = globalPlanId;  // ⚠️ UUID 關聯
                 planObj.isFixed = isFixed;
                 planObj.is_fixed = isFixed;
-                const linkedGlobalPlan = (state.globalPlans || []).find(p => p.id === globalPlanId || p.presetKey === key || p.name === dbPlan.name);
                 planObj.isHidden = Boolean(linkedGlobalPlan && (linkedGlobalPlan.isHidden || linkedGlobalPlan.is_hidden));
                 planObj.planKind = linkedGlobalPlan?.planKind || (campaignStageNo >= 1 ? "church_campaign_stage" : "standard");
                 planObj.stageNo = linkedGlobalPlan?.stageNo || campaignStageNo || null;
+                // cohort：獎名 / 輪次 / 母 campaign 沿用來源正式階段（發獎 + 詳情頁獎章用）。
+                if (linkedGlobalPlan) {
+                  if (linkedGlobalPlan.awardName) planObj.awardName = linkedGlobalPlan.awardName;
+                  if (linkedGlobalPlan.roundNo) planObj.roundNo = linkedGlobalPlan.roundNo;
+                  if (linkedGlobalPlan.parentCampaignId) planObj.parentCampaignId = linkedGlobalPlan.parentCampaignId;
+                }
                 planObj.currentRound = confirmedRound;
                 planObj.upgradePromptHandled = !!dbPlan.upgrade_prompt_handled;
                 state.activePlans.push(planObj);
@@ -4899,21 +4899,12 @@ const db = {
     return true;
   },
 
-  // 延後大區梯次：為某大區建立 / 更新某階段的平行梯次計畫（migration 0128 + 0140）
-  // 排程定義（把來源階段壓進 [startDate,endDate] 視窗、examDate=null）在前端算好，
-  // 由 buildCohortStageDefinition 產出，後端只驗證 + 存進 rules，並以它的起訖為準。
+  // 延後大區梯次：為某大區建立 / 更新某階段的平行梯次計畫（migration 0128 + 0140）。
+  // 梯次是「普通固定日期計畫 + 沿用獎勵」：後端只需複製來源階段的 target_books、
+  // 帶上 rules.stageNo / cohortSourceStageNo（發獎用），排程由前端一般路徑處理。
   async createRegionStageCohort({ greatRegion, sourceStageNo, startDate, endDate, isHidden = true }) {
     if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) {
       return { success: false, message: "此功能需要登入正式帳號。" };
-    }
-    const sourceStage = typeof window.getChurchCampaignStageDefinition === "function"
-      ? window.getChurchCampaignStageDefinition(Number(sourceStageNo))
-      : null;
-    const cohortDefinition = sourceStage && typeof window.buildCohortStageDefinition === "function"
-      ? window.buildCohortStageDefinition(sourceStage, String(startDate).slice(0, 10), String(endDate).slice(0, 10))
-      : null;
-    if (!cohortDefinition) {
-      return { success: false, message: "找不到來源階段定義，無法建立延後梯次。" };
     }
     try {
       const { data, error } = await state.supabase.rpc("create_region_stage_cohort", {
@@ -4921,8 +4912,7 @@ const db = {
         p_source_stage_no: Number(sourceStageNo),
         p_start_date: startDate,
         p_end_date: endDate,
-        p_is_hidden: isHidden !== false,
-        p_cohort_definition: cohortDefinition
+        p_is_hidden: isHidden !== false
       });
       if (error) {
         const raw = String(error.message || error);

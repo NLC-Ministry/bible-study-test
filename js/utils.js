@@ -1574,6 +1574,13 @@ function resolveChurchCampaignDefinition(presetKey, name) {
     || plan.presetKey === presetKey
     || ((plan.planKind === "church_campaign" || isCampaignStageKind(plan)) && plan.name === name)
   );
+  // 延後大區梯次是「普通固定日期計畫 + 沿用獎勵」，沒有 campaignDefinition——
+  // 絕不能因為找不到就退回整份 MASTER，那會讓它走到 campaign 排程機制。
+  if (globalPlan && globalPlan.planKind === "church_campaign_stage_cohort") {
+    return globalPlan.campaignDefinition
+      ? window.cloneChurchCampaign(globalPlan.campaignDefinition)
+      : null;
+  }
   if (globalPlan && (globalPlan.planKind === "church_campaign" || isCampaignStageKind(globalPlan))) {
     return window.cloneChurchCampaign(globalPlan.campaignDefinition || window.CHURCH_CAMPAIGN);
   }
