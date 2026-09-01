@@ -5525,18 +5525,27 @@ async function renderPlanStatsView() {
       makeupCard.classList.toggle("stat-bento--danger-active", catchUpDaysVal > 0);
     }
 
-    // 5. Cumulative chapters read (累積閱讀章數) — 所有遍次累計，不重置
+    // 5. Cumulative chapters read (累積閱讀章數) — 所有遍次累計，不重置。
+    // 嚴格以「這個計畫」為範圍：比對 plan_id / global_plan_id / presetKey / preset_key，
+    // 四個都沒有的舊日誌才當「無歸屬」退路計入（與 calculateAllPlansProgress 同一套規則）。
+    // 不能再用「沒有 plan_id 就算這個計畫」的寬鬆退路——那會把別的計畫（例如 8 月
+    // 正辦階段，帶 global_plan_id 但沒有 camelCase 的 plan_id）的打卡混進來，
+    // 導致總章數超過本計畫實際卷數（出埃及記只有 40 章卻顯示 45）。
     const reportStatTotalChapters = document.getElementById("report-stat-total-chapters");
     if (reportStatTotalChapters) {
-      const currentPlanId = state.activePlan.id;
-      const currentPresetKey = state.activePlan.presetKey;
+      const planIds = [state.activePlan.id, state.activePlan.globalPlanId, state.activePlan.global_plan_id]
+        .filter(Boolean).map(String);
+      const planKeys = [state.activePlan.presetKey, state.activePlan.preset_key]
+        .filter(Boolean).map(String);
       const uniqueKeys = new Set();
       if (state.readingLogs) {
         state.readingLogs.forEach(l => {
+          const logPlanId = l.plan_id || l.global_plan_id;
+          const logKey = l.presetKey || l.preset_key;
           const logMatchesPlan =
-            (currentPlanId && l.plan_id && l.plan_id === currentPlanId) ||
-            (currentPresetKey && l.presetKey && l.presetKey === currentPresetKey) ||
-            (!l.plan_id && !l.presetKey);
+            (logPlanId && planIds.includes(String(logPlanId))) ||
+            (logKey && planKeys.includes(String(logKey))) ||
+            (!l.plan_id && !l.global_plan_id && !l.presetKey && !l.preset_key);
           if (logMatchesPlan) {
             // 每一遍各章節分開計算，累積跨遍次總章數
             const r = l.round || 1;
@@ -6088,9 +6097,18 @@ function renderGroupTeamHeatmap(overrideFilter) {
 }
 
 function logMatchesPlan(log, currentPlanId, currentPresetKey) {
-  return (currentPlanId && log.plan_id && log.plan_id === currentPlanId) ||
-    (currentPresetKey && log.presetKey && log.presetKey === currentPresetKey) ||
-    (!log.plan_id && !log.presetKey);
+  // 嚴格以「這個計畫」為範圍：plan_id / global_plan_id / presetKey / preset_key 任一
+  // 對得上才算；四個都沒有的舊日誌才當「無歸屬」退路計入。不能用「沒有 plan_id
+  // 就算這個計畫」的寬鬆退路——那會把別的計畫（帶 global_plan_id 但沒有 camelCase
+  // plan_id）的打卡混進活躍度 / 累積章數（與 calculateAllPlansProgress 同一套規則）。
+  const ap = state.activePlan || {};
+  const planIds = [currentPlanId, ap.id, ap.globalPlanId, ap.global_plan_id].filter(Boolean).map(String);
+  const planKeys = [currentPresetKey, ap.presetKey, ap.preset_key].filter(Boolean).map(String);
+  const logPlanId = log.plan_id || log.global_plan_id;
+  const logKey = log.presetKey || log.preset_key;
+  return (logPlanId && planIds.includes(String(logPlanId))) ||
+    (logKey && planKeys.includes(String(logKey))) ||
+    (!log.plan_id && !log.global_plan_id && !log.presetKey && !log.preset_key);
 }
 
 function renderPersonalHeatmap() {
@@ -7516,9 +7534,11 @@ window.showPlanStatsModal = function () {
     : (plan.days || []);
   const catchUpDays = countLateCompletedDays(canonicalDays, plan.startDate, round1DateByChapter);
 
-  // 4. Calculate cumulative chapters read (累計閱讀)
-  const currentPlanId = plan.id;
-  const currentPresetKey = plan.presetKey;
+  // 4. Calculate cumulative chapters read (累計閱讀) — 嚴格以本計畫為範圍：
+  // plan_id / global_plan_id / presetKey / preset_key 任一對得上；四個都沒有才當
+  // 無歸屬退路。別再用「沒有 plan_id 就算這個計畫」的寬鬆退路。
+  const planIds = [plan.id, plan.globalPlanId, plan.global_plan_id].filter(Boolean).map(String);
+  const planKeys = [plan.presetKey, plan.preset_key].filter(Boolean).map(String);
   const uniqueKeys = new Set();
   const planChapters = new Set();
   if (plan && plan.days) {
@@ -7532,10 +7552,12 @@ window.showPlanStatsModal = function () {
   }
   if (state.readingLogs) {
     state.readingLogs.forEach(l => {
+      const logPlanId = l.plan_id || l.global_plan_id;
+      const logKey = l.presetKey || l.preset_key;
       const logMatchesPlan =
-        (currentPlanId && l.plan_id && l.plan_id === currentPlanId) ||
-        (currentPresetKey && l.presetKey && l.presetKey === currentPresetKey) ||
-        (!l.plan_id && !l.presetKey);
+        (logPlanId && planIds.includes(String(logPlanId))) ||
+        (logKey && planKeys.includes(String(logKey))) ||
+        (!l.plan_id && !l.global_plan_id && !l.presetKey && !l.preset_key);
       if (logMatchesPlan && planChapters.has(`${l.book}_${l.chapter}`)) {
         const r = l.round || 1;
         uniqueKeys.add(`${l.book}_${l.chapter}_${r}`);
