@@ -13717,6 +13717,11 @@ select,
   flex-shrink: 0;
 }
 
+/* 手機的返回標頭（桌機隱藏）。 */
+.admin-section-overlay-bar {
+  display: none;
+}
+
 /* 桌機：功能清單固定在左側，所選內容直接在右側打開。app.js 會寫入
    display:block inline style，因此 active 狀態需用 !important 完成雙欄。 */
 @media (min-width: 960px) {
@@ -13742,6 +13747,90 @@ select,
     grid-column: 2;
     grid-row: 1;
     min-width: 0;
+  }
+}
+
+/* 手機（< 960px）：drill-in。清單是首頁；點一項 → 內容區當全螢幕子頁打開，
+   靠 body.admin-section-open 這個狀態切換。 */
+@media (max-width: 959.98px) {
+  /* 沒開子頁時：只看得到清單，內容區收起來。 */
+  body:not(.admin-section-open) #admin-view > #admin-section-content {
+    display: none;
+  }
+
+  /* 開了子頁時：清單收起，內容區變 fixed 全螢幕。
+     #admin-view 是 .view-pane，fadeIn 動畫的 forwards 會留下 transform，
+     讓內層 position:fixed 被 #admin-view 綁架 —— 開子頁時把它清掉。 */
+  body.admin-section-open #admin-view.active {
+    animation: none !important;
+    transform: none !important;
+  }
+
+  body.admin-section-open #admin-view > #admin-section-nav {
+    display: none;
+  }
+
+  /* 子頁 overlay 蓋滿時凍結後面的頁面。 */
+  body.admin-section-open .main-content {
+    overflow: hidden;
+  }
+
+  body.admin-section-open #admin-view > #admin-section-content {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal, 1000);
+    background: var(--bg-app);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 1rem;
+  }
+
+  body.admin-section-open #admin-section-overlay-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: calc(var(--z-modal, 1000) + 1);
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border-card);
+    background: var(--bg-app);
+  }
+
+  /* content 內第一塊要讓開固定標頭的高度。 */
+  body.admin-section-open #admin-view > #admin-section-content {
+    padding-top: 3.5rem;
+  }
+
+  .admin-section-overlay-bar__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    min-width: 4.5rem;
+    padding: 0.4rem 0.4rem 0.4rem 0.15rem;
+    border: 0;
+    background: none;
+    color: var(--text-primary);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .admin-section-overlay-bar__title {
+    flex: 1;
+    text-align: center;
+    font-weight: 500;
+    font-size: 1rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .admin-section-overlay-bar__spacer {
+    min-width: 4.5rem;
   }
 }
 
