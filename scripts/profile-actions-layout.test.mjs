@@ -5,19 +5,20 @@ const html = readFileSync("index.html", "utf8");
 const css = readFileSync("index.css", "utf8");
 
 describe("profile action hierarchy", () => {
-  it("shows organization information before all member-center actions", () => {
-    const placementIndex = html.indexOf('id="member-hub-org-placement"');
+  it("shows the sync-status line before all member-center actions", () => {
+    const syncIndex = html.indexOf('id="member-hub-org-sync-status"');
     const manageIndex = html.indexOf('id="btn-member-hub-structure"');
     const refreshIndex = html.indexOf('id="btn-member-hub-refresh"');
-    expect(placementIndex).toBeGreaterThan(-1);
-    expect(manageIndex).toBeGreaterThan(placementIndex);
+    expect(syncIndex).toBeGreaterThan(-1);
+    expect(manageIndex).toBeGreaterThan(syncIndex);
     expect(refreshIndex).toBeGreaterThan(manageIndex);
   });
 
   it("groups APP sharing and help below the member-center section", () => {
-    const placementIndex = html.indexOf('id="member-hub-org-placement"');
+    const syncIndex = html.indexOf('id="member-hub-org-sync-status"');
     const appHelpIndex = html.indexOf('class="profile-settings-section-label">APP 與協助');
-    expect(appHelpIndex).toBeGreaterThan(placementIndex);
+    expect(syncIndex).toBeGreaterThan(-1);
+    expect(appHelpIndex).toBeGreaterThan(syncIndex);
     expect(html.indexOf('id="btn-share-app"')).toBeGreaterThan(appHelpIndex);
     expect(html.indexOf('id="btn-release-onboarding-help"')).toBeGreaterThan(appHelpIndex);
     expect(css).toContain(".profile-settings-section-label");

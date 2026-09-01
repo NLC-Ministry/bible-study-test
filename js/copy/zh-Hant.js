@@ -38,7 +38,7 @@ window.APP_COPY = {
   },
   memberHub: {
     cardTitle: "新生命會員中心",
-    cardBody: "姓名、牧區歸屬與教會身份由會員中心統一管理；更新後會自動同步至本 app。",
+    cardBody: "姓名、牧區與教會身份由會員中心統一管理，更新後自動同步至本 app。",
     cardBodyNeedsOrg: "您尚未設定牧區歸屬。請至會員中心完成身份設定，以便參與小組統計與排行。",
     manageStructure: "管理身份與牧區歸屬",
     completeOnboarding: "完成身份設定",

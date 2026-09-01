@@ -50,15 +50,16 @@ describe("No invented display-name fallbacks", () => {
 });
 
 describe("Profile identity skeleton lifecycle", () => {
-  it("keeps placement grid on skeleton markup before sync settles", () => {
-    expect(html).toMatch(/id="member-hub-org-great-region"[^>]*aria-busy="true"/);
-    expect(html).not.toMatch(/id="member-hub-org-great-region">尚未設定</);
+  it("ships the profile-header org breadcrumb as skeleton markup before sync settles", () => {
+    // Org placement is shown once, in the profile header (#profile-summary-org).
+    expect(html).toMatch(/id="profile-summary-org"[\s\S]*?skeleton-wrapper/);
+    expect(html).not.toContain('id="member-hub-org-great-region"');
   });
 
-  it("gates org placement on pending vs settled empty", () => {
+  it("gates the Member Hub sync-status caption on pending state", () => {
     expect(profileJs).toContain("isMemberContextPending");
-    expect(profileJs).toContain("placement-value");
-    expect(profileJs).toContain("尚未設定");
+    expect(profileJs).toContain("member-hub-org-sync-status");
+    expect(profileJs).toContain("同步中");
     expect(profileJs).toContain("applyProfileIdentitySkeletons");
     expect(profileJs).toContain("paintProfileIdentityChrome");
   });

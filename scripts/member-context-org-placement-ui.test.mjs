@@ -6,24 +6,24 @@ const css = fs.readFileSync("index.css", "utf8");
 const profileJs = fs.readFileSync("js/modules/profile.js", "utf8");
 
 describe("Member Hub org placement UI", () => {
-  it("defines a read-only placement section with the required labels and sync status target", () => {
-    expect(html).toContain('id="member-hub-org-placement"');
-    expect(html).toContain('id="member-hub-org-great-region"');
-    expect(html).toContain('id="member-hub-org-pastoral-zone"');
-    expect(html).toContain('id="member-hub-org-small-group"');
+  it("shows 大區/牧區/小組 only in the profile header, not a duplicate placement box", () => {
+    // Org placement lives solely in the header breadcrumb (#profile-summary-org).
+    expect(html).toContain('id="profile-summary-org"');
     expect(html).toContain('id="member-hub-org-sync-status"');
-    expect(html).toContain("大區");
-    expect(html).toContain("牧區");
-    expect(html).toContain("小組");
+    // The old standalone placement box must not come back (it duplicated the header).
+    expect(html).not.toContain('id="member-hub-org-placement"');
+    expect(html).not.toContain('id="member-hub-org-great-region"');
+    expect(html).not.toContain('id="member-hub-org-pastoral-zone"');
+    expect(html).not.toContain('id="member-hub-org-small-group"');
+    expect(html).not.toContain('id="member-hub-org-empty"');
   });
 
-  it("styles the placement section without relying on inline styles", () => {
-    expect(css).toContain(".member-hub-org-placement");
-    expect(css).toContain(".member-hub-org-placement__grid");
-    expect(css).toContain(".member-hub-org-placement__sync");
+  it("styles the sync-status caption without a bordered placement box", () => {
+    expect(css).toContain(".member-hub-sync-caption");
+    expect(css).not.toContain(".member-hub-org-placement");
   });
 
-  it("renders placement values and formats the Member Hub sync timestamp", () => {
+  it("keeps the Member Hub sync timestamp / failure formatting", () => {
     expect(profileJs).toContain("function formatMemberContextSyncedAt");
     expect(profileJs).toContain("function formatMemberContextSyncStatus");
     expect(profileJs).toContain("function renderMemberHubOrgPlacement");
@@ -31,7 +31,6 @@ describe("Member Hub org placement UI", () => {
     expect(profileJs).toContain("會員中心同步暫時失敗");
     expect(profileJs).toContain("最近一次同步嘗試");
     expect(profileJs).toContain("member_context_sync_error");
-    expect(profileJs).toContain("尚未設定");
   });
 });
 

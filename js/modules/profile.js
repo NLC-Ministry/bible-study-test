@@ -143,55 +143,22 @@ function formatMemberContextSyncStatus(user) {
   return formatMemberContextSyncedAt(syncedAt || "");
 }
 
+// 大區/牧區/小組 只顯示在個人頁標頭的 #profile-summary-org，不再重複一個方框。
+// 這裡只維護會員中心群組下方那一行同步狀態小字。
 function renderMemberHubOrgPlacement() {
   const user = state.currentUser || {};
   const pending = typeof isMemberContextPending === "function"
     ? isMemberContextPending(user)
     : false;
-  const ids = [
-    "member-hub-org-great-region",
-    "member-hub-org-pastoral-zone",
-    "member-hub-org-small-group"
-  ];
-  const values = {
-    "member-hub-org-great-region": user.great_region || "",
-    "member-hub-org-pastoral-zone": user.pastoral_zone || "",
-    "member-hub-org-small-group": user.small_group || ""
-  };
-
-  ids.forEach(function (id) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    if (pending) {
-      el.setAttribute("aria-busy", "true");
-      if (firstPaint(el)) {
-        if (typeof ComponentSkeletonLoader !== "undefined") {
-          ComponentSkeletonLoader.fill("placement-value", el);
-        } else {
-          el.innerHTML = '<span class="skeleton-shimmer" style="display:inline-block;height:1rem;width:4.5rem;border-radius:4px;"></span>';
-        }
-      }
-      return;
-    }
-    el.removeAttribute("aria-busy");
-    el.textContent = String(values[id] || "").trim() || "尚未設定";
-  });
-
-  const hasAnyPlacement = Object.values(values).some(function (value) {
-    return String(value || "").trim();
-  });
-  const emptyEl = document.getElementById("member-hub-org-empty");
-  if (emptyEl) emptyEl.classList.toggle("hidden", pending || hasAnyPlacement);
 
   const syncEl = document.getElementById("member-hub-org-sync-status");
-  if (syncEl) {
-    if (pending) {
-      syncEl.textContent = "同步中…";
-    } else if (isMemberHubManagedProfile()) {
-      syncEl.textContent = formatMemberContextSyncStatus(user);
-    } else {
-      syncEl.textContent = "目前登入方式無法同步會員中心";
-    }
+  if (!syncEl) return;
+  if (pending) {
+    syncEl.textContent = "同步中…";
+  } else if (isMemberHubManagedProfile()) {
+    syncEl.textContent = formatMemberContextSyncStatus(user);
+  } else {
+    syncEl.textContent = "目前登入方式無法同步會員中心";
   }
 }
 
@@ -204,13 +171,6 @@ function applyProfileIdentitySkeletons() {
     roleEl.setAttribute("aria-busy", "true");
     ComponentSkeletonLoader.fill("role-badge", roleEl);
   }
-  ["member-hub-org-great-region", "member-hub-org-pastoral-zone", "member-hub-org-small-group"].forEach(function (id) {
-    const el = document.getElementById(id);
-    if (el) {
-      el.setAttribute("aria-busy", "true");
-      ComponentSkeletonLoader.fill("placement-value", el);
-    }
-  });
   if (typeof renderUserAvatar === "function") {
     renderUserAvatar(document.getElementById("profile-summary-avatar"), {
       size: "lg",

@@ -573,56 +573,14 @@ body.dark-theme {
   box-sizing: border-box;
 }
 
-.member-hub-org-placement {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  border: 1px solid var(--border-card);
-  border-radius: var(--radius-sm);
-  padding: 0.85rem 1rem;
-  background: color-mix(in srgb, var(--text-primary) 2%, var(--bg-input));
-}
-
-.member-hub-org-placement__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.member-hub-org-placement__item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.member-hub-org-placement__label {
-  display: block;
-  margin: 0;
-  color: var(--text-secondary);
+/* Org placement (大區/牧區/小組) lives only in the profile header breadcrumb
+   (#profile-summary-org). This group shows just a one-line sync-status caption
+   so the same data isn't repeated in a tall bordered box. */
+.member-hub-sync-caption {
+  margin: 0.15rem 0 0;
+  color: var(--text-muted);
   font-size: 0.875rem;
-}
-
-.member-hub-org-placement__value {
-  display: block;
-  color: var(--text-primary);
-  font-size: 0.95rem;
-  font-weight: var(--type-weight-strong);
-  overflow-wrap: anywhere;
-}
-
-.member-hub-org-placement__sync,
-.member-hub-org-placement__empty {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  line-height: 1.45;
-}
-
-@media (max-width: 640px) {
-  .member-hub-org-placement__grid {
-    grid-template-columns: 1fr;
-  }
+  line-height: 1.4;
 }
 
 .member-hub-form-notice {

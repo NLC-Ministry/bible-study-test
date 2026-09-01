@@ -1403,10 +1403,6 @@ const ComponentSkeletonLoader = {
       `;
     }
 
-    if (type === "placement-value") {
-      return `<span class="skeleton-wrapper" style="display:inline-block;min-width:3.5rem;">${this._bar(options.width || "4.5rem", options.height || "1rem", "4px")}</span>`;
-    }
-
     if (type === "role-badge") {
       return `<span class="skeleton-wrapper" style="display:inline-block;">${this._bar(options.width || "4rem", options.height || "1.25rem", "999px")}</span>`;
     }

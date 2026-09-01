@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260901_plan_list_toolbar" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260901_member_hub_org_dedupe" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -1580,30 +1580,11 @@
                     </span>
                     <div class="app-settings-group__header-text">
                       <h3 id="profile-member-hub-title" class="text-sm font-medium m-0">新生命會員中心</h3>
-                      <p id="profile-member-hub-desc" class="text-xs text-secondary m-0">姓名、牧區歸屬與教會身份由會員中心統一管理；更新後會自動同步至本 app。</p>
+                      <p id="profile-member-hub-desc" class="text-xs text-secondary m-0">姓名、牧區與教會身份由會員中心統一管理，更新後自動同步至本 app。</p>
+                      <p class="member-hub-sync-caption" id="member-hub-org-sync-status" aria-live="polite">尚未同步</p>
                     </div>
                   </div>
 
-                  <div class="member-hub-org-placement" id="member-hub-org-placement" aria-live="polite">
-                    <div class="member-hub-org-placement__grid">
-                      <div class="member-hub-org-placement__item">
-                        <span class="member-hub-org-placement__label">大區</span>
-                        <strong class="member-hub-org-placement__value" id="member-hub-org-great-region" aria-busy="true"><span class="skeleton-shimmer" style="display:inline-block;height:1rem;width:4.5rem;border-radius:4px;"></span></strong>
-                      </div>
-                      <div class="member-hub-org-placement__item">
-                        <span class="member-hub-org-placement__label">牧區</span>
-                        <strong class="member-hub-org-placement__value" id="member-hub-org-pastoral-zone" aria-busy="true"><span class="skeleton-shimmer" style="display:inline-block;height:1rem;width:4.5rem;border-radius:4px;"></span></strong>
-                      </div>
-                      <div class="member-hub-org-placement__item">
-                        <span class="member-hub-org-placement__label">小組</span>
-                        <strong class="member-hub-org-placement__value" id="member-hub-org-small-group" aria-busy="true"><span class="skeleton-shimmer" style="display:inline-block;height:1rem;width:4.5rem;border-radius:4px;"></span></strong>
-                      </div>
-                    </div>
-                    <p class="member-hub-org-placement__sync" id="member-hub-org-sync-status">尚未同步</p>
-                    <p class="member-hub-org-placement__empty hidden" id="member-hub-org-empty">
-                      會員中心尚未提供完整組織歸屬，請至會員中心更新。
-                    </p>
-                  </div>
                   <div class="app-settings-list">
                     <a class="app-settings-item" id="btn-member-hub-structure" target="_blank" rel="noopener noreferrer">
                       <div class="app-settings-item__leading">
@@ -2759,7 +2740,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260901_reader_next_chapter_and_ten_verse_fix"></script>
+  <script type="module" src="js/app.js?v=20260901_member_hub_org_dedupe"></script>
 </body>
 
 </html>
