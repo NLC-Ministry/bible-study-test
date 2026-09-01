@@ -221,8 +221,14 @@ function mapGlobalPlanRecord(dbPlan) {
       : window.CHURCH_CAMPAIGN;
     campaignDefinition = window.cloneChurchCampaign(stored);
   } else if (isCampaignStage || isCohortStage) {
-    const storedStageNo = Number(dbPlan.rules && dbPlan.rules.stageNo)
-      || Number(String(dbPlan.id || "").slice(-12));
+    // 正式階段的 id 尾 12 碼就是階段序（…c026-00000000000N）；cohort 是隨機 UUID，
+    // 只能靠 rules 裡的 stageNo / cohortSourceStageNo。
+    const rulesStageNo = Number(
+      (dbPlan.rules && (dbPlan.rules.stageNo ?? dbPlan.rules.cohortSourceStageNo ?? dbPlan.rules.cohortStageNo))
+    );
+    const storedStageNo = Number.isFinite(rulesStageNo) && rulesStageNo > 0
+      ? rulesStageNo
+      : (isCohortStage ? NaN : Number(String(dbPlan.id || "").slice(-12)));
     const cohortStart = isCohortStage ? String(dbPlan.start_date || "").slice(0, 10) : null;
     const cohortEnd = isCohortStage ? String(dbPlan.end_date || "").slice(0, 10) : null;
     const rulesHasSchedule = dbPlan.rules
@@ -237,7 +243,9 @@ function mapGlobalPlanRecord(dbPlan) {
       if (materialized) {
         campaignDefinition = window.cloneChurchCampaign(dbPlan.rules);
       } else {
-        const sourceStage = window.getChurchCampaignStageDefinition(storedStageNo);
+        const sourceStage = Number.isFinite(storedStageNo)
+          ? window.getChurchCampaignStageDefinition(storedStageNo)
+          : null;
         campaignDefinition = sourceStage && typeof window.buildCohortStageDefinition === "function"
           ? window.buildCohortStageDefinition(sourceStage, cohortStart, cohortEnd)
           : null;
@@ -245,6 +253,12 @@ function mapGlobalPlanRecord(dbPlan) {
           console.error(
             `[cohort] global_plan ${dbPlan.id} 尚未 materialize（rules 缺平移後 stages/segments），` +
             `已於前端即時壓縮階段 ${storedStageNo} 排程至 ${cohortStart}~${cohortEnd}。請重跑 create_region_stage_cohort。`
+          );
+        } else {
+          console.error(
+            `[cohort] global_plan ${dbPlan.id} 無法建立排程定義：storedStageNo=${storedStageNo}，` +
+            `rules keys=${dbPlan.rules ? Object.keys(dbPlan.rules).join(",") : "(none)"}。` +
+            `請確認 rules.stageNo / cohortSourceStageNo，並重跑 0140 + create_region_stage_cohort。`
           );
         }
       }

@@ -1680,15 +1680,18 @@ function generateChurchCampaignPlanObject(definition, presetKey, scheduleSetting
       chapter.key = chapter.book + "_" + chapter.chapter + "_" + (chapter.round || 1);
     });
   });
-  // 定義裡有經卷、卻鋪不出任何一天有章 = 排程壞了（例：cohort 定義起訖與 segment
-  // 起訖對不上）。靜默的話畫面只會顯示「補讀與休息日」，跟真的休息日分不出來。
-  const definitionHasReadings = (definition.segments || [])
-    .some(segment => Array.isArray(segment.readings) && segment.readings.length > 0);
-  if (definitionHasReadings && !days.some(day => (day.chapters || []).length > 0)) {
+  // 靜默的話畫面只會顯示「補讀與休息日」，跟真的休息日分不出來——所以只要
+  // 建完排程一天章節都沒有，就大聲報，並帶上足以定位的細節。
+  const segs = Array.isArray(definition.segments) ? definition.segments : [];
+  const readingsCount = segs.reduce((n, s) => n + (Array.isArray(s.readings) ? s.readings.length : 0), 0);
+  if (!days.some(day => (day.chapters || []).length > 0)) {
     console.error(
       `[campaign] 排程建立後沒有任何一天有章節：definition="${definition.name}" ` +
-      `${definition.startDate}~${definition.endDate}，segments=${(definition.segments || []).length}。` +
-      `多半是起訖與 segment 視窗不一致。`
+      `${definition.startDate}~${definition.endDate}，segments=${segs.length}，readings=${readingsCount}，` +
+      `segStarts=${segs.map(s => s.startDate).join("|")}。` +
+      (readingsCount === 0
+        ? "segment 沒有 readings（cohort 定義 materialize 不完整）。"
+        : "多半是 segment 起訖與定義起訖對不上。")
     );
   }
   const targetBooks = Array.from(new Set(definition.segments.flatMap(segment =>
