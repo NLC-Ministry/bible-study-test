@@ -127,7 +127,8 @@ describe("daily church quiz", () => {
   });
 
   it("adds review, publishing and scoped member results to plan management", () => {
-    expect(html).toContain('data-plan-subtab="quizzes"');
+    // Admin nav moved from data-plan-subtab tabs to unified #admin-section-* panels.
+    expect(html).toContain('id="admin-section-quizzes"');
     expect(admin).toContain("renderAdminQuizReviewCards");
     expect(admin).toContain("renderAdminQuizPublishPanel");
     expect(admin).toContain('id="admin-quiz-publish-btn"');

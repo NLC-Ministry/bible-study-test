@@ -15,7 +15,8 @@ describe("Member Hub-only permission management", () => {
   const html = read("index.html");
 
   it("removes the local user-permission entry and its supporting code", () => {
-    expect(html).toContain('data-admin-panel="system">系統管理</button>');
+    // Admin nav is now the unified #admin-section-* model (no data-admin-panel tabs).
+    expect(html).toContain('id="admin-section-permissions"');
     expect(html).not.toContain("admin-users-accordion-root");
     expect(html).not.toContain("使用者權限管理");
     expect(admin).not.toContain("renderAdminUserManagement");
