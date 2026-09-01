@@ -879,6 +879,7 @@ const auth = {
     localStorage.removeItem("reading_logs");
     localStorage.removeItem("selected_plan_key");
     localStorage.removeItem("offline_trusted_identity");
+    try { sessionStorage.removeItem("plan_elig_hub_verified"); } catch (_) {}
 
     if (typeof state !== "undefined" && state.supabase && state.supabase.auth && typeof state.supabase.auth.signOut === "function") {
       try {

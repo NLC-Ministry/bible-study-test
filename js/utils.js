@@ -281,7 +281,15 @@ window.isProfileNameValid = isProfileNameValid;
 // only a genuine data issue (missing profile, unsubmitted membership,
 // inactive membership, etc.) should. Resets naturally on logout/reload
 // since auth.logout() does a full page navigation.
-let planEligibilityVerifiedThisSession = false;
+//
+// 存到 sessionStorage：只要這個分頁的 session 內確認過一次 Hub context 正常，
+// 之後每次「重新整理」就不要再因為 member_context_synced_at 看起來太舊而彈出
+// 整頁閘門——背景 retry 照跑，真的有資料問題（缺 profile / 會籍 inactive…）
+// 還是會用別的 reason 擋下來。logout 時由 auth._clearStoredTokens() 清掉。
+const PLAN_ELIG_VERIFIED_KEY = "plan_elig_hub_verified";
+let planEligibilityVerifiedThisSession = (() => {
+  try { return sessionStorage.getItem(PLAN_ELIG_VERIFIED_KEY) === "1"; } catch (_) { return false; }
+})();
 
 function getPlanEligibilityBlock(user) {
   const u = user || (typeof state !== "undefined" ? state.currentUser : null) || {};
@@ -289,6 +297,7 @@ function getPlanEligibilityBlock(user) {
   const canonicalBlock = getUserOnboardingBlock(u);
   if (!canonicalBlock) {
     planEligibilityVerifiedThisSession = true;
+    try { sessionStorage.setItem(PLAN_ELIG_VERIFIED_KEY, "1"); } catch (_) {}
     return null;
   }
   if (canonicalBlock.reason === "member_context_unavailable" && planEligibilityVerifiedThisSession) {
