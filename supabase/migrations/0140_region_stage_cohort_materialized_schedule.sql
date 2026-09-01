@@ -174,6 +174,7 @@ DECLARE
   row_rec   RECORD;
   seg       JSONB;
   stg       JSONB;
+  seg_label TEXT;
 BEGIN
   FOR row_rec IN
     SELECT id, name, start_date, end_date, rules
@@ -183,10 +184,16 @@ BEGIN
            OR jsonb_array_length(COALESCE(rules->'segments', '[]'::jsonb)) < 1)
   LOOP
     IF (row_rec.rules->>'stageNo')::INTEGER = 1 THEN
+      -- 「每月／階段章節安排」標題：同年同月 → 「2026年9月」，跨月 → 起訖範圍
+      IF date_trunc('month', row_rec.start_date) = date_trunc('month', row_rec.end_date) THEN
+        seg_label := to_char(row_rec.start_date, 'FMYYYY"年"FMMM"月"');
+      ELSE
+        seg_label := row_rec.start_date::TEXT || ' ~ ' || row_rec.end_date::TEXT;
+      END IF;
       seg := jsonb_build_array(jsonb_build_object(
         'stageNo',   1,
         'roundNo',   1,
-        'label',     row_rec.name,
+        'label',     seg_label,
         'startDate', row_rec.start_date::TEXT,
         'endDate',   row_rec.end_date::TEXT,
         'readings',  jsonb_build_array(jsonb_build_object('book', '創世記', 'from', 1, 'to', 50))

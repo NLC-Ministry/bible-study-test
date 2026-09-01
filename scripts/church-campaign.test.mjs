@@ -121,6 +121,8 @@ describe("versioned church Bible campaign", () => {
     expect(cohort.segments).toHaveLength(1);
     expect(cohort.segments[0].startDate).toBe("2026-09-01");
     expect(cohort.segments[0].endDate).toBe("2026-09-30");
+    // 「每月／階段章節安排」標題跟著視窗走，不是 canonical 的「2026年8月」
+    expect(cohort.segments[0].label).toBe("2026年9月");
 
     const days = context.window.buildChurchCampaignDays(cohort, books);
     expect(days).toHaveLength(30);

@@ -148,6 +148,13 @@ function buildCohortStageDefinition(sourceStageDef, startISO, endISO) {
     .flatMap(segment => Array.isArray(segment.readings) ? segment.readings : [])
     .map(reading => ({ ...reading }));
 
+  // 「每月／階段章節安排」那一段的標題：同年同月 → 「2026年9月」，跨月 → 起訖範圍。
+  const [sy, sm] = String(startISO).split("-");
+  const [ey, em] = String(endISO).split("-");
+  const label = (sy === ey && sm === em)
+    ? `${sy}年${Number(sm)}月`
+    : `${startISO} ~ ${endISO}`;
+
   clone.startDate = startISO;
   clone.endDate = endISO;
   clone.examDate = null;
@@ -160,7 +167,7 @@ function buildCohortStageDefinition(sourceStageDef, startISO, endISO) {
   clone.segments = [{
     stageNo: Number(sourceStage.stageNo),
     roundNo: Number(sourceStage.roundNo),
-    label: clone.name || sourceStage.name || "延後梯次",
+    label,
     startDate: startISO,
     endDate: endISO,
     readings
