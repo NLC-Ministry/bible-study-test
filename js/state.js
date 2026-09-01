@@ -441,11 +441,20 @@ const appRouter = {
     }
     if (!backBtn || !backLabel) return;
 
+    // 管理分頁的手機 drill-in：子頁打開時，頂 bar 顯示返回鍵、標題換成該功能名。
+    const isAdminSectionDrill = this.currentTab === "admin-view"
+      && document.body.classList.contains("admin-section-open");
+    if (isAdminSectionDrill && titleEl) {
+      titleEl.style.display = "";
+      titleEl.textContent = window.__adminSectionLabel || "管理";
+    }
+
     // Back button rules:
     // - reader-view: always show (returns to previous tab)
+    // - admin-view + drill-in: show (returns to the function list)
     // - plan-detail: hidden here (handled by topBarBackBtn above)
     // - all other tabs: HIDE — bottom nav handles all tab switching
-    const showBackBtn = isReaderPage;
+    const showBackBtn = isReaderPage || isAdminSectionDrill;
     backBtn.classList.toggle("is-home", !showBackBtn);
     backBtn.style.display = showBackBtn ? "" : "none";
     backLabel.textContent = "返回";
@@ -453,6 +462,14 @@ const appRouter = {
   },
 
   goBack() {
+    // 管理分頁手機 drill-in：返回鍵先關子頁、回功能清單。
+    if (this.currentTab === "admin-view" && document.body.classList.contains("admin-section-open")) {
+      if (typeof window.closeAdminSection === "function") window.closeAdminSection();
+      else document.body.classList.remove("admin-section-open");
+      this.updateNavigationChrome();
+      return;
+    }
+
     if (this.currentTab === "reader-view") {
       if (state.readerState && state.readerState.returnTab === "plan-view") {
         state.readerState.returnTab = null;

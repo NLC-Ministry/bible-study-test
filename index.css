@@ -1972,43 +1972,32 @@ vercel-live-feedback,
 
 /* ─── Primary CTA — gradient + brand glow ─── */
 .primary-btn {
-  background: linear-gradient(135deg, #04A9D2 0%, #0284A3 100%);
-  color: #ffffff;
+  /* Design system: solid brand button — flat fill, no gradient, no brand glow,
+     medium (500) weight on chrome, neutral shadow only. */
+  background: var(--color-brand);
+  color: var(--color-white);
   border: none;
   padding: 0.78rem 1.5rem;
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: var(--type-weight-strong, 500);
   border-radius: var(--radius-md);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  /* inner shine + glow */
-  box-shadow:
-    0 0 0 1px rgba(255,255,255,0.10) inset,
-    0 1px 0 rgba(255,255,255,0.18) inset,
-    0 4px 16px -4px rgba(4,169,210,0.45);
-  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-none, none);
+  transition: background-color 0.16s ease, color 0.16s ease;
   letter-spacing: 0.01em;
   position: relative;
-  overflow: hidden;
 }
 .primary-btn::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.12) 0%, transparent 55%);
-  pointer-events: none;
+  content: none;
 }
 .primary-btn:hover {
-  background: linear-gradient(135deg, #26B8DC 0%, #04A9D2 100%);
-  box-shadow:
-    0 0 0 1px rgba(255,255,255,0.12) inset,
-    0 1px 0 rgba(255,255,255,0.22) inset,
-    0 6px 20px -4px rgba(4,169,210,0.55);
-  transform: translateY(-1px);
+  background: var(--color-brand-hover);
+  box-shadow: var(--shadow-none, none);
+  transform: none;
 }
 
 /* ─── Secondary — frosted glass ─── */
@@ -3586,23 +3575,21 @@ body:not(.dark-theme) .settings-row-btn:hover {
 }
 
 .announcement-item:hover {
-  border-color: color-mix(in srgb, var(--color-brand) 28%, var(--border-card));
-  border-color: color-mix(in srgb, var(--brand-primary, #04A9D2) 35%, var(--border-card));
-  background: color-mix(in srgb, var(--brand-primary, #04A9D2) 5%, var(--bg-card));
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(4, 169, 210, 0.12);
+  border-color: color-mix(in srgb, var(--color-brand) 35%, var(--border-card));
+  background: color-mix(in srgb, var(--color-brand) 5%, var(--bg-card));
 }
 
-/* Featured / Pinned Announcement Left Accent Glow */
+/* Featured / Pinned announcement — flat left accent bar, no gradient, no glow. */
 .announcement-item--featured {
-  border-left: 4px solid var(--brand-primary, #04A9D2);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--brand-primary, #04A9D2) 8%, var(--bg-card)) 0%, color-mix(in srgb, var(--bg-card) 98%, var(--text-primary)) 100%);
-  box-shadow: 0 4px 16px rgba(4, 169, 210, 0.15);
+  border-left: 4px solid var(--color-brand);
+  background: color-mix(in srgb, var(--color-brand) 6%, var(--bg-card));
+  box-shadow: var(--shadow-sm);
 }
 
 .announcement-item--featured:hover {
-  border-left-color: #38bdf8;
-  box-shadow: 0 6px 20px rgba(4, 169, 210, 0.22);
+  border-color: color-mix(in srgb, var(--color-brand) 35%, var(--border-card));
+  border-left-color: var(--color-brand);
+  background: color-mix(in srgb, var(--color-brand) 9%, var(--bg-card));
 }
 
 .announcement-item--skeleton {
@@ -12004,6 +11991,59 @@ body.plan-inline-reader-open .mobile-nav-bar {
   background-color: color-mix(in srgb, var(--color-brand) 6%, var(--bg-card)) !important;
 }
 
+/* ── 設計系統對齊（CLAUDE.md：無漸層、中性陰影、chrome 不用 600–900 字重）──
+   這個 React 面板用的是原生 Tailwind 調色盤 utility（bg-cyan-600、ring-2、
+   shadow-2xl、font-bold…），繞過了 token 橋接。以下把可見的違規項收斂回設計系統。 */
+#admin-reports-root .admin-report-view {
+  box-shadow: var(--shadow-sm) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 主要動作鈕 +「全部」啟用篩選籤：品牌實色，不要 cyan 光暈/漸層 */
+#admin-reports-root .admin-report-view [class~="bg-cyan-600"],
+#admin-reports-root .admin-report-view [class~="bg-cyan-500"],
+#admin-reports-root .admin-report-view [class*="bg-cyan-600/"],
+#admin-reports-root .admin-report-view [class*="bg-cyan-500/"] {
+  background-color: var(--color-brand) !important;
+  color: var(--color-solid-fill-foreground) !important;
+}
+#admin-reports-root .admin-report-view [class~="hover:bg-cyan-500"]:hover,
+#admin-reports-root .admin-report-view [class~="bg-cyan-600"]:hover {
+  background-color: var(--color-brand-hover) !important;
+}
+
+/* 品牌色小圖示 / 文字 accent 對回 token */
+#admin-reports-root .admin-report-view [class~="text-cyan-400"],
+#admin-reports-root .admin-report-view [class~="text-cyan-300"] {
+  color: var(--color-brand) !important;
+}
+
+/* chrome 上收斂到 medium (500) */
+#admin-reports-root .admin-report-view [class~="font-bold"],
+#admin-reports-root .admin-report-view [class~="font-semibold"],
+#admin-reports-root .admin-report-view [class~="font-extrabold"],
+#admin-reports-root .admin-report-view thead {
+  font-weight: 500 !important;
+}
+
+/* 中性陰影：shadow-2xl / shadow-md → sm，shadow-inner → 無 */
+#admin-reports-root .admin-report-view [class~="shadow-2xl"],
+#admin-reports-root .admin-report-view [class~="shadow-md"] {
+  box-shadow: var(--shadow-sm) !important;
+}
+#admin-reports-root .admin-report-view [class~="shadow-inner"] {
+  box-shadow: none !important;
+}
+
+/* 篩選籤的 ring + shadow = 品牌光暈，全部拿掉（啟用狀態靠底色區分即可）。
+   放在 shadow-* 收斂規則之後，確保這裡的 none 勝出。 */
+#admin-reports-root .admin-report-view [data-testid^="filter-status-"] {
+  box-shadow: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+}
+
 #admin-reports-root .admin-report-view select,
 #admin-reports-root .admin-report-view textarea {
   color-scheme: light;
@@ -13717,11 +13757,6 @@ select,
   flex-shrink: 0;
 }
 
-/* 手機的返回標頭（桌機隱藏）。 */
-.admin-section-overlay-bar {
-  display: none;
-}
-
 /* 桌機：功能清單固定在左側，所選內容直接在右側打開。app.js 會寫入
    display:block inline style，因此 active 狀態需用 !important 完成雙欄。 */
 @media (min-width: 960px) {
@@ -13775,62 +13810,19 @@ select,
     overflow: hidden;
   }
 
+  /* 內容區當全螢幕子頁：從 app 頂 bar 下緣開始（頂 bar 保留給返回鍵），
+     不蓋到底部導覽列。返回鍵由 #global-back-btn 提供（見 updateNavigationChrome）。 */
   body.admin-section-open #admin-view > #admin-section-content {
     position: fixed;
-    inset: 0;
-    z-index: var(--z-modal, 1000);
+    top: calc(var(--app-top-bar-height, 56px) + var(--app-safe-top, 0px));
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 200; /* < --z-header (300)，讓頂 bar 的返回鍵在上面可點 */
     background: var(--bg-app);
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 0 1rem;
-  }
-
-  body.admin-section-open #admin-section-overlay-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: calc(var(--z-modal, 1000) + 1);
-    padding: 0.6rem 0.75rem;
-    border-bottom: 1px solid var(--border-card);
-    background: var(--bg-app);
-  }
-
-  /* content 內第一塊要讓開固定標頭的高度。 */
-  body.admin-section-open #admin-view > #admin-section-content {
-    padding-top: 3.5rem;
-  }
-
-  .admin-section-overlay-bar__back {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.15rem;
-    min-width: 4.5rem;
-    padding: 0.4rem 0.4rem 0.4rem 0.15rem;
-    border: 0;
-    background: none;
-    color: var(--text-primary);
-    font: inherit;
-    font-weight: 500;
-    cursor: pointer;
-  }
-
-  .admin-section-overlay-bar__title {
-    flex: 1;
-    text-align: center;
-    font-weight: 500;
-    font-size: 1rem;
-    color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .admin-section-overlay-bar__spacer {
-    min-width: 4.5rem;
+    padding: 1rem 1rem 3rem;
   }
 }
 

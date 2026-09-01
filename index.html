@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260901_admin_section_mobile_drilldown" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260901_admin_drill_ds_align" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -1716,16 +1716,9 @@
       <!-- VIEW 6: ADMIN CONSOLE -->
       <section id="admin-view" class="view-pane hidden">
         <!-- 統一管理架構：一份功能清單 + 一個內容區。
-             手機（< 960px）：清單是首頁，點一項把內容區當全螢幕子頁打開，靠這條
-             sticky 標頭返回。桌機（≥ 960px）：雙欄，標頭隱藏、內容常駐右側。 -->
-        <header id="admin-section-overlay-bar" class="admin-section-overlay-bar" hidden>
-          <button type="button" id="admin-section-back-btn" class="admin-section-overlay-bar__back" aria-label="返回管理功能清單">
-            <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
-            <span>管理</span>
-          </button>
-          <span class="admin-section-overlay-bar__title" id="admin-section-overlay-title"></span>
-          <span class="admin-section-overlay-bar__spacer"></span>
-        </header>
+             手機（< 960px）：清單是首頁，點一項把內容區當全螢幕子頁打開，返回鍵
+             走頂 bar 的 #global-back-btn（updateNavigationChrome / goBack 處理）。
+             桌機（≥ 960px）：雙欄，內容常駐右側。 -->
         <nav id="admin-section-nav" class="admin-section-nav" aria-label="管理功能"></nav>
         <div id="admin-section-content" class="admin-section-content">
 
@@ -2729,7 +2722,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260901_r1final_monthly_split"></script>
+  <script type="module" src="js/app.js?v=20260901_admin_drill_ds_align"></script>
 </body>
 
 </html>

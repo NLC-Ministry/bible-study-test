@@ -1630,13 +1630,14 @@ function isAdminSectionMobile() {
     && window.matchMedia(ADMIN_SECTION_MOBILE_QUERY).matches;
 }
 
-// 手機 drill-in：關掉子頁 overlay，回到功能清單。
+// 手機 drill-in：關掉子頁 overlay，回到功能清單。返回鍵走頂 bar。
 function closeAdminSection() {
   document.body.classList.remove('admin-section-open');
-  const bar = document.getElementById('admin-section-overlay-bar');
-  if (bar) bar.hidden = true;
   const content = document.getElementById('admin-section-content');
   if (content) content.scrollTop = 0;
+  if (window.appRouter && typeof window.appRouter.updateNavigationChrome === 'function') {
+    window.appRouter.updateNavigationChrome();
+  }
 }
 window.closeAdminSection = closeAdminSection;
 
@@ -1656,18 +1657,16 @@ function setAdminSection(id, options = {}) {
 
   // 手機：只有使用者主動點清單才把內容當全螢幕子頁打開；還原上次選擇
   // （options.userInitiated 沒帶）時只設定狀態、畫面停在清單。
-  const overlayBar = document.getElementById('admin-section-overlay-bar');
-  const overlayTitle = document.getElementById('admin-section-overlay-title');
-  if (overlayTitle) overlayTitle.textContent = section.label;
+  window.__adminSectionLabel = section.label;
   if (options.userInitiated && isAdminSectionMobile()) {
     document.body.classList.add('admin-section-open');
-    if (overlayBar) overlayBar.hidden = false;
     const content = document.getElementById('admin-section-content');
     if (content) content.scrollTop = 0;
   } else if (!isAdminSectionMobile()) {
-    // 桌機不會有 overlay；順手清掉可能殘留的狀態。
     document.body.classList.remove('admin-section-open');
-    if (overlayBar) overlayBar.hidden = true;
+  }
+  if (window.appRouter && typeof window.appRouter.updateNavigationChrome === 'function') {
+    window.appRouter.updateNavigationChrome();
   }
 
   const isPlanSection = section.panel === 'plans';
@@ -1736,12 +1735,7 @@ function renderAdminSectionNav() {
   });
   if (typeof hydrateIcons === 'function') hydrateIcons(nav);
 
-  // 手機返回鈕：回清單。綁一次即可。
-  const backBtn = document.getElementById('admin-section-back-btn');
-  if (backBtn && !backBtn.dataset.bound) {
-    backBtn.dataset.bound = 'true';
-    backBtn.addEventListener('click', closeAdminSection);
-  }
+  // 手機 drill-in 的返回鍵走頂 bar 的 #global-back-btn（appRouter.goBack 處理）。
   // 切回桌機寬度時，overlay 狀態就沒意義了 —— 清掉。
   if (!window.__adminSectionResizeBound && typeof window.matchMedia === 'function') {
     window.__adminSectionResizeBound = true;

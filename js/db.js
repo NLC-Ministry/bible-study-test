@@ -5058,18 +5058,30 @@ const db = {
         if (cached && cached.length > 0) return cached;
       }
 
+      // 舊環境尚未部署 0141（新增 expires_at 欄位）時，帶 expires_at 的查詢
+      // 每次都會 400（column does not exist），前景每 5 分鐘就洗一次 console。
+      // 一旦這個 session 撞過一次，就記住，之後直接送精簡欄位、不再重試。
+      const LEAN_COLUMNS = 'id, title, content, is_published, published_at, created_at, updated_at';
+      const FULL_COLUMNS = 'id, title, content, is_published, published_at, expires_at, created_at, updated_at';
+      const missingExpiresAt = window.__announcementExpiresAtMissing === true;
+
       try {
         let { data, error } = await state.supabase
           .from('church_announcements')
-          .select('id, title, content, is_published, published_at, expires_at, created_at, updated_at')
+          .select(missingExpiresAt ? LEAN_COLUMNS : FULL_COLUMNS)
           .order('created_at', { ascending: false })
           .limit(50);
 
         // 舊環境尚未部署 0141 時先維持公告可讀；部署後自動取得到期時間。
-        if (error && (error.code === '42703' || error.code === 'PGRST204' || /expires_at/i.test(String(error.message || '')))) {
+        const isMissingColumnError = error && (
+          error.code === '42703' || error.code === 'PGRST204' ||
+          /expires_at/i.test(String(error.message || error.error || ''))
+        );
+        if (!missingExpiresAt && isMissingColumnError) {
+          window.__announcementExpiresAtMissing = true;
           ({ data, error } = await state.supabase
             .from('church_announcements')
-            .select('id, title, content, is_published, published_at, created_at, updated_at')
+            .select(LEAN_COLUMNS)
             .order('created_at', { ascending: false })
             .limit(50));
         }

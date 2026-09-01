@@ -6,6 +6,12 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["serve", "."],
       "port": 3000
+    },
+    {
+      "name": "bible-study-dist",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "dist", "-l", "3100"],
+      "port": 3100
     }
   ]
 }
