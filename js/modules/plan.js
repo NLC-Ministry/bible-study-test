@@ -23,6 +23,7 @@ import {
   removePlanReadingLogs,
   resetPlanProgressState
 } from "./plan-progress-reset.mjs";
+import { computePlanScopedStreak } from "./team-progress-metrics.mjs";
 
 // Reading plans tab view controller
 
@@ -5435,8 +5436,11 @@ async function renderPlanStatsView() {
     if (statsUserName) statsUserName.textContent = userName;
     if (reportPlanTitle) reportPlanTitle.textContent = state.activePlan.name;
 
-    // Personal Streak val
-    const personalStreak = state.currentUser.streak || 0;
+    // Personal Streak val —— 這個計畫自己的最長連續打卡天數，不混用全域 streak。
+    const personalStreak = computePlanScopedStreak(state.readingLogs || [], {
+      planId: state.activePlan.id,
+      presetKey: state.activePlan.presetKey
+    });
 
     // 1. Highest streak (最高連續)
     const reportStatStreak = document.getElementById("report-stat-streak");
@@ -6717,7 +6721,13 @@ async function renderGroupParticipantsRankingTable() {
     return unique.size;
   };
   const myPlanReadCount = uniquePlanLogs(state.readingLogs || []);
-  const personalStreak = myPlanReadCount > 0 ? (state.currentUser.streak || 0) : 0;
+  // 「最高連續」各計畫獨立算：只看歸屬這個計畫的打卡，不混用全域 state.currentUser.streak。
+  const personalStreak = myPlanReadCount > 0
+    ? computePlanScopedStreak(state.readingLogs || [], {
+        planId: currentPlanIdForStats,
+        presetKey: currentPresetKeyForStats
+      })
+    : 0;
 
   // 進度狀態 / 補讀天數是「大家對同一把尺」的天數比較，尺一律是這個階段的
   // 教會原始日程（七日、不套任何使用者的 level 或個人休息日）。絕不能用
@@ -6994,7 +7004,16 @@ async function renderGroupParticipantsRankingTable() {
       const hasAnyPlanRead = isMe
         ? myPlanReadCount > 0
         : ((u.chapters_read || 0) > 0 || ((u.plan_progress || 0) > 0 && Boolean(u.last_read)));
-      const streak = hasAnyPlanRead ? (isMe ? personalStreak : (u.streak || 0)) : 0;
+      // 別人的 allLogsCache 已在查詢層限定到這個計畫（preset_key / global_plan_id），
+      // 所以 preFiltered；他們的 log.plan_id 是各自的 enrollment，不能拿來比對我的。
+      const streak = !hasAnyPlanRead
+        ? 0
+        : isMe
+          ? personalStreak
+          : computePlanScopedStreak(
+              (state.allLogsCache || []).filter(l => l.user_id === u.id),
+              { preFiltered: true }
+            );
 
       let completed = 0;
       let makeup = 0;
@@ -7424,7 +7443,10 @@ window.showPlanStatsModal = function () {
   }
 
   const plan = state.activePlan;
-  const streakDays = state.currentUser.streak || 0;
+  const streakDays = computePlanScopedStreak(state.readingLogs || [], {
+    planId: plan.id,
+    presetKey: plan.presetKey
+  });
 
   // 1. Calculate today's chapters progress
   const now = new Date();
@@ -8524,8 +8546,11 @@ function calculateProfileStats(plan) {
 function renderProfileReadingStats(container) {
   if (!container) return;
 
-  const streakDays = state.currentUser.streak || 0;
   const plan = state.activePlan;
+  const streakDays = computePlanScopedStreak(state.readingLogs || [], {
+    planId: plan && plan.id,
+    presetKey: plan && plan.presetKey
+  });
   const stats = calculateProfileStats(plan);
 
   if (!plan || !stats) {
