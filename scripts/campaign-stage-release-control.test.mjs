@@ -44,7 +44,11 @@ describe("campaign stage release control", () => {
     expect(visibilityMigration).toContain("plan_kind = 'church_campaign_stage'");
     expect(edgeFunction).toContain('query.or("is_hidden.eq.false,plan_kind.eq.church_campaign_stage")');
     expect(planModule).toContain("missingCampaignStages");
-    expect(planModule).toContain("!canManageHiddenPlans() && !window.isCampaignStageLocked(plan)");
+    // 探索清單顯示鎖住階段的判斷：現在額外要求 discoverWhenLocked（月度期末賽 = true，
+    // 第三階段之後 = false → 完全隱藏）。
+    expect(planModule).toContain("window.isCampaignStageLocked(plan)");
+    expect(planModule).toContain("window.isCampaignStageDiscoverableWhileLocked(plan)");
+    expect(planModule).toContain("if (isHidden && !canManageHiddenPlans() && !showAsLocked) return false;");
     expect(planModule).toContain("const isLockedStage = window.isCampaignStageLocked(plan)");
     expect(planModule).toContain('actions: isLockedStage ? "" : renderPlanCardActions([');
     expect(planModule).toContain("if (isLockedStage) {");

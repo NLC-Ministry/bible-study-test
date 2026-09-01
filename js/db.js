@@ -294,6 +294,8 @@ function mapGlobalPlanRecord(dbPlan) {
       : (cohortSourceStage && cohortSourceStage.awardName) || null,
     // cohort 的考試日期由該大區領袖日後自訂——建立時不帶。
     examDate: campaignDefinition ? campaignDefinition.examDate : null,
+    // 鎖住時是否仍出現在探索清單（月度期末賽 = true；第三階段之後 = 無此旗標 → 完全隱藏）
+    discoverWhenLocked: Boolean(dbPlan.rules && dbPlan.rules.discoverWhenLocked),
     ruleVersion: Number(dbPlan.rule_version || (campaignDefinition && campaignDefinition.version) || 1),
     publishedAt: dbPlan.published_at || null,
     campaignDefinition

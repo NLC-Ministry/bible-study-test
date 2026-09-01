@@ -11,8 +11,17 @@ function extractFunction(source, signature) {
   return source.slice(start, end);
 }
 
-const getCampaignStageCompletedRoundsSrc = extractFunction(
+function extractRange(source, fromSig, toSig) {
+  const start = source.indexOf(fromSig);
+  const end = source.indexOf("\n}", source.indexOf(toSig)) + 2;
+  if (start === -1 || end <= 1) throw new Error(`Could not slice ${fromSig}..${toSig}`);
+  return source.slice(start, end);
+}
+
+// getCampaignStageCompletedRounds now leans on 3 helper fns declared just above it.
+const getCampaignStageCompletedRoundsSrc = extractRange(
   utilsSource,
+  "function getFirstRoundFinalMonthlyKeys",
   "function getCampaignStageCompletedRounds"
 );
 
@@ -35,8 +44,14 @@ describe("badge unlock state stays synced with the live reading plan", () => {
       "state",
       "localStorage",
       "isCampaignStageKind",
+      "window",
       `${getCampaignStageCompletedRoundsSrc}\nreturn getCampaignStageCompletedRounds;`
-    )(state, localStorage, isCampaignStageKind);
+    )(state, localStorage, isCampaignStageKind, {
+      CHURCH_PLAN_PRESETS: {
+        church_r1final_2026_09: {}, church_r1final_2026_10: {},
+        church_r1final_2026_11: {}, church_r1final_2026_12: {}
+      }
+    });
   });
 
   it("ignores a stale localStorage value when the plan is genuinely still on round 1", () => {
@@ -99,5 +114,23 @@ describe("badge unlock state stays synced with the live reading plan", () => {
     }];
 
     expect(getCampaignStageCompletedRounds(2)).toBe(5);
+  });
+
+  it("第一輪期末賽鐵獎：四個月度計畫全部完成才算完成一遍（取最小）", () => {
+    const mf = (key, currentRound, progress) => ({ presetKey: key, currentRound, progress, planKind: "church_campaign_stage", stageNo: 2 });
+    // 3/4 完成第一遍、1 個還在 40% → 0 遍
+    state.activePlans = [
+      mf("church_r1final_2026_09", 1, 100), mf("church_r1final_2026_10", 1, 100),
+      mf("church_r1final_2026_11", 1, 100), mf("church_r1final_2026_12", 1, 40)
+    ];
+    expect(getCampaignStageCompletedRounds(2)).toBe(0);
+
+    // 4/4 完成第一遍 → 1 遍
+    state.activePlans[3] = mf("church_r1final_2026_12", 1, 100);
+    expect(getCampaignStageCompletedRounds(2)).toBe(1);
+
+    // 只加入 2/4 → 0 遍（期末賽要四卷全讀）
+    state.activePlans = [mf("church_r1final_2026_09", 1, 100), mf("church_r1final_2026_10", 1, 100)];
+    expect(getCampaignStageCompletedRounds(2)).toBe(0);
   });
 });

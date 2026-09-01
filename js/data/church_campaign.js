@@ -136,6 +136,8 @@ function buildMonthlyFinalDefinition(definition, stage, mfDef) {
     phase: stage.phase,
     awardName: stage.awardName,
     examDate: mfDef.examDate || null,
+    // 鎖住時仍要出現在「探索計畫」（available-locked）——月度期末賽 4 張都要看得到。
+    discoverWhenLocked: true,
     rules: cloneChurchCampaign(definition.rules),
     stages: [stageEntry],
     segments: [segment],
@@ -168,6 +170,8 @@ function createChurchCampaignStageDefinitions(definition = CHURCH_CAMPAIGN) {
       phase: stage.phase,
       awardName: stage.awardName,
       examDate: stage.examDate,
+      // 第三階段（含）之後：鎖住時**不**出現在探索清單，完全隱藏，等管理員開放。
+      discoverWhenLocked: Number(stage.stageNo) <= 2,
       rules: cloneChurchCampaign(definition.rules),
       stages: [cloneChurchCampaign(stage)],
       segments: cloneChurchCampaign(segments),

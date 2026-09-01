@@ -613,9 +613,42 @@ function buildHeatmapGrid(containerId, logsByDate, teamSize = 1, label = "章", 
   container.appendChild(wrapper);
 }
 
+// 第一輪期末賽（stageNo 2）＝ 9–12 月四個月度計畫。preset key 一律 church_r1final_*。
+function getFirstRoundFinalMonthlyKeys() {
+  const presets = (typeof window !== "undefined" && window.CHURCH_PLAN_PRESETS) || {};
+  return Object.keys(presets).filter(key => key.startsWith("church_r1final_"));
+}
+
+function findActivePlanByKey(key) {
+  const wanted = String(key);
+  return (state.activePlans || []).find(plan => plan
+    && [plan.presetKey, plan.id, plan.globalPlanId, plan.preset_key].filter(Boolean).map(String).includes(wanted)) || null;
+}
+
+function planCompletedRounds(plan) {
+  if (!plan) return 0;
+  const currentRound = Math.max(1, Number(plan.currentRound || 1));
+  return Number(plan.progress || 0) >= 100 ? currentRound : currentRound - 1;
+}
+
 function getCampaignStageCompletedRounds(stageNo) {
   const target = Number(stageNo || 0);
   const storageKey = `church_stage_completed_rounds_${target}`;
+
+  // 第一輪期末賽：四個月度計畫**全部**完成 N 遍才算完成 N 遍 → 取最小（未加入的月＝0）。
+  if (target === 2) {
+    const monthlyKeys = getFirstRoundFinalMonthlyKeys();
+    if (monthlyKeys.length) {
+      const perMonth = monthlyKeys.map(key => planCompletedRounds(findActivePlanByKey(key)));
+      const anyJoined = monthlyKeys.some(key => findActivePlanByKey(key));
+      if (anyJoined) {
+        const completed = Math.max(0, Math.min(...perMonth));
+        localStorage.setItem(storageKey, String(completed));
+        return completed;
+      }
+    }
+    return Number(localStorage.getItem(storageKey) || 0);
+  }
 
   let liveCompletedRounds = null;
   (state.activePlans || []).forEach(plan => {
@@ -644,6 +677,15 @@ function getCampaignStageCompletedRounds(stageNo) {
 
 function getCampaignStageCurrentRound(stageNo) {
   const target = Number(stageNo || 0);
+  // 第一輪期末賽：目前遍數 = 四個月度計畫裡「跑最慢」那個（沒加入的月不算）。
+  if (target === 2) {
+    const joined = getFirstRoundFinalMonthlyKeys()
+      .map(findActivePlanByKey).filter(Boolean);
+    if (joined.length) {
+      return Math.max(1, Math.min(...joined.map(plan => Number(plan.currentRound || 1))));
+    }
+    return 1;
+  }
   return (state.activePlans || []).reduce((maxRound, plan) => {
     if (!plan) return maxRound;
     const planStageNo = Number(plan.stageNo || (plan.campaignDefinition && plan.campaignDefinition.stageNo) || 0);
@@ -2264,6 +2306,17 @@ function isCampaignStageLocked(plan) {
   return Boolean(plan && isCampaignStageKind(plan) && isPlanHidden(plan));
 }
 
+// 被鎖住的教會階段：是否還要出現在「探索計畫」（available-locked）而非完全隱藏。
+// 月度期末賽 4 張 = true；第三階段之後 = false（等管理員開放才現身）。
+function isCampaignStageDiscoverableWhileLocked(plan) {
+  if (!plan) return false;
+  const def = plan.campaignDefinition;
+  const flag = plan.discoverWhenLocked
+    ?? (plan.rules && plan.rules.discoverWhenLocked)
+    ?? (def && def.discoverWhenLocked);
+  return Boolean(flag);
+}
+
 function canManageHiddenPlans() {
   const role = (state.currentUser && getUserRoleCode(state.currentUser)) || 'member';
 
@@ -2319,6 +2372,7 @@ window.selectMostRecentActivePlan = selectMostRecentActivePlan;
 window.calculateAllPlansProgress = calculateAllPlansProgress;
 window.isPlanHidden = isPlanHidden;
 window.isCampaignStageLocked = isCampaignStageLocked;
+window.isCampaignStageDiscoverableWhileLocked = isCampaignStageDiscoverableWhileLocked;
 // 前端唯一定義在 js/data/campaign-stage-kinds.mjs；這裡轉出給少數非 import 的呼叫點。
 window.isCampaignStagePlan = isCampaignStageKind;
 window.isCanonicalCampaignStagePlan = isCanonicalCampaignStageKind;

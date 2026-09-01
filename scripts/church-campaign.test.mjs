@@ -46,6 +46,10 @@ describe("versioned church Bible campaign", () => {
     expect(monthly.map(s => s.books[0])).toEqual(["出埃及記", "利未記", "民數記", "申命記"]);
     // 只有 12 月那張帶期末測驗
     expect(monthly.map(s => s.examDate)).toEqual([null, null, null, "2026-12-27"]);
+    // 4 張都要在鎖住時出現在探索清單；第三階段之後不要（等管理員開放）
+    expect(monthly.every(s => s.discoverWhenLocked === true)).toBe(true);
+    expect(stages.filter(s => Number(s.stageNo) >= 3).every(s => s.discoverWhenLocked === false)).toBe(true);
+    expect(stages.find(s => Number(s.stageNo) === 1).discoverWhenLocked).toBe(true);
 
     const scheduled = stages.flatMap(stage =>
       context.window.buildChurchCampaignDays(stage, books).flatMap(day => day.chapters)

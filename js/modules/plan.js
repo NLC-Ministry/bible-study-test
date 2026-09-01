@@ -2370,7 +2370,12 @@ function renderPresetPlansList() {
     const isAlreadyJoined = joinedKeysValues.some(value => joinedKeys.has(value));
 
     if (isObsolete || isLegacy) return false;
-    if (isHidden && !canManageHiddenPlans() && !window.isCampaignStageLocked(plan)) return false;
+    // 隱藏的計畫：一般會友看不到。例外：被鎖住的教會階段**且**標記為
+    // discoverWhenLocked（月度期末賽）→ 顯示為 available-locked。第三階段之後
+    // 沒帶這個旗標 → 完全隱藏，等管理員開放（is_hidden 轉 false）才現身。
+    const showAsLocked = window.isCampaignStageLocked(plan)
+      && window.isCampaignStageDiscoverableWhileLocked(plan);
+    if (isHidden && !canManageHiddenPlans() && !showAsLocked) return false;
     if (!matchesSearch) return false;
     return !isAlreadyJoined;
   });
