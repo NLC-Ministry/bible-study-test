@@ -94,7 +94,17 @@ function normalizeVerses(rawVerses) {
     .filter(v => v.verse && v.text);
 }
 
-function assertCompleteEnough(result, sourceName, isEnglish = false) {
+// Known verse count for a chapter, keyed by BIBLE_BOOKS[].eng (e.g. "Exodus",
+// "1 Samuel"). Returns null when the table is unavailable or the lookup misses.
+function getExpectedVerseCount(bookEngName, chapter) {
+  const table = (typeof BIBLE_VERSE_COUNTS !== "undefined" && BIBLE_VERSE_COUNTS)
+    || (typeof window !== "undefined" && window.BIBLE_VERSE_COUNTS);
+  const chapters = table && table[bookEngName];
+  const count = Array.isArray(chapters) ? chapters[Number(chapter) - 1] : null;
+  return Number.isFinite(count) ? count : null;
+}
+
+function assertCompleteEnough(result, sourceName, isEnglish = false, expectedVerseCount = null) {
   if (!result || !Array.isArray(result.verses) || result.verses.length === 0) {
     throw new Error(`${sourceName} 沒有回傳經文`);
   }
@@ -106,7 +116,13 @@ function assertCompleteEnough(result, sourceName, isEnglish = false) {
 
   const lastVerse = result.verses[result.verses.length - 1].verse;
   const uniqueCount = new Set(result.verses.map(v => v.verse)).size;
-  if (result.verses.length === 10 && lastVerse === 10 && uniqueCount === 10) {
+  // bible-api.com sometimes truncates a long chapter to its first 10 verses.
+  // Only treat "exactly 10 verses ending at verse 10" as truncation when the
+  // real chapter is known to have more than 10 verses — otherwise genuinely
+  // 10-verse chapters (Exodus 11, Jonah 2/3, 1 John 1, …) can never load.
+  const looksTruncated = result.verses.length === 10 && lastVerse === 10 && uniqueCount === 10;
+  const couldHaveMore = !expectedVerseCount || expectedVerseCount > 10;
+  if (looksTruncated && couldHaveMore) {
     throw new Error(`${sourceName} 只回傳前 10 節`);
   }
 
@@ -128,7 +144,7 @@ async function fetchFromBibleApi(bookEngName, chapter, translation) {
   return assertCompleteEnough({
     reference: data.reference || `${bookEngName} ${chapter}`,
     verses: normalizeVerses(data.verses)
-  }, `bible-api ${translation}`, isEnglish);
+  }, `bible-api ${translation}`, isEnglish, getExpectedVerseCount(bookEngName, chapter));
 }
 
 async function fetchFromBolls(bookEngName, chapter, translation, bookIdentifier = null) {
@@ -141,7 +157,7 @@ async function fetchFromBolls(bookEngName, chapter, translation, bookIdentifier 
   return assertCompleteEnough({
     reference: `${bookEngName} ${chapter}`,
     verses: normalizeVerses(data)
-  }, `Bolls ${translation}`, isEnglish);
+  }, `Bolls ${translation}`, isEnglish, getExpectedVerseCount(bookEngName, chapter));
 }
 const BIBLE_FALLBACK = {
   "Genesis_1": {

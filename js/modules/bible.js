@@ -886,50 +886,10 @@ export async function navigateToChapter(direction, options = {}) {
   if (!autoContinue) stopReaderAudio(true);
   const currentBook = BIBLE_BOOKS.find(b => b.id === state.readerState.bookId);
 
-  if (direction > 0 && !autoContinue && state.readerState && state.readerState.fromPlan && state.activePlan) {
-    const plan = state.activePlan;
-    const planDay = state.readerState.planDayNum || 1;
-    const selectedDay = plan.days.find(d => d.dayNum === planDay);
-    const dayChapters = (selectedDay && selectedDay.chapters) || [];
-    const currentChIndex = dayChapters.findIndex(ch =>
-      ch.book === currentBook.name && Number(ch.chapter) === Number(state.readerState.chapter)
-    );
-    const isLastChapterOfDay = currentChIndex === dayChapters.length - 1 || currentChIndex === -1;
-
-    if (isLastChapterOfDay) {
-      if (isTodayScheduleCompleted()) {
-        return false;
-      } else {
-        const nextChInfo = getNextPlanChapterInfo(plan, planDay, currentChIndex, dayChapters);
-        if (nextChInfo) {
-          const nextBook = BIBLE_BOOKS.find(b => b.name === nextChInfo.book || b.eng === nextChInfo.book);
-          if (nextBook) {
-            state.readerState.bookId = nextBook.id;
-            state.readerState.chapter = Number(nextChInfo.chapter);
-            state.readerState.planDayNum = nextChInfo.dayNum;
-            saveReaderPreferences();
-            const rendered = await renderReaderText({ preserveAudio: autoContinue, autoContinue });
-            if (autoContinue && rendered !== true) return false;
-            if (!autoContinue) resetReaderAudioAfterManualChapterChange(hadAudioPosition);
-            return true;
-          }
-        }
-      }
-    } else {
-      const nextCh = dayChapters[currentChIndex + 1];
-      const nextBook = BIBLE_BOOKS.find(b => b.name === nextCh.book || b.eng === nextCh.book);
-      if (nextBook) {
-        state.readerState.bookId = nextBook.id;
-        state.readerState.chapter = Number(nextCh.chapter);
-        saveReaderPreferences();
-        const rendered = await renderReaderText({ preserveAudio: autoContinue, autoContinue });
-        if (autoContinue && rendered !== true) return false;
-        if (!autoContinue) resetReaderAudioAfterManualChapterChange(hadAudioPosition);
-        return true;
-      }
-    }
-  }
-
+  // "Next"/"prev" is always purely sequential from whatever chapter is currently
+  // on screen — one chapter at a time, rolling over book boundaries. It is
+  // deliberately NOT tied to the plan's day list: wherever the reader is, that
+  // chapter gets recorded, and the next chapter is simply the one after it.
   let newChapter = state.readerState.chapter + direction;
   
   if (newChapter < 1) {
@@ -2642,29 +2602,6 @@ export function updateReaderBottomActionBar() {
   bar.classList.add("hidden");
 }
 
-function getNextPlanChapterInfo(plan, planDay, currentChIndex, dayChapters) {
-  if (currentChIndex !== -1 && currentChIndex < dayChapters.length - 1) {
-    return {
-      book: dayChapters[currentChIndex + 1].book,
-      chapter: dayChapters[currentChIndex + 1].chapter,
-      dayNum: planDay
-    };
-  }
-  
-  const nextDays = plan.days.filter(d => d.dayNum > planDay);
-  for (const d of nextDays) {
-    const firstUnread = d.chapters.find(ch => !ch.isRead);
-    if (firstUnread) {
-      return {
-        book: firstUnread.book,
-        chapter: firstUnread.chapter,
-        dayNum: d.dayNum
-      };
-    }
-  }
-  return null;
-}
-
 function triggerPredictivePrefetch() {
   const currentBook = BIBLE_BOOKS.find(b => b.id === state.readerState.bookId);
   if (!currentBook) return;
@@ -2759,30 +2696,6 @@ function handleReaderScroll(event) {
   }
 
   checkReaderBottomDwell(getReaderScrollSurface() || event.currentTarget || event.target);
-}
-
-function isTodayScheduleCompleted() {
-  if (!state.activePlan) return false;
-  const now = new Date();
-  const todayYear = now.getFullYear();
-  const todayMonth = now.getMonth() + 1;
-  const todayDay = now.getDate();
-  const todayDayObj = state.activePlan.days.find(d => {
-    if (Number(d.year) !== todayYear || Number(d.month) !== todayMonth) return false;
-    const parts = d.date.split('/');
-    return parts.length === 2 && Number(parts[1]) === todayDay;
-  });
-
-  if (!todayDayObj || !todayDayObj.chapters || todayDayObj.chapters.length === 0) return false;
-
-  const currentRound = state.activePlan.currentRound || 1;
-  return todayDayObj.chapters.every(ch => {
-    const r = ch.round || currentRound;
-    if (r === 1) return Boolean(ch.isReadR1 || ch.isRead);
-    if (r === 2) return Boolean(ch.isReadR2);
-    if (r >= 3) return Boolean(ch.isReadR3);
-    return Boolean(ch.isRead);
-  });
 }
 
 function showPlanNavigationPrompt(options = {}) {
