@@ -9,6 +9,12 @@ const s = (stageNo, roundNo, phase, name, startDate, endDate, awardName, examDat
 const m = (stageNo, roundNo, label, startDate, endDate, readings) => ({
   stageNo, roundNo, label, startDate, endDate, readings
 });
+// 第一輪期末賽（stageNo 2）拆成 4 個月度計畫：每個月一卷書、獨立固定日期計畫，
+// 都掛 stageNo 2（沿用鐵獎），只有 12 月那張帶期末測驗日期。9 月開放、10–12 月鎖住
+// （church_campaign_stage + isHidden → isCampaignStageLocked → 探索清單顯示為 available-locked）。
+const mf = (presetKey, monthLabel, startDate, endDate, book, from, to, isHidden, examDate = null) => ({
+  presetKey, monthLabel, startDate, endDate, book, from, to, isHidden, examDate
+});
 
 const CHURCH_CAMPAIGN = {
   id: CHURCH_CAMPAIGN_ID,
@@ -30,6 +36,14 @@ const CHURCH_CAMPAIGN = {
       smallGroup: { min: 6, max: null, source: "profile.small_group" }
     }
   },
+  // \u7b2c\u4e00\u8f2a\u671f\u672b\u8cfd\uff08stageNo 2\uff09\u4e0d\u518d\u662f\u300c\u4e00\u6bb5 Sep\u2013Dec\u300d\uff0c\u800c\u662f monthlyFinals \u90a3 4 \u500b\u6708\u5ea6\u8a08\u756b\u3002
+  // stages[] \u9019\u4e00\u5217\u4fdd\u7559\u7d66\u300c\u767c\u9435\u734e + \u671f\u672b\u6e2c\u9a57\u300d\u7684\u9328\u9ede\uff08stageNo 2 / awardName / examDate\uff09\u3002
+  monthlyFinals: [
+    mf("church_r1final_2026_09", "2026\u5e749\u6708",  "2026-09-01", "2026-09-30", "\u51fa\u57c3\u53ca\u8a18", 1, 40, false),
+    mf("church_r1final_2026_10", "2026\u5e7410\u6708", "2026-10-01", "2026-10-31", "\u5229\u672a\u8a18",   1, 27, true),
+    mf("church_r1final_2026_11", "2026\u5e7411\u6708", "2026-11-01", "2026-11-30", "\u6c11\u6578\u8a18",   1, 36, true),
+    mf("church_r1final_2026_12", "2026\u5e7412\u6708", "2026-12-01", "2026-12-31", "\u7533\u547d\u8a18",   1, 34, true, "2026-12-27")
+  ],
   stages: [
     s(1, 1, "warmup", "\u7b2c\u4e00\u8f2a\u71b1\u8eab\u8cfd", "2026-08-01", "2026-08-31", "\u78d0\u77f3\u734e", "2026-08-30"),
     s(2, 1, "final", "\u7b2c\u4e00\u8f2a\u671f\u672b\u8cfd", "2026-09-01", "2026-12-31", "\u9435\u734e", "2026-12-27"),
@@ -94,11 +108,50 @@ function getChurchCampaignStagePresetKey(stageNo) {
   return "church_stage_" + String(Number(stageNo) || 0).padStart(2, "0");
 }
 
+// 月度計畫的前端 preset id：刻意用非正式階段命名空間（c126，而不是 c026），
+// 才不會被 0017 的 sync_church_campaign_stage_plans（只認 10 個 c026 id）碰到。
+function getMonthlyFinalPlanId(startDate) {
+  // 末 12 碼 = 000000 + YYYYMM（例：2026-09 → 000000202609）
+  return "00000000-0000-0000-c126-000000" + String(startDate).replace(/-/g, "").slice(0, 6);
+}
+
+function buildMonthlyFinalDefinition(definition, stage, mfDef) {
+  const segment = m(2, Number(stage.roundNo), mfDef.monthLabel, mfDef.startDate, mfDef.endDate,
+    [r(mfDef.book, mfDef.from, mfDef.to)]);
+  const stageEntry = { ...cloneChurchCampaign(stage), startDate: mfDef.startDate, endDate: mfDef.endDate, examDate: mfDef.examDate || null };
+  return {
+    id: getMonthlyFinalPlanId(mfDef.startDate),
+    parentCampaignId: definition.id,
+    presetKey: mfDef.presetKey,
+    planKind: "church_campaign_stage",
+    name: "第一輪期末賽｜" + mfDef.monthLabel + "・" + mfDef.book,
+    description: mfDef.monthLabel + "讀" + mfDef.book + "；連同 9–12 月四個月全部完成可獲得「" + stage.awardName + "」。",
+    startDate: mfDef.startDate,
+    endDate: mfDef.endDate,
+    isFixed: true,
+    isHidden: Boolean(mfDef.isHidden),
+    version: definition.version,
+    stageNo: 2,
+    roundNo: Number(stage.roundNo),
+    phase: stage.phase,
+    awardName: stage.awardName,
+    examDate: mfDef.examDate || null,
+    rules: cloneChurchCampaign(definition.rules),
+    stages: [stageEntry],
+    segments: [segment],
+    books: [mfDef.book]
+  };
+}
+
 function createChurchCampaignStageDefinitions(definition = CHURCH_CAMPAIGN) {
-  return (definition.stages || []).map(stage => {
+  return (definition.stages || []).flatMap(stage => {
+    // 第一輪期末賽（stageNo 2）：展開成 monthlyFinals 那 4 個月度計畫，不再是單一階段。
+    if (Number(stage.stageNo) === 2 && Array.isArray(definition.monthlyFinals) && definition.monthlyFinals.length) {
+      return definition.monthlyFinals.map(mfDef => buildMonthlyFinalDefinition(definition, stage, mfDef));
+    }
     const segments = (definition.segments || []).filter(segment => Number(segment.stageNo) === Number(stage.stageNo));
     const books = Array.from(new Set(segments.flatMap(segment => segment.readings.map(reading => reading.book))));
-    return {
+    return [{
       id: getChurchCampaignStageId(stage.stageNo),
       parentCampaignId: definition.id,
       presetKey: getChurchCampaignStagePresetKey(stage.stageNo),
@@ -119,11 +172,13 @@ function createChurchCampaignStageDefinitions(definition = CHURCH_CAMPAIGN) {
       stages: [cloneChurchCampaign(stage)],
       segments: cloneChurchCampaign(segments),
       books
-    };
+    }];
   });
 }
 
 function getChurchCampaignStageDefinition(stageNo, definition = CHURCH_CAMPAIGN) {
+  // stageNo 2 現在對應 4 個月度計畫；回第一個（9 月出埃及記）當「階段錨點」
+  // 用途只是取 awardName / roundNo / examDate（發鐵獎、期末測驗），排程各月自理。
   return createChurchCampaignStageDefinitions(definition)
     .find(stage => Number(stage.stageNo) === Number(stageNo)) || null;
 }

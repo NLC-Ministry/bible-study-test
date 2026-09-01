@@ -27,13 +27,25 @@ const campaign = context.window.CHURCH_CAMPAIGN;
 const books = context.window.BIBLE_BOOKS;
 
 describe("versioned church Bible campaign", () => {
-  it("splits the campaign into ten independently identified stage plans", () => {
+  it("splits the campaign into stage plans — 第一輪期末賽 further split into 4 monthly finals", () => {
     const stages = context.window.createChurchCampaignStageDefinitions(campaign);
-    expect(stages).toHaveLength(10);
-    expect(new Set(stages.map(stage => stage.id))).toHaveLength(10);
-    expect(new Set(stages.map(stage => stage.presetKey))).toHaveLength(10);
+    // 1 (熱身賽) + 4 (期末賽 9–12 月) + 8 (stage 3–10) = 13
+    expect(stages).toHaveLength(13);
+    expect(new Set(stages.map(stage => stage.id))).toHaveLength(13);
+    expect(new Set(stages.map(stage => stage.presetKey))).toHaveLength(13);
     expect(stages.every(stage => stage.planKind === "church_campaign_stage")).toBe(true);
     expect(stages.every(stage => stage.stages.length === 1 && stage.segments.length > 0)).toBe(true);
+
+    // 4 個月度期末賽計畫，都掛 stageNo 2 + 鐵獎，9 月開放、10–12 月鎖住
+    const monthly = stages.filter(stage => Number(stage.stageNo) === 2);
+    expect(monthly.map(s => s.presetKey)).toEqual([
+      "church_r1final_2026_09", "church_r1final_2026_10", "church_r1final_2026_11", "church_r1final_2026_12"
+    ]);
+    expect(monthly.every(s => s.awardName === monthly[0].awardName)).toBe(true);
+    expect(monthly.map(s => s.isHidden)).toEqual([false, true, true, true]);
+    expect(monthly.map(s => s.books[0])).toEqual(["出埃及記", "利未記", "民數記", "申命記"]);
+    // 只有 12 月那張帶期末測驗
+    expect(monthly.map(s => s.examDate)).toEqual([null, null, null, "2026-12-27"]);
 
     const scheduled = stages.flatMap(stage =>
       context.window.buildChurchCampaignDays(stage, books).flatMap(day => day.chapters)
@@ -105,8 +117,15 @@ describe("versioned church Bible campaign", () => {
     expect(Number(stage1.stageNo)).toBe(1);
     expect(stage1.awardName).toBe("磐石獎");
 
+    // stageNo 2 現在是 4 個月度計畫；錨點 def 指第一個月（出埃及記），
+    // 4 卷書分散在 4 個 preset 上。
     const stage2 = context.window.getChurchCampaignStageDefinition(2, campaign);
-    expect(stage2.books.length).toBeGreaterThan(1);
+    expect(stage2.books).toEqual(["出埃及記"]);
+    expect(stage2.awardName).toBe("鐵獎");
+    const monthlyBooks = context.window.createChurchCampaignStageDefinitions(campaign)
+      .filter(s => Number(s.stageNo) === 2)
+      .flatMap(s => s.books);
+    expect(monthlyBooks).toEqual(["出埃及記", "利未記", "民數記", "申命記"]);
   });
 
   it("scopes plan progress to the plan — an 8月正辦 read must not count toward a 9月延後梯次", () => {
