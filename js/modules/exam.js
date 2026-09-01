@@ -37,6 +37,24 @@ const setActiveExam = (id, attemptKind = "official") => {
   try { localStorage.setItem(ACTIVE_KEY, JSON.stringify({ paperId: String(id), attemptKind })); } catch (_) {}
 };
 const clearActiveExam = () => { try { localStorage.removeItem(ACTIVE_KEY); } catch (_) {} };
+
+// 送出後不再立刻清掉 localStorage 的作答鏡射（exam_resp_<attemptId>）——留作救援網：
+// 若送出 payload 在爛網路上被截斷、簡答題沒存進 DB，這份本地鏡射是唯一能撈回內容的地方。
+// 改成保留一段時間再由這個 prune 清掉（每次載入模組跑一次），避免無限累積。
+const EXAM_RESP_TTL_MS = 21 * 24 * 60 * 60 * 1000; // 21 天
+(function pruneStaleExamResp() {
+  try {
+    const now = Date.now();
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith("exam_resp_")) continue;
+      let obj;
+      try { obj = JSON.parse(localStorage.getItem(k) || "{}"); } catch (_) { obj = {}; }
+      const savedAt = Number(obj && obj.__savedAt) || 0;
+      if (!savedAt || now - savedAt > EXAM_RESP_TTL_MS) localStorage.removeItem(k);
+    }
+  } catch (_) {}
+})();
 const getActiveExam = () => {
   try {
     const raw = localStorage.getItem(ACTIVE_KEY);
@@ -1364,7 +1382,7 @@ class ExamRunner {
     this.saveTimer = null;
     this.persistTimer = null;
     this.practiceSyncTimer = null;
-    this._practiceSaveDebounce = null;
+    this._saveDebounce = null;
     this.dirty = false;
     this.submitting = false;
     this.resyncing = false;
@@ -1468,7 +1486,7 @@ class ExamRunner {
     if (this.saveTimer) { clearInterval(this.saveTimer); this.saveTimer = null; }
     if (this.persistTimer) { clearInterval(this.persistTimer); this.persistTimer = null; }
     if (this.practiceSyncTimer) { clearInterval(this.practiceSyncTimer); this.practiceSyncTimer = null; }
-    if (this._practiceSaveDebounce) { clearTimeout(this._practiceSaveDebounce); this._practiceSaveDebounce = null; }
+    if (this._saveDebounce) { clearTimeout(this._saveDebounce); this._saveDebounce = null; }
     if (this._timeoutRetry) { clearTimeout(this._timeoutRetry); this._timeoutRetry = null; }
     if (this._autoLeaveTimer) { clearTimeout(this._autoLeaveTimer); this._autoLeaveTimer = null; }
     if (this._resultMatchResize) { window.removeEventListener("resize", this._resultMatchResize); this._resultMatchResize = null; }
@@ -1632,14 +1650,27 @@ class ExamRunner {
       const raw = localStorage.getItem(this.lsKey);
       if (!raw) return;
       const local = JSON.parse(raw);
-      Object.keys(local || {}).forEach((qid) => { this.RESP[qid] = local[qid]; }); // 本地最新，覆蓋
+      Object.keys(local || {}).forEach((qid) => {
+        if (qid === "__savedAt") return;        // meta 欄位，不是答案
+        this.RESP[qid] = local[qid];            // 本地最新，覆蓋
+      });
     } catch (_) {}
   }
   persistLocal() {
     if (!this.lsKey) return;
-    try { localStorage.setItem(this.lsKey, JSON.stringify(this.collectAnswers())); } catch (_) {}
+    try {
+      localStorage.setItem(this.lsKey, JSON.stringify({ ...this.collectAnswers(), __savedAt: Date.now() }));
+    } catch (_) {}
   }
-  clearLocal() { try { if (this.lsKey) localStorage.removeItem(this.lsKey); } catch (_) {} }
+  // 送出成功後不真的刪——留鏡射當救援網（見檔案頂端 pruneStaleExamResp）。只打一個時間戳，
+  // 讓 prune 之後照 TTL 回收。要真的清才傳 { hard: true }。
+  clearLocal(opts = {}) {
+    try {
+      if (!this.lsKey) return;
+      if (opts.hard) { localStorage.removeItem(this.lsKey); return; }
+      this.persistLocal();
+    } catch (_) {}
+  }
 
   // ── 複習 gate：與正式宣示分開，並留下「不列入成績」確認存證 ──
   renderPracticeGate() {
@@ -2111,13 +2142,17 @@ class ExamRunner {
     if (this.preview) return;
     this.dirty = true;
     this.persistLocal();
-    if (this.attemptKind === "practice") {
-      if (this._practiceSaveDebounce) clearTimeout(this._practiceSaveDebounce);
-      this._practiceSaveDebounce = setTimeout(() => {
-        this._practiceSaveDebounce = null;
-        void this.flushSave();
-      }, 700);
-    }
+    // 每次作答異動都排一次 debounced 上傳，不要只靠 15 秒的固定間隔——
+    // 簡答題常是「打完最後一段就按送出」，若那一段還沒進 server，一旦送出的
+    // 大 payload 在爛網路上被截斷（簡答題文字量最大、又在 JSON 尾端，最容易掉），
+    // exam_submit_attempt 的 COALESCE(payload, 既有) 就沒有「既有」可退回 → 存成 NULL。
+    // practice 用短 debounce（本來就有），official 用稍長的，控制 server 負載。
+    const debounceMs = this.attemptKind === "practice" ? 700 : 4000;
+    if (this._saveDebounce) clearTimeout(this._saveDebounce);
+    this._saveDebounce = setTimeout(() => {
+      this._saveDebounce = null;
+      void this.flushSave();
+    }, debounceMs);
   }
   async flushSave() {
     if (!this.dirty || !this.attempt || this.attempt.status !== "in_progress" || this.submitting) return;
@@ -2136,7 +2171,20 @@ class ExamRunner {
     if (this.deadlineTs && Date.now() >= this.deadlineTs) this.submit("timeout");
   }
 
+  // 簡答題保底：直接從 DOM textarea 讀回 this.RESP。iOS 語音輸入 / 部分第三方
+  // 鍵盤在 blur 前不觸發 input 事件，靠事件監聽會漏掉「打完沒點別處就送出」的最後一段。
+  syncShortAnswersFromDom() {
+    if (!this.el) return;
+    this.el.querySelectorAll("textarea[data-sa]").forEach((ta) => {
+      const qid = ta.getAttribute("data-sa");
+      if (!qid) return;
+      const val = ta.value;
+      if (val != null && val !== this.RESP[qid]) { this.RESP[qid] = val; this.dirty = true; }
+    });
+  }
+
   collectAnswers() {
+    this.syncShortAnswersFromDom();
     const out = {};
     Object.keys(this.RESP).forEach((qid) => {
       const v = this.RESP[qid];
@@ -2155,6 +2203,21 @@ class ExamRunner {
     if (reason === "manual" && !confirm("確定送出？送出後即鎖定，記錄以第一次正式測驗為準、複習不列入評分計算。")) return;
     this.submitting = true;
     this.stopTimer();
+
+    // 先把還沒上傳的作答（尤其是剛打完的簡答題）用 exam_save_progress 逐題 upsert
+    // 推上 server，再翻狀態。這樣就算等一下送出的大 payload 在爛網路上被截斷
+    // （簡答題文字量最大、又在 JSON 尾端，最容易掉），exam_submit_attempt 的
+    // COALESCE(payload, 既有) 也能從「既有」把簡答題救回來。
+    // 盡力而為：這一步失敗（離線）不擋送出——送出本身有 6 次重試、payload 也自帶答案。
+    if (this._saveDebounce) { clearTimeout(this._saveDebounce); this._saveDebounce = null; }
+    this.persistLocal();
+    if (this.dirty && this.attempt && this.attempt.status === "in_progress") {
+      try {
+        const pre = await db.saveExamProgress(this.attempt.id, this.collectAnswers());
+        if (pre && pre.success) this.dirty = false;
+      } catch (_) {}
+    }
+
     const btn = this.el.querySelector("#exam-submit");
     if (btn) { btn.disabled = true; btn.textContent = "送出中…"; }
 
@@ -2200,6 +2263,34 @@ class ExamRunner {
     if (reason !== "manual") this._autoLeaveAfterResult();
   }
 
+  // this.RESP（本機記憶體）＋ localStorage 鏡射 合併成 { qid: 值 }
+  _readLocalMirror() {
+    const out = {};
+    try { Object.keys(this.RESP || {}).forEach((k) => { if (this.RESP[k] != null) out[k] = this.RESP[k]; }); } catch (_) {}
+    try {
+      const raw = this.lsKey ? localStorage.getItem(this.lsKey) : null;
+      if (raw) {
+        const obj = JSON.parse(raw) || {};
+        Object.keys(obj).forEach((k) => { if (k !== "__savedAt" && obj[k] != null) out[k] = obj[k]; });
+      }
+    } catch (_) {}
+    return out;
+  }
+  // 留一筆「這場有簡答題疑似沒送到」的旗標，供後台 / 使用者事後追（21 天內由 prune 回收）
+  _writeRecoveryFlag(payload, done) {
+    if (!this.attempt || !this.attempt.id) return;
+    try {
+      localStorage.setItem("exam_resp_recovery_" + this.attempt.id, JSON.stringify({
+        attemptId: this.attempt.id,
+        paperId: this.paper && this.paper.id,
+        paperTitle: this.paper && this.paper.title,
+        answers: payload,
+        backfilled: !!done,
+        __savedAt: Date.now()
+      }));
+    } catch (_) {}
+  }
+
   // ── 成績 / 已送出 ──
   async renderResult(submitData) {
     this.detachLifecycle();
@@ -2207,6 +2298,39 @@ class ExamRunner {
 
     const res = await db.getMyExamResult(this.paper.id, this.attempt?.id || null);
     const d = res.success ? (res.data || {}) : {};
+
+    // ── 送出後救援：簡答題 server 空、但本機暫存有內容 → 送出時掉了。
+    //    自動呼叫 exam_backfill_shortanswer 補回；仍缺的把本機版塞進 answer 物件，
+    //    由 examResultRow 顯示 + 標注，讓使用者至少看得到、能截圖。 ──
+    let lostShortInfo = null;   // null | { count, state: "ok" | "partial" | "failed" }
+    if (!this.preview && this.attempt && this.attempt.id) {
+      const localResp = this._readLocalMirror();
+      const isEmptyResp = (v) => v == null || (typeof v === "string" && v.trim() === "");
+      const findLost = (list) => (Array.isArray(list) ? list : []).filter((a) =>
+        a && a.section === "shortanswer" && isEmptyResp(a.response)
+        && localResp[a.questionId] != null && String(localResp[a.questionId]).trim() !== "");
+      let lost = findLost(d.answers);
+      if (lost.length) {
+        const payload = {};
+        lost.forEach((a) => { payload[a.questionId] = String(localResp[a.questionId]); });
+        this._writeRecoveryFlag(payload, false);
+        let bf = null;
+        try { bf = await db.backfillExamShortAnswers(this.attempt.id, payload); } catch (_) {}
+        if (bf && bf.success) {
+          try {
+            const res2 = await db.getMyExamResult(this.paper.id, this.attempt.id || null);
+            if (res2.success && res2.data && Array.isArray(res2.data.answers)) Object.assign(d, res2.data);
+          } catch (_) {}
+          lost = findLost(d.answers);
+          this._writeRecoveryFlag(payload, lost.length === 0);
+          lostShortInfo = { count: Object.keys(payload).length, state: lost.length === 0 ? "ok" : "partial" };
+        } else {
+          lostShortInfo = { count: Object.keys(payload).length, state: "failed" };
+        }
+      }
+      findLost(d.answers).forEach((a) => { a._localFallback = String(localResp[a.questionId]); });
+    }
+
     const graded = d.state === "graded";
     const fullReview = d.reviewVisibility === "full_review";
     const auto = d.autoScore ?? submitData?.autoScore ?? "—";
@@ -2236,6 +2360,14 @@ class ExamRunner {
                 : ""}`
             : "你可以查看自己的填答內容；活動關閉並公布成績前，不顯示分數、對錯或正解。"}
         </div>
+        ${lostShortInfo ? `
+        <div class="exam-result__banner" style="border-color:var(--color-warning);background:color-mix(in srgb,var(--color-warning) 8%,var(--bg-card));">
+          ${lostShortInfo.state === "ok"
+            ? `偵測到 ${lostShortInfo.count} 題簡答送出時沒收到，已用你這台裝置的暫存版<strong>自動補回</strong>，下方顯示的就是補回後的內容。`
+            : lostShortInfo.state === "partial"
+            ? `偵測到 ${lostShortInfo.count} 題簡答送出時沒收到，部分已自動補回；仍有題目補送失敗，下方以「本機暫存」標示。<strong>請截圖此畫面並聯絡同工</strong>。`
+            : `偵測到 ${lostShortInfo.count} 題簡答送出時沒收到，自動補送失敗（可能已離線或成績已鎖定）。下方以「本機暫存」顯示你的內容，<strong>請截圖此畫面並聯絡同工</strong>。`}
+        </div>` : ""}
         ${!answers.length ? "" : fullReview ? `
           <p class="exam-result__hint">${staffPreview
             ? "（管理員預覽）此測驗成績<strong>尚未公布</strong>——會友目前看到的是「成績尚未公布」，按下「公布成績」後才會對會友開放。以下是完整批改結果供你核對。"
@@ -2365,10 +2497,16 @@ function examResultRow(a, graded) {
       ? `<p class="exam-result__ln"><span class="exam-result__k">參考答案：</span>${esc(a.payload.referenceAnswer)}</p>` : "";
     const rubric = graded && a.payload && (a.payload.rubric || []).length
       ? `<p class="exam-result__ln"><span class="exam-result__k">評分要點：</span>${(a.payload.rubric).map(esc).join("／")}</p>` : "";
-    return `<div class="exam-result__row">
+    // server 上是空的、但本機暫存有內容 → 顯示本機版並標注（見 renderResult 的送出後救援）
+    const serverEmpty = a.response == null || String(a.response).trim() === "";
+    const usingLocal = serverEmpty && a._localFallback != null && String(a._localFallback).trim() !== "";
+    const shownResponse = usingLocal ? a._localFallback : (a.response || "（未作答）");
+    return `<div class="exam-result__row${usingLocal ? " exam-result__row--recovered" : ""}">
       <p class="exam-result__q">${head}（${a.points} 分）</p>
       ${questionBody}
-      <p class="exam-result__ln"><span class="exam-result__k">你的作答：</span>${esc(a.response || "（未作答）")}</p>
+      <p class="exam-result__ln"><span class="exam-result__k">你的作答：</span>${esc(shownResponse)}${
+        usingLocal ? ' <span class="stat-badge stat-badge--warning">本機暫存・補送中</span>' : ""}</p>
+      ${usingLocal ? '<p class="exam-result__ln" style="color:var(--color-warning);">此題送出時可能沒收到，已用你這台裝置的暫存版顯示並嘗試補送。請截圖此畫面，並聯絡同工確認。</p>' : ""}
       <p class="exam-result__ln"><span class="exam-result__k">得分：</span>${scored ? `<strong>${a.awardedPoints} / ${a.points}</strong>` : "尚未評分"}</p>
       ${a.graderComment ? `<p class="exam-result__ln"><span class="exam-result__k">評語：</span>${esc(a.graderComment)}</p>` : ""}
       ${ref}${rubric}

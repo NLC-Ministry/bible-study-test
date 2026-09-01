@@ -115,6 +115,7 @@ const EXAM_RPC_FUNCTIONS = new Set([
   "exam_start_attempt",
   "exam_save_progress",
   "exam_submit_attempt",
+  "exam_backfill_shortanswer",
   "exam_get_my_result",
   "exam_get_grading_queue",
   "exam_grade_answer",

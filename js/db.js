@@ -3419,6 +3419,7 @@ const db = {
       exam_not_open: "測驗目前未開放作答。",
       exam_pledge_name_required: "請先確認測驗宣示並填入姓名。",
       exam_attempt_not_found: "找不到作答紀錄。",
+      exam_forbidden: "沒有權限操作這份作答紀錄。",
       exam_attempt_locked: "測驗已送出，不可再修改。",
       exam_time_up: "作答時間已結束。",
       exam_answer_not_gradable: "這一題不是可人工評分的題目。",
@@ -3581,6 +3582,14 @@ const db = {
       p_attempt_id: attemptId,
       p_answers: answers || {},
       p_reason: reason
+    });
+  },
+  // 送出後救援：把本機暫存但 server 上是空的簡答題補寫回去（migration 0143）。
+  // 只補「目前沒作答內容且未批改」的題；成績已公布後 server 會擋。
+  async backfillExamShortAnswers(attemptId, answers) {
+    return this._callExamRpc("exam_backfill_shortanswer", {
+      p_attempt_id: attemptId,
+      p_answers: answers || {}
     });
   },
   async getMyExamResult(paperId, attemptId = null) {
