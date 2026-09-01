@@ -5057,11 +5057,20 @@ const db = {
       }
 
       try {
-        const { data, error } = await state.supabase
+        let { data, error } = await state.supabase
           .from('church_announcements')
-          .select('id, title, content, is_published, published_at, created_at, updated_at')
+          .select('id, title, content, is_published, published_at, expires_at, created_at, updated_at')
           .order('created_at', { ascending: false })
           .limit(50);
+
+        // 舊環境尚未部署 0141 時先維持公告可讀；部署後自動取得到期時間。
+        if (error && (error.code === '42703' || error.code === 'PGRST204' || /expires_at/i.test(String(error.message || '')))) {
+          ({ data, error } = await state.supabase
+            .from('church_announcements')
+            .select('id, title, content, is_published, published_at, created_at, updated_at')
+            .order('created_at', { ascending: false })
+            .limit(50));
+        }
 
         if (error) {
           const isDegraded =
@@ -5099,19 +5108,20 @@ const db = {
     }
   },
 
-  async saveAnnouncement(title, content) {
+  async saveAnnouncement(title, content, expiresAt = null) {
     if (state.isSupabaseMode && state.supabase && !(state.currentUser && state.currentUser.is_demo)) {
       try {
         const user = await this.getCurrentDbUser();
         const userId = user ? user.id : (state.currentUser ? state.currentUser.id : null);
         const { error } = await state.supabase
           .from('church_announcements')
-          .insert([{ title, content, created_by: userId }]);
+          .insert([{ title, content, expires_at: expiresAt || null, created_by: userId }]);
         if (error) {
           console.error("Error saving announcement in Supabase:", error);
           showToast(`發布公告失敗: ${error.message || error}`);
           return false;
         }
+        localStorage.removeItem("church_announcements_fetched_at");
         return true;
       } catch (e) {
         console.error("Error saving announcement:", e);
@@ -5123,12 +5133,48 @@ const db = {
         id: Date.now().toString(),
         title,
         content,
+        expires_at: expiresAt || null,
         created_at: new Date().toISOString()
       };
       current.unshift(newAnn);
       localStorage.setItem("church_announcements", JSON.stringify(current));
       return true;
     }
+  },
+
+  async updateAnnouncement(id, title, content, expiresAt = null) {
+    if (state.isSupabaseMode && state.supabase && !(state.currentUser && state.currentUser.is_demo)) {
+      try {
+        const { error } = await state.supabase
+          .from('church_announcements')
+          .update({ title, content, expires_at: expiresAt || null })
+          .eq('id', id);
+        if (error) {
+          console.error("Error updating announcement in Supabase:", error);
+          showToast(`更新公告失敗: ${error.message || error}`);
+          return false;
+        }
+        localStorage.removeItem("church_announcements_fetched_at");
+        return true;
+      } catch (e) {
+        console.error("Error updating announcement:", e);
+        return false;
+      }
+    }
+
+    const current = await this.fetchAnnouncements();
+    const index = current.findIndex(item => String(item.id) === String(id));
+    if (index < 0) return false;
+    current[index] = {
+      ...current[index],
+      title,
+      content,
+      expires_at: expiresAt || null,
+      updated_at: new Date().toISOString()
+    };
+    localStorage.setItem("church_announcements", JSON.stringify(current));
+    localStorage.removeItem("church_announcements_fetched_at");
+    return true;
   },
 
   async deleteAnnouncement(id) {
@@ -5143,6 +5189,7 @@ const db = {
           showToast(`刪除公告失敗: ${error.message || error}`);
           return false;
         }
+        localStorage.removeItem("church_announcements_fetched_at");
         return true;
       } catch (e) {
         console.error("Error deleting announcement:", e);

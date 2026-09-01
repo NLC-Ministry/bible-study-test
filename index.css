@@ -3711,6 +3711,15 @@ body:not(.dark-theme) .settings-row-btn:hover {
   flex-shrink: 0;
 }
 
+.announcement-item__edit {
+  color: var(--color-brand);
+  background: color-mix(in srgb, var(--color-brand) 10%, transparent);
+}
+
+.announcement-item__edit:hover {
+  background: color-mix(in srgb, var(--color-brand) 18%, transparent);
+}
+
 .announcement-item__time {
   font-size: 0.875rem;
   font-weight: var(--type-weight-strong);
@@ -3790,6 +3799,46 @@ body:not(.dark-theme) .settings-row-btn:hover {
 .announcement-form-panel__submit {
   padding: 0.375rem 0.75rem;
   font-size: 0.875rem;
+}
+
+.admin-announcements {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admin-announcements__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.admin-announcements__header p {
+  margin: 0.35rem 0 0;
+  color: var(--text-secondary);
+}
+
+.admin-announcements .announcement-form-panel {
+  margin-bottom: 0;
+}
+
+.admin-announcements .announcement-form-panel label {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 640px) {
+  .admin-announcements__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-announcements__header > button {
+    width: 100%;
+  }
 }
 
 /* Devotional panel */
@@ -13575,6 +13624,101 @@ select,
 
 
 /* Management information architecture */
+/* ── 統一的管理功能清單（取代三層 tab bar）─────────────────────────────
+   Step 1：平面堆疊（清單在上、選到的面板在下）。手機 drag-in / 桌機側欄
+   在後續步驟加。 */
+.admin-section-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 0 0 1.25rem;
+}
+
+.admin-section-nav:empty {
+  display: none;
+}
+
+.admin-section-nav__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.admin-section-nav__group-label {
+  margin: 0;
+  padding: 0 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.admin-section-nav__list {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-section-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border: 0;
+  border-bottom: 1px solid var(--border-default);
+  background: transparent;
+  font: inherit;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.admin-section-nav__item:last-child {
+  border-bottom: none;
+}
+
+.admin-section-nav__item:hover {
+  background: color-mix(in srgb, var(--color-brand) 5%, var(--bg-card));
+}
+
+.admin-section-nav__item.is-active {
+  background: var(--color-brand-subtle);
+  color: var(--color-brand);
+  font-weight: 500;
+}
+
+.admin-section-nav__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  color: var(--text-secondary);
+}
+
+.admin-section-nav__item.is-active .admin-section-nav__icon {
+  background: var(--color-brand);
+  color: #fff;
+}
+
+.admin-section-nav__label {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-section-nav__chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
 .admin-primary-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

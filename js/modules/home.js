@@ -757,11 +757,20 @@ function getAnnouncementCategory(rawTitle = "", isFirstItem = false) {
 
   if (/【重要】|\[重要\]|【緊急】|\[緊急\]/i.test(title)) {
     return {
-      categoryName: "重要急件",
+      categoryName: "重要／緊急公告",
       badgeClass: "announcement-badge--danger",
       iconName: "flame",
       cleanTitle: title.replace(/【重要】|\[重要\]|【緊急】|\[緊急\]/gi, "").trim(),
       isFeatured: true,
+    };
+  }
+  if (/【一般】|\[一般\]|【公告】|\[公告\]/i.test(title)) {
+    return {
+      categoryName: "一般公告",
+      badgeClass: "announcement-badge--default",
+      iconName: "megaphone",
+      cleanTitle: title.replace(/【一般】|\[一般\]|【公告】|\[公告\]/gi, "").trim(),
+      isFeatured: isFirstItem,
     };
   }
   if (/【主日】|\[主日\]|【聚會】|\[聚會\]|【崇拜】|\[崇拜\]/i.test(title)) {
@@ -815,8 +824,20 @@ async function renderChurchAnnouncements() {
   const container = document.getElementById("church-announcements-list");
   if (!container) return;
 
-  const isAdmin = state.currentUser && getUserRoleCode(state.currentUser) === "admin";
-  const announcements = await db.fetchAnnouncements();
+  const now = Date.now();
+  const announcements = (await db.fetchAnnouncements())
+    .filter(announcement => {
+      const category = getAnnouncementCategory(announcement.title);
+      if (category.badgeClass !== "announcement-badge--danger") return true;
+      const expiresAt = Date.parse(announcement.expires_at || "") || 0;
+      return !expiresAt || expiresAt > now;
+    })
+    .sort((a, b) => {
+      const aUrgent = getAnnouncementCategory(a.title).badgeClass === "announcement-badge--danger";
+      const bUrgent = getAnnouncementCategory(b.title).badgeClass === "announcement-badge--danger";
+      if (aUrgent !== bUrgent) return aUrgent ? -1 : 1;
+      return (Date.parse(b.created_at || "") || 0) - (Date.parse(a.created_at || "") || 0);
+    });
 
   if (announcements.length === 0) {
     container.className = "announcements-list";
@@ -859,7 +880,6 @@ async function renderChurchAnnouncements() {
         </div>
         <div class="announcement-item__meta">
           <time class="announcement-item__time" datetime="${escapeHTML(ann.created_at || "")}">${formattedTime}</time>
-          ${isAdmin ? `<button type="button" class="circular-action-btn btn-danger-soft announcement-item__delete" onclick="window.deleteAnnouncement('${ann.id}')" title="刪除公告" aria-label="刪除公告"><span class="nlc-icon nlc-icon--sm" data-icon="trash" aria-hidden="true"></span></button>` : ''}
         </div>
       </div>
       <p class="announcement-item__body">${escapeHTML(ann.content)}</p>
@@ -1399,60 +1419,6 @@ function initPilgrimageControls() {
   }
 }
 
-window.openAnnouncementForm = function () {
-  const form = document.getElementById("admin-announcement-form-container");
-  if (form) form.classList.remove("hidden");
-};
-
-window.closeAnnouncementForm = function () {
-  const form = document.getElementById("admin-announcement-form-container");
-  if (form) form.classList.add("hidden");
-
-  const titleInput = document.getElementById("announcement-title-input");
-  const contentInput = document.getElementById("announcement-content-input");
-  if (titleInput) titleInput.value = "";
-  if (contentInput) contentInput.value = "";
-};
-
-window.saveAnnouncement = async function () {
-  const titleInput = document.getElementById("announcement-title-input");
-  const contentInput = document.getElementById("announcement-content-input");
-  if (!titleInput || !contentInput) return;
-
-  const title = titleInput.value.trim();
-  const content = contentInput.value.trim();
-  if (!title || !content) {
-    alert("請輸入公告標題與內容！");
-    return;
-  }
-
-  const success = await db.saveAnnouncement(title, content);
-
-  if (success) {
-    showToast("公告已發布成功！");
-    window.closeAnnouncementForm();
-    await updateAnnouncementsList();
-  }
-};
-
-window.deleteAnnouncement = async function (id) {
-  const confirmed = await window.showConfirmDialog({
-    title: "確定要刪除此公告嗎？",
-    message: "此動作將會立即刪除公告且無法復原。",
-    confirmText: "確認刪除",
-    cancelText: "取消",
-    isDestructive: true
-  });
-  if (!confirmed) return;
-
-  const success = await db.deleteAnnouncement(id);
-
-  if (success) {
-    showToast("公告已成功刪除。");
-    await updateAnnouncementsList();
-  }
-};
-
 async function updateAnnouncementsList() {
   const listContainer = document.getElementById("church-announcements-list");
   if (!listContainer) return;
@@ -1461,48 +1427,7 @@ async function updateAnnouncementsList() {
     ComponentSkeletonLoader.fill("announcement", listContainer, { count: 2 });
   }
 
-  const isAdmin = state.currentUser && (getUserRoleCode(state.currentUser) === 'admin');
-  const publishBtn = document.getElementById("btn-show-announcement-form");
-  if (publishBtn) {
-    publishBtn.classList.toggle("hidden", !isAdmin);
-  }
-  const announcements = await db.fetchAnnouncements();
-  listContainer.innerHTML = "";
-
-  if (announcements.length === 0) {
-    listContainer.innerHTML = `
-      <div class="announcements-empty">
-        <span class="announcements-empty__icon nlc-icon nlc-icon--md" data-icon="inbox" aria-hidden="true"></span>
-        <p class="announcements-empty__text">目前尚無教會公告。</p>
-      </div>`;
-    if (typeof hydrateIcons === "function") hydrateIcons(listContainer);
-    return;
-  }
-
-  announcements.forEach(ann => {
-    const item = document.createElement("div");
-    item.className = "announcement-item";
-
-    const formattedTime = new Date(ann.created_at).toLocaleDateString('zh-TW', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-
-    item.innerHTML = `
-      <div class="announcement-item__header">
-        <h4 class="announcement-item__title">${escapeHTML(ann.title)}</h4>
-        <div class="announcement-item__meta">
-          <time class="announcement-item__time" datetime="${escapeHTML(ann.created_at || "")}">${formattedTime}</time>
-          ${isAdmin ? `<button type="button" class="circular-action-btn btn-danger-soft announcement-item__delete" onclick="window.deleteAnnouncement('${ann.id}')" title="刪除公告" aria-label="刪除公告"><span class="nlc-icon nlc-icon--sm" data-icon="trash" aria-hidden="true"></span></button>` : ''}
-        </div>
-      </div>
-      <p class="announcement-item__body">${escapeHTML(ann.content)}</p>
-    `;
-    listContainer.appendChild(item);
-  });
-  if (typeof hydrateIcons === "function") hydrateIcons(listContainer);
+  await renderChurchAnnouncements();
 }
 
 let currentVerse = null;

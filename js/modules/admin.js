@@ -51,6 +51,7 @@ function applyAdminDailyQuizFeatureVisibility(enabled) {
   if (tab) tab.style.display = enabled ? "" : "none";
   if (!enabled && activeAdminPlanSubtab === "quizzes") setAdminPlanSubtab("join-status");
   if (!enabled && panel) panel.classList.add("hidden");
+  if (typeof renderAdminSectionNav === "function") renderAdminSectionNav();
 }
 
 function updateExamFeatureControl(enabled, options = {}) {
@@ -78,6 +79,7 @@ function applyAdminExamVisibility(enabled) {
   if (tab) { tab.classList.toggle("hidden", !show); tab.style.display = show ? "" : "none"; }
   if (!show && activeAdminPlanSubtab === "exam") setAdminPlanSubtab("join-status");
   if (!show && panel) panel.classList.add("hidden");
+  if (typeof renderAdminSectionNav === "function") renderAdminSectionNav();
 }
 
 export async function renderAdminFeatureSettings() {
@@ -1294,7 +1296,180 @@ export async function renderAdminRegistrationStatistics() {
   if (typeof hydrateIcons === "function") hydrateIcons(column);
 }
 
-const ADMIN_SYSTEM_SUBTABS = ['users', 'permissions', 'registrations', 'reports', 'settings'];
+let editingAdminAnnouncementId = null;
+
+function parseAdminAnnouncement(announcement = {}) {
+  const rawTitle = String(announcement.title || "").trim();
+  const urgent = /【重要】|\[重要\]|【緊急】|\[緊急\]/i.test(rawTitle);
+  return {
+    ...announcement,
+    type: urgent ? "urgent" : "general",
+    cleanTitle: rawTitle.replace(/【重要】|\[重要\]|【緊急】|\[緊急\]|【一般】|\[一般\]|【公告】|\[公告\]/gi, "").trim()
+  };
+}
+
+function formatAdminAnnouncementTime(value) {
+  if (!value) return "";
+  if (typeof formatTaiwanDateTime === "function") return formatTaiwanDateTime(value, { relative: true });
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("zh-TW", { timeZone: "Asia/Taipei" });
+}
+
+function toAnnouncementLocalInput(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  const pad = number => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function defaultUrgentAnnouncementExpiry() {
+  return toAnnouncementLocalInput(new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString());
+}
+
+function syncAdminAnnouncementExpiryField(options = {}) {
+  const type = document.getElementById("admin-announcement-type");
+  const field = document.getElementById("admin-announcement-expiry-field");
+  const input = document.getElementById("admin-announcement-expires-at");
+  const urgent = type?.value === "urgent";
+  field?.classList.toggle("hidden", !urgent);
+  if (input) {
+    input.required = urgent;
+    if (urgent && !input.value && options.fillDefault !== false) input.value = defaultUrgentAnnouncementExpiry();
+    if (!urgent) input.value = "";
+  }
+}
+
+function closeAdminAnnouncementEditor() {
+  editingAdminAnnouncementId = null;
+  document.getElementById("admin-announcement-editor")?.classList.add("hidden");
+  const title = document.getElementById("admin-announcement-title");
+  const content = document.getElementById("admin-announcement-content");
+  const type = document.getElementById("admin-announcement-type");
+  const expiresAt = document.getElementById("admin-announcement-expires-at");
+  const heading = document.getElementById("admin-announcement-form-title");
+  const save = document.getElementById("admin-announcement-save");
+  if (title) title.value = "";
+  if (content) content.value = "";
+  if (expiresAt) expiresAt.value = "";
+  if (type) type.value = "general";
+  syncAdminAnnouncementExpiryField({ fillDefault: false });
+  if (heading) heading.textContent = "新增公告";
+  if (save) save.textContent = "發布公告";
+}
+
+function openAdminAnnouncementEditor(announcement = null) {
+  const parsed = parseAdminAnnouncement(announcement || {});
+  editingAdminAnnouncementId = parsed.id || null;
+  const editor = document.getElementById("admin-announcement-editor");
+  const title = document.getElementById("admin-announcement-title");
+  const content = document.getElementById("admin-announcement-content");
+  const type = document.getElementById("admin-announcement-type");
+  const expiresAt = document.getElementById("admin-announcement-expires-at");
+  const heading = document.getElementById("admin-announcement-form-title");
+  const save = document.getElementById("admin-announcement-save");
+  editor?.classList.remove("hidden");
+  if (title) title.value = parsed.cleanTitle;
+  if (content) content.value = parsed.content || "";
+  if (type) type.value = parsed.type;
+  if (expiresAt) expiresAt.value = toAnnouncementLocalInput(parsed.expires_at);
+  syncAdminAnnouncementExpiryField();
+  if (heading) heading.textContent = editingAdminAnnouncementId ? "編輯公告" : "新增公告";
+  if (save) save.textContent = editingAdminAnnouncementId ? "儲存修改" : "發布公告";
+  title?.focus();
+}
+
+export async function renderAdminAnnouncements() {
+  const host = document.getElementById("admin-announcements-list");
+  const createButton = document.getElementById("admin-announcement-create");
+  const cancelButton = document.getElementById("admin-announcement-cancel");
+  const saveButton = document.getElementById("admin-announcement-save");
+  const typeSelect = document.getElementById("admin-announcement-type");
+  if (!host || !createButton || !cancelButton || !saveButton) return;
+
+  createButton.onclick = () => openAdminAnnouncementEditor();
+  cancelButton.onclick = closeAdminAnnouncementEditor;
+  typeSelect.onchange = () => syncAdminAnnouncementExpiryField();
+  saveButton.onclick = async () => {
+    const title = document.getElementById("admin-announcement-title")?.value.trim() || "";
+    const content = document.getElementById("admin-announcement-content")?.value.trim() || "";
+    const type = document.getElementById("admin-announcement-type")?.value === "urgent" ? "urgent" : "general";
+    const expiryInput = document.getElementById("admin-announcement-expires-at")?.value || "";
+    if (!title || !content) {
+      showToast("請輸入公告標題與內容。");
+      return;
+    }
+    if (type === "urgent" && !expiryInput) {
+      showToast("重要／緊急公告請設定顯示到期時間。");
+      return;
+    }
+    const isEditing = Boolean(editingAdminAnnouncementId);
+    const storedTitle = `${type === "urgent" ? "【緊急】" : "【一般】"}${title}`;
+    const expiresAt = type === "urgent" ? new Date(expiryInput).toISOString() : null;
+    saveButton.disabled = true;
+    const success = isEditing
+      ? await db.updateAnnouncement(editingAdminAnnouncementId, storedTitle, content, expiresAt)
+      : await db.saveAnnouncement(storedTitle, content, expiresAt);
+    saveButton.disabled = false;
+    if (!success) return;
+    showToast(isEditing ? "公告已更新。" : "公告已發布。");
+    closeAdminAnnouncementEditor();
+    await renderAdminAnnouncements();
+  };
+
+  const announcements = await db.fetchAnnouncements();
+  if (!announcements.length) {
+    host.innerHTML = '<div class="admin-user-directory__empty">目前尚無公告，請按「新增公告」。</div>';
+    return;
+  }
+
+  host.innerHTML = announcements.map(announcement => {
+    const parsed = parseAdminAnnouncement(announcement);
+    const urgent = parsed.type === "urgent";
+    const expiryTime = Date.parse(parsed.expires_at || "") || 0;
+    const expired = urgent && expiryTime > 0 && expiryTime <= Date.now();
+    return `
+    <article class="announcement-item${urgent ? " announcement-item--featured" : ""}" data-admin-announcement-id="${escapeHTML(String(announcement.id))}">
+      <div class="announcement-item__header">
+        <div class="announcement-item__header-left">
+          <div class="announcement-item__icon-avatar" aria-hidden="true"><span class="nlc-icon nlc-icon--sm" data-icon="${urgent ? "flame" : "megaphone"}"></span></div>
+          <div class="announcement-item__title-group">
+            <div class="announcement-item__tags"><span class="announcement-badge ${urgent ? "announcement-badge--danger" : "announcement-badge--default"}"><span class="nlc-icon nlc-icon--sm" data-icon="${urgent ? "flame" : "megaphone"}" aria-hidden="true"></span><span>${urgent ? "重要／緊急公告" : "一般公告"}</span></span>${expired ? '<span class="stat-badge stat-badge--neutral">已到期</span>' : ""}</div>
+            <h4 class="announcement-item__title">${escapeHTML(parsed.cleanTitle)}</h4>
+          </div>
+        </div>
+        <div class="announcement-item__meta">
+          <time class="announcement-item__time">${urgent && parsed.expires_at ? `顯示至 ${escapeHTML(formatAdminAnnouncementTime(parsed.expires_at))}` : escapeHTML(formatAdminAnnouncementTime(announcement.updated_at || announcement.created_at))}</time>
+          <button type="button" class="circular-action-btn announcement-item__edit" data-announcement-edit title="編輯公告" aria-label="編輯公告"><span class="nlc-icon nlc-icon--sm" data-icon="pencil" aria-hidden="true"></span></button>
+          <button type="button" class="circular-action-btn btn-danger-soft announcement-item__delete" data-announcement-delete title="刪除公告" aria-label="刪除公告"><span class="nlc-icon nlc-icon--sm" data-icon="trash" aria-hidden="true"></span></button>
+        </div>
+      </div>
+      <p class="announcement-item__body">${escapeHTML(announcement.content || "")}</p>
+    </article>`;
+  }).join("");
+
+  host.querySelectorAll("[data-admin-announcement-id]").forEach(card => {
+    const announcement = announcements.find(item => String(item.id) === card.dataset.adminAnnouncementId);
+    card.querySelector("[data-announcement-edit]")?.addEventListener("click", () => openAdminAnnouncementEditor(announcement));
+    card.querySelector("[data-announcement-delete]")?.addEventListener("click", async () => {
+      const confirmed = await window.showConfirmDialog({
+        title: "確定要刪除此公告嗎？",
+        message: "此動作會立即從首頁移除公告，且無法復原。",
+        confirmText: "確認刪除",
+        cancelText: "取消",
+        isDestructive: true
+      });
+      if (!confirmed) return;
+      if (await db.deleteAnnouncement(announcement.id)) {
+        showToast("公告已刪除。");
+        closeAdminAnnouncementEditor();
+        await renderAdminAnnouncements();
+      }
+    });
+  });
+  if (typeof hydrateIcons === "function") hydrateIcons(host);
+}
+
+const ADMIN_SYSTEM_SUBTABS = ['users', 'permissions', 'registrations', 'reports', 'announcements', 'settings'];
 let activeAdminSystemSubtab = ADMIN_SYSTEM_SUBTABS[0];
 
 function setAdminSystemSubtab(subtab) {
@@ -1336,8 +1511,10 @@ export function init() {
   void renderAdminUserDirectory();
   void renderAdminOrgPermissionsOverview();
   initAdminSystemSubtabs();
+  renderAdminSectionNav();
   void renderAdminManagedScopes();
   void renderAdminRegistrationStatistics();
+  void renderAdminAnnouncements();
   initAdminTeamRegistration();
 
   // Bind collapse toggles for every 加入計畫狀況 card (已加入計畫 and 尚未加入計畫
@@ -1518,6 +1695,103 @@ function initAdminPlanSubtabs() {
   applyAdminExamVisibility(window.speedReadingExamFeatureEnabled === true);
   setAdminPlanSubtab(savedSubtab, false);
 }
+
+// ── 統一的管理功能清單（Step 1：把「主分頁 + 系統/計畫子分頁」三層 tab bar
+//    收成一份分組清單）。每一項對應到既有的面板；setAdminSection() 只是把舊的
+//    setAdminPrimaryPanel + setAdminSystemSubtab/setAdminPlanSubtab 串起來。 ──
+const ADMIN_SECTIONS = [
+  { id: 'users',         group: '帳號與權限', label: '使用者基本資料', icon: 'personBox',     panel: 'system', sub: 'users' },
+  { id: 'permissions',   group: '帳號與權限', label: '權限管理',       icon: 'shieldCheck',   panel: 'system', sub: 'permissions' },
+  { id: 'registrations', group: '報名與回報', label: '報名註冊統計',   icon: 'journalText',   panel: 'system', sub: 'registrations' },
+  { id: 'reports',       group: '報名與回報', label: '回報管理',       icon: 'inbox',         panel: 'system', sub: 'reports' },
+  { id: 'announcements', group: '內容管理',   label: '公告管理',       icon: 'megaphone',     panel: 'system', sub: 'announcements' },
+  { id: 'join-status',   group: '計畫營運',   label: '加入計畫狀況',   icon: 'calendarCheck', panel: 'plans',  sub: 'join-status' },
+  { id: 'members',       group: '計畫營運',   label: '組員總覽',       icon: 'peoples',       panel: 'plans',  sub: 'members' },
+  { id: 'teams',         group: '計畫營運',   label: '組隊狀況',       icon: 'trophy',        panel: 'plans',  sub: 'teams' },
+  { id: 'statistics',    group: '計畫營運',   label: '計畫統計',       icon: 'barChart',      panel: 'plans',  sub: 'statistics' },
+  { id: 'quizzes',       group: '測驗',       label: '小測驗',         icon: 'checkCircle',   panel: 'plans',  sub: 'quizzes', flag: 'quiz' },
+  { id: 'exam',          group: '測驗',       label: '大測驗',         icon: 'pencil',        panel: 'plans',  sub: 'exam',    flag: 'exam' },
+  { id: 'settings',      group: '設定',       label: '功能開放設定',   icon: 'setting',       panel: 'system', sub: 'settings' }
+];
+
+function isAdminSectionAvailable(section) {
+  if (!section) return false;
+  // 系統管理面板（帳號權限 / 報名回報 / 設定）：只有系統管理員看得到。
+  if (section.panel === 'system' && !isSystemAdministrator()) return false;
+  if (section.flag === 'quiz') return window.dailyQuizFeatureEnabled === true;
+  if (section.flag === 'exam') {
+    const roleCode = state.currentUser && typeof getUserRoleCode === 'function'
+      ? getUserRoleCode(state.currentUser) : null;
+    const canSee = ['admin', 'pastor', 'great_zone_leader', 'zone_leader', 'group_leader'].includes(roleCode);
+    return canSee && window.speedReadingExamFeatureEnabled === true;
+  }
+  return true;
+}
+
+function getAvailableAdminSections() {
+  return ADMIN_SECTIONS.filter(isAdminSectionAvailable);
+}
+
+let activeAdminSection = null;
+
+function setAdminSection(id, options = {}) {
+  const available = getAvailableAdminSections();
+  if (available.length === 0) return;
+  const section = available.find(s => s.id === id) || available[0];
+  activeAdminSection = section.id;
+  try { sessionStorage.setItem('selected_admin_section', section.id); } catch (_e) {}
+
+  setAdminPrimaryPanel(section.panel);
+  if (section.panel === 'system') {
+    setAdminSystemSubtab(section.sub);
+  } else {
+    setAdminPlanSubtab(section.sub, options.loadData !== false);
+  }
+  renderAdminSectionNav();
+}
+
+function renderAdminSectionNav() {
+  const nav = document.getElementById('admin-section-nav');
+  if (!nav) return;
+  const sections = getAvailableAdminSections();
+  if (sections.length === 0) { nav.innerHTML = ''; return; }
+  if (!sections.some(s => s.id === activeAdminSection)) {
+    let saved = null;
+    try { saved = sessionStorage.getItem('selected_admin_section'); } catch (_e) {}
+    activeAdminSection = sections.some(s => s.id === saved) ? saved : sections[0].id;
+  }
+
+  const groups = [];
+  sections.forEach(section => {
+    let bucket = groups.find(g => g.name === section.group);
+    if (!bucket) { bucket = { name: section.group, items: [] }; groups.push(bucket); }
+    bucket.items.push(section);
+  });
+
+  nav.innerHTML = groups.map(group => `
+    <div class="admin-section-nav__group">
+      <p class="admin-section-nav__group-label">${escapeHTML(group.name)}</p>
+      <div class="admin-section-nav__list">
+        ${group.items.map(section => `
+          <button type="button" class="admin-section-nav__item${section.id === activeAdminSection ? ' is-active' : ''}"
+            data-admin-section="${section.id}" aria-current="${section.id === activeAdminSection ? 'true' : 'false'}">
+            <span class="admin-section-nav__icon"><span class="nlc-icon" data-icon="${section.icon}" aria-hidden="true"></span></span>
+            <span class="admin-section-nav__label">${escapeHTML(section.label)}</span>
+            <span class="admin-section-nav__chevron"><span class="nlc-icon nlc-icon--sm" data-icon="chevronRight" aria-hidden="true"></span></span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  nav.querySelectorAll('[data-admin-section]').forEach(button => {
+    button.addEventListener('click', () => setAdminSection(button.dataset.adminSection));
+  });
+  if (typeof hydrateIcons === 'function') hydrateIcons(nav);
+}
+
+window.renderAdminSectionNav = renderAdminSectionNav;
+window.setAdminSection = setAdminSection;
 
 function getManagementPlanStageNo(plan) {
   const presetMatch = String(plan && plan.presetKey || '').match(/^church_stage_(\d+)$/);
@@ -2354,6 +2628,11 @@ export async function renderAdminPlanManagement() {
     setAdminPrimaryPanel(savedPanel);
     mountPlanManagementSections();
     initAdminPlanSubtabs();
+
+    // 統一功能清單：還原上次選的 section（否則挑第一個可用的）並渲染側清單。
+    let savedSection = null;
+    try { savedSection = sessionStorage.getItem('selected_admin_section'); } catch (_e) {}
+    setAdminSection(savedSection || activeAdminSection, { loadData: false });
 
     const select = document.getElementById('admin-management-plan-select');
     const plans = getManagementPlans();

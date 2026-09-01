@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260901_profile_subpage_overlay_fix" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260901_admin_section_nav_step1_emergency_announcement_editor" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -398,7 +398,7 @@
             </div>
           </div>
 
-          <!-- 教會公告 (Church Announcements) -->
+          <!-- 教會公告（獨立公告區塊，不與大測驗連動） -->
           <div class="glass-card card-col span-12 bento-card dashboard-panel-card announcements-card">
             <div class="dashboard-panel-card__header card-header-flex">
               <h3 class="dashboard-panel-card__title card-title">
@@ -407,26 +407,6 @@
                 </span>
                 <span class="dashboard-panel-card__title-text">教會公告</span>
               </h3>
-              <button type="button" class="secondary-btn dashboard-panel-card__action admin-only-nav hidden"
-                id="btn-show-announcement-form" onclick="window.openAnnouncementForm()">
-                <span class="btn-with-icon"><span class="nlc-icon nlc-icon--sm" data-icon="megaphone"
-                    aria-hidden="true"></span><span>發布公告</span></span>
-              </button>
-            </div>
-
-            <!-- 公告編輯表單 (管理員專屬，預設隱藏) -->
-            <div id="admin-announcement-form-container" class="announcement-form-panel hidden">
-              <h4 class="announcement-form-panel__title">發布教會公告</h4>
-              <input type="text" id="announcement-title-input" class="form-control announcement-form-panel__input"
-                placeholder="公告標題">
-              <textarea id="announcement-content-input" class="form-control announcement-form-panel__textarea"
-                placeholder="公告內容..." rows="4"></textarea>
-              <div class="announcement-form-panel__actions">
-                <button type="button" class="pill-btn announcement-form-panel__cancel"
-                  onclick="window.closeAnnouncementForm()">取消</button>
-                <button type="button" class="primary-btn announcement-form-panel__submit"
-                  onclick="window.saveAnnouncement()">發布</button>
-              </div>
             </div>
 
             <div id="church-announcements-list" class="announcements-list">
@@ -1735,6 +1715,10 @@
 
       <!-- VIEW 6: ADMIN CONSOLE -->
       <section id="admin-view" class="view-pane hidden">
+        <!-- 統一的管理功能清單（取代舊的 主分頁 + 系統/計畫子分頁三層 tab bar）。
+             JS 依角色 / 功能開關動態產生；點一項就切到對應面板。 -->
+        <nav id="admin-section-nav" class="admin-section-nav" aria-label="管理功能"></nav>
+
         <nav id="admin-primary-tabs" class="admin-primary-tabs hidden" role="tablist" aria-label="管理分頁">
           <button type="button" class="admin-primary-tab" id="admin-tab-system" role="tab"
             aria-selected="false" aria-controls="admin-system-panel" data-admin-panel="system">系統管理</button>
@@ -1744,7 +1728,7 @@
 
         <div id="admin-system-panel" class="grid-layout hidden" role="tabpanel"
           aria-labelledby="admin-tab-system">
-          <div class="card-col span-12">
+          <div class="card-col span-12 hidden">
             <nav id="admin-system-subtabs" class="admin-plan-subtabs" role="tablist" aria-label="系統管理分頁">
               <button type="button" class="admin-plan-subtab active" role="tab" aria-selected="true"
                 aria-controls="admin-system-subtab-users" data-system-subtab="users"><span class="nlc-icon" data-icon="personBox" aria-hidden="true"></span><span>使用者基本資料</span></button>
@@ -1754,6 +1738,8 @@
                 aria-controls="admin-system-subtab-registrations" data-system-subtab="registrations"><span class="nlc-icon" data-icon="journalText" aria-hidden="true"></span><span>報名註冊統計</span></button>
               <button type="button" class="admin-plan-subtab" role="tab" aria-selected="false"
                 aria-controls="admin-system-subtab-reports" data-system-subtab="reports"><span class="nlc-icon" data-icon="inbox" aria-hidden="true"></span><span>回報管理</span></button>
+              <button type="button" class="admin-plan-subtab" role="tab" aria-selected="false"
+                aria-controls="admin-system-subtab-announcements" data-system-subtab="announcements"><span class="nlc-icon" data-icon="megaphone" aria-hidden="true"></span><span>公告管理</span></button>
               <button type="button" class="admin-plan-subtab" role="tab" aria-selected="false"
                 aria-controls="admin-system-subtab-settings" data-system-subtab="settings"><span class="nlc-icon" data-icon="setting" aria-hidden="true"></span><span>功能開放設定</span></button>
             </nav>
@@ -1914,6 +1900,45 @@
           </div>
           </div>
 
+          <div id="admin-system-subtab-announcements" class="card-col span-12 admin-plan-subtab-panel hidden">
+            <section class="glass-card admin-announcements" aria-labelledby="admin-announcements-title">
+              <div class="admin-announcements__header">
+                <div>
+                  <p class="admin-registration-statistics__eyebrow">首頁內容管理</p>
+                  <h3 class="card-title" id="admin-announcements-title">公告管理</h3>
+                  <p>在此新增或編輯一般公告與緊急公告；首頁只呈現會友實際看到的樣式。</p>
+                </div>
+                <button type="button" class="primary-btn" id="admin-announcement-create">新增公告</button>
+              </div>
+              <div id="admin-announcement-editor" class="announcement-form-panel hidden">
+                <h4 class="announcement-form-panel__title" id="admin-announcement-form-title">新增公告</h4>
+                <label>公告類型
+                  <select id="admin-announcement-type" class="form-control announcement-form-panel__input">
+                    <option value="general">一般公告</option>
+                    <option value="urgent">重要／緊急公告</option>
+                  </select>
+                </label>
+                <label>公告標題
+                  <input type="text" id="admin-announcement-title" class="form-control announcement-form-panel__input" placeholder="公告標題">
+                </label>
+                <label>公告內容
+                  <textarea id="admin-announcement-content" class="form-control announcement-form-panel__textarea" placeholder="請輸入要提醒會友的公告內容…" rows="5"></textarea>
+                </label>
+                <label id="admin-announcement-expiry-field" class="hidden">顯示到期時間
+                  <input type="datetime-local" id="admin-announcement-expires-at" class="form-control announcement-form-panel__input">
+                  <small>到期後會自動從首頁隱藏，但仍保留在公告管理中。</small>
+                </label>
+                <div class="announcement-form-panel__actions">
+                  <button type="button" class="pill-btn announcement-form-panel__cancel" id="admin-announcement-cancel">取消</button>
+                  <button type="button" class="primary-btn announcement-form-panel__submit" id="admin-announcement-save">發布公告</button>
+                </div>
+              </div>
+              <div id="admin-announcements-list" class="announcements-list" aria-live="polite">
+                <div class="admin-user-directory__empty">正在載入公告…</div>
+              </div>
+            </section>
+          </div>
+
           <div id="admin-system-subtab-settings" class="card-col span-12 admin-plan-subtab-panel hidden">
           <div class="card-col span-12">
             <div class="glass-card admin-feature-settings-card">
@@ -1966,7 +1991,7 @@
 
         <div id="admin-plans-panel" class="admin-plan-management" role="tabpanel"
           aria-labelledby="admin-tab-plans">
-          <section class="glass-card admin-plan-feature-menu" aria-labelledby="admin-plan-feature-menu-title">
+          <section class="glass-card admin-plan-feature-menu hidden" aria-labelledby="admin-plan-feature-menu-title">
             <div class="admin-plan-feature-menu__header">
               <div>
                 <h2 id="admin-plan-feature-menu-title">功能列表</h2>
@@ -2746,7 +2771,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260901_profile_subpage_overlay_fix"></script>
+  <script type="module" src="js/app.js?v=20260901_admin_section_nav_step1_emergency_announcement_editor"></script>
 </body>
 
 </html>
