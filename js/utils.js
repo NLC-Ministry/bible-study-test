@@ -1680,6 +1680,17 @@ function generateChurchCampaignPlanObject(definition, presetKey, scheduleSetting
       chapter.key = chapter.book + "_" + chapter.chapter + "_" + (chapter.round || 1);
     });
   });
+  // 定義裡有經卷、卻鋪不出任何一天有章 = 排程壞了（例：cohort 定義起訖與 segment
+  // 起訖對不上）。靜默的話畫面只會顯示「補讀與休息日」，跟真的休息日分不出來。
+  const definitionHasReadings = (definition.segments || [])
+    .some(segment => Array.isArray(segment.readings) && segment.readings.length > 0);
+  if (definitionHasReadings && !days.some(day => (day.chapters || []).length > 0)) {
+    console.error(
+      `[campaign] 排程建立後沒有任何一天有章節：definition="${definition.name}" ` +
+      `${definition.startDate}~${definition.endDate}，segments=${(definition.segments || []).length}。` +
+      `多半是起訖與 segment 視窗不一致。`
+    );
+  }
   const targetBooks = Array.from(new Set(definition.segments.flatMap(segment =>
     segment.readings.map(reading => reading.book)
   )));
@@ -1726,6 +1737,19 @@ function generatePlanObject(name, startDate, endDate, selectedBooks, presetKey =
     scheduleSettings && scheduleSettings.restWeekdays
   );
   if (campaignDefinition) {
+    // 教會 campaign 路徑的排程完全由 campaignDefinition 的起訖決定；傳進來的
+    // startDate/endDate 會被忽略。兩者不一致 = 上游（多半是 mapGlobalPlanRecord
+    // 的 cohort 分支）給錯了定義，會靜默鋪出錯月份的 days —— 明確吼出來。
+    const passedStart = startDate ? String(startDate).slice(0, 10) : null;
+    const passedEnd = endDate ? String(endDate).slice(0, 10) : null;
+    if ((passedStart && passedStart !== String(campaignDefinition.startDate).slice(0, 10))
+      || (passedEnd && passedEnd !== String(campaignDefinition.endDate).slice(0, 10))) {
+      console.error(
+        `[campaign] generatePlanObject("${name}")：傳入視窗 ${passedStart}~${passedEnd} 與 ` +
+        `campaignDefinition ${campaignDefinition.startDate}~${campaignDefinition.endDate} 不一致，` +
+        `排程將以 campaignDefinition 為準。`
+      );
+    }
     return generateChurchCampaignPlanObject(
       campaignDefinition,
       presetKey || window.CHURCH_CAMPAIGN_PRESET_KEY,

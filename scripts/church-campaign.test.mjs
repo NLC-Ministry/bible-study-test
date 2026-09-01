@@ -96,6 +96,59 @@ describe("versioned church Bible campaign", () => {
     expect(context.window.getChurchCampaignTeamStatus("smallHome", Array(5).fill({}), campaign).eligible).toBe(false);
   });
 
+  it("compresses a delayed region cohort stage into its own calendar-month window", () => {
+    const stage1 = context.window.getChurchCampaignStageDefinition(1, campaign);
+    const cohort = context.window.buildCohortStageDefinition(stage1, "2026-09-01", "2026-09-30");
+
+    // window follows the cohort row, not the canonical August stage
+    expect(cohort.startDate).toBe("2026-09-01");
+    expect(cohort.endDate).toBe("2026-09-30");
+    expect(cohort.stages).toHaveLength(1);
+    expect(cohort.stages[0].startDate).toBe("2026-09-01");
+    expect(cohort.stages[0].endDate).toBe("2026-09-30");
+
+    // exam date is cleared — Taoyuan leaders set it later
+    expect(cohort.examDate).toBeNull();
+    expect(cohort.stages[0].examDate).toBeNull();
+
+    // stageNo / roundNo / awardName preserved so award logic keeps working
+    expect(Number(cohort.stageNo)).toBe(1);
+    expect(Number(cohort.stages[0].stageNo)).toBe(1);
+    expect(Number(cohort.stages[0].roundNo)).toBe(1);
+    expect(cohort.stages[0].awardName).toBe(stage1.stages[0].awardName);
+
+    // one segment spanning the whole window, carrying the source stage's readings
+    expect(cohort.segments).toHaveLength(1);
+    expect(cohort.segments[0].startDate).toBe("2026-09-01");
+    expect(cohort.segments[0].endDate).toBe("2026-09-30");
+
+    const days = context.window.buildChurchCampaignDays(cohort, books);
+    expect(days).toHaveLength(30);
+    expect(days[0].isoDate).toBe("2026-09-01");
+    expect(days.at(-1).isoDate).toBe("2026-09-30");
+    expect(days.every(day => day.chapters.length > 0)).toBe(true);
+
+    const scheduled = days.flatMap(day => day.chapters).map(ch => ch.book + ":" + ch.chapter);
+    expect(new Set(scheduled).size).toBe(50);
+    expect(new Set(days.flatMap(day => day.chapters).map(ch => ch.book))).toEqual(new Set(["創世記"]));
+  });
+
+  it("flattens a multi-segment source stage into a single cohort segment", () => {
+    const stage2 = context.window.getChurchCampaignStageDefinition(2, campaign);
+    expect(stage2.segments.length).toBeGreaterThan(1);
+    const sourceChapters = context.window.buildChurchCampaignDays(stage2, books)
+      .flatMap(day => day.chapters).length;
+
+    const cohort = context.window.buildCohortStageDefinition(stage2, "2026-10-01", "2026-10-31");
+    expect(cohort.segments).toHaveLength(1);
+
+    const days = context.window.buildChurchCampaignDays(cohort, books);
+    expect(days).toHaveLength(31);
+    expect(days.flatMap(day => day.chapters)).toHaveLength(sourceChapters);
+    expect(new Set(cohort.segments[0].readings.map(r => r.book)).size)
+      .toBe(new Set(stage2.segments.flatMap(s => s.readings.map(r => r.book))).size);
+  });
+
   it("removes the old monthly selection flow while preserving compatibility hiding", () => {
     const state = readFileSync(join(root, "js", "state.js"), "utf8");
     const plan = readFileSync(join(root, "js", "modules", "plan.js"), "utf8");

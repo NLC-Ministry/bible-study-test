@@ -2999,11 +2999,27 @@ async function renderPlanScheduleTracker(skipCarouselUpdate = false, signal = nu
 
   // Render items
   if (!visibleChapters || visibleChapters.length === 0) {
-    container.innerHTML = `
-      <div style="text-align: center; padding: 2rem; background: var(--bg-card); border: 1px dashed var(--border-card); border-radius: 14px; color: var(--text-secondary); font-weight: 500; width: 100%;">
-        ${(window.APP_COPY && window.APP_COPY.plan.restDayBanner) || "今天是補讀或靈修休息日，好好親近神吧"}
-      </div>
-    `;
+    // 區分「這一天真的是休息日」與「整個計畫排程壞了（每一天都空）」——後者不能
+    // 用休息日文案蓋過去，否則跟正常休息日分不出來（桃園延後梯次事故）。
+    const planDays = Array.isArray(state.activePlan && state.activePlan.days) ? state.activePlan.days : [];
+    const scheduleIsBroken = planDays.length > 0
+      && !planDays.some(day => Array.isArray(day.chapters) && day.chapters.length > 0);
+    if (scheduleIsBroken) {
+      console.error(
+        `[plan] 計畫「${state.activePlan.name}」(${state.activePlan.id}) 每一天都沒有章節，排程尚未就緒。`
+      );
+      container.innerHTML = `
+        <div style="text-align: center; padding: 2rem; background: var(--bg-card); border: 1px dashed var(--border-card); border-radius: 14px; color: var(--text-secondary); font-weight: 500; width: 100%;">
+          此計畫的每日進度尚未就緒，請聯絡教會同工。
+        </div>
+      `;
+    } else {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 2rem; background: var(--bg-card); border: 1px dashed var(--border-card); border-radius: 14px; color: var(--text-secondary); font-weight: 500; width: 100%;">
+          ${(window.APP_COPY && window.APP_COPY.plan.restDayBanner) || "今天是補讀或靈修休息日，好好親近神吧"}
+        </div>
+      `;
+    }
     hideDailyQuizSection();
     return;
   }

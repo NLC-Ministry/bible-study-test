@@ -12334,7 +12334,14 @@ body.dark-theme .custom-confirm-overlay {
   z-index: var(--z-modal);
   background: var(--bg-app);
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding-bottom: 2rem;
+}
+
+/* While a subpage overlay covers the screen, freeze the page behind it so
+   overscroll/momentum doesn't drift the profile root menu underneath. */
+body.profile-subpage-open .main-content {
+  overflow: hidden;
 }
 
 .profile-subpage__header {

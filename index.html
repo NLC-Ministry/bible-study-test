@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260901_member_hub_org_dedupe" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260901_profile_subpage_overlay_fix" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -1719,139 +1719,6 @@
                 </div>
               </div>
               </div>
-
-              <div id="profile-tab-content-exams" class="profile-subpage hidden" aria-hidden="true">
-                <header class="profile-subpage__header">
-                  <button type="button" class="profile-subpage__back" data-profile-close aria-label="返回">
-                    <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
-                    <span>返回</span>
-                  </button>
-                  <span class="profile-subpage__title">我的測驗</span>
-                  <button type="button" class="profile-subpage__action" id="profile-exams-refresh">重新整理</button>
-                </header>
-                <div class="profile-subpage__body">
-                  <p class="profile-exams__intro">正式作答與複習分開保存；只有正式作答列入評分。</p>
-                  <div id="profile-exams-list" class="profile-exams__list" aria-live="polite"></div>
-                </div>
-              </div>
-
-              <div id="profile-tab-content-preferences" class="profile-subpage hidden" aria-hidden="true">
-                <header class="profile-subpage__header">
-                  <button type="button" class="profile-subpage__back" data-profile-close aria-label="返回">
-                    <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
-                    <span>返回</span>
-                  </button>
-                  <span class="profile-subpage__title">偏好設定</span>
-                  <span class="profile-subpage__header-spacer"></span>
-                </header>
-                <div class="profile-subpage__body">
-                <div class="app-settings-group offline-login-settings">
-                  <label class="offline-login-option" for="offline-reading-enabled">
-                    <span class="app-settings-item__meta">
-                      <span class="app-settings-item__title">保持登入並允許離線閱讀</span>
-                      <span class="app-settings-item__subtitle">此裝置離線時，可使用最近 30 天內驗證過的身分進入受限閱讀模式</span>
-                    </span>
-                    <input type="checkbox" id="offline-reading-enabled" checked>
-                  </label>
-                </div>
-                <div class="app-settings-group offline-bible-settings" id="offline-bible-settings">
-                  <div class="app-settings-group__header">
-                    <span class="app-settings-group__header-icon">
-                      <span class="nlc-icon nlc-icon--sm" data-icon="download" aria-hidden="true"></span>
-                    </span>
-                    <div class="app-settings-group__header-text">
-                      <h3 class="text-sm font-medium m-0">離線聖經</h3>
-                      <p class="text-xs text-secondary m-0">下載後，即使沒有網路也能閱讀完整聖經；連線閱讀仍預設 CUNP。</p>
-                    </div>
-                  </div>
-                  <div class="app-settings-list">
-                    <div class="offline-bible-item">
-                      <div class="app-settings-item__meta">
-                        <span class="app-settings-item__title">當代譯本開放資源（繁體）</span>
-                        <span class="app-settings-item__subtitle" data-offline-bible-status="OCCB">CC BY-SA 4.0・檢查中</span>
-                      </div>
-                      <button type="button" class="offline-bible-action" data-offline-bible-action="OCCB">下載</button>
-                    </div>
-                    <div class="offline-bible-item">
-                      <div class="app-settings-item__meta">
-                        <span class="app-settings-item__title">World English Bible</span>
-                        <span class="app-settings-item__subtitle" data-offline-bible-status="WEB">Public Domain・檢查中</span>
-                      </div>
-                      <button type="button" class="offline-bible-action" data-offline-bible-action="WEB">下載</button>
-                    </div>
-                  </div>
-                  <p class="offline-bible-license-note">下載內容只包含經文文字。版本名稱、來源及授權聲明會保存在離線資料中。</p>
-                  <details class="offline-bible-license-details">
-                    <summary>授權與來源</summary>
-                    <p>Biblica® 聖經，當代譯本™開放資源，版權所有 © 1979, 2005, 2007, 2012, 2023 Biblica, Inc.，依 CC BY-SA 4.0 提供。<a href="https://ebible.org/bible/details.php?id=cmncbt" target="_blank" rel="noopener noreferrer">查看來源</a></p>
-                    <p>World English Bible 經文屬 Public Domain；World English Bible 為 eBible.org 商標。<a href="https://ebible.org/bible/details.php?id=engwebp" target="_blank" rel="noopener noreferrer">查看來源</a></p>
-                  </details>
-                </div>
-                <div class="app-settings-group profile-preferences-group">
-                  <div class="app-settings-group__header">
-                    <span class="app-settings-group__header-icon">
-                      <span class="nlc-icon nlc-icon--sm" data-icon="sun" aria-hidden="true"></span>
-                    </span>
-                    <div class="app-settings-group__header-text">
-                      <h3 class="text-sm font-medium m-0">畫面主題</h3>
-                      <p class="text-xs text-secondary m-0">選擇適合閱讀環境的顯示色調</p>
-                    </div>
-                  </div>
-                  <div class="profile-theme-options" role="radiogroup" aria-label="畫面主題">
-                    <button type="button" class="profile-theme-option" data-profile-theme="light" role="radio" aria-checked="false">
-                      <span class="profile-theme-option__swatch profile-theme-option__swatch--light" aria-hidden="true"></span>
-                      <span>明亮</span>
-                    </button>
-
-                    <button type="button" class="profile-theme-option" data-profile-theme="dark" role="radio" aria-checked="false">
-                      <span class="profile-theme-option__swatch profile-theme-option__swatch--dark" aria-hidden="true"></span>
-                      <span>深色</span>
-                    </button>
-                  </div>
-                </div>
-
-                </div>
-              </div>
-
-              <div id="profile-tab-content-badges" class="profile-subpage hidden" aria-hidden="true">
-                <header class="profile-subpage__header">
-                  <button type="button" class="profile-subpage__back" data-profile-close aria-label="返回">
-                    <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
-                    <span>返回</span>
-                  </button>
-                  <span class="profile-subpage__title">我的徽章</span>
-                  <span class="profile-subpage__header-spacer"></span>
-                </header>
-                <div class="profile-subpage__body">
-                  <div class="profile-badges-card badge-wall" id="profile-badges-inner-card" style="border: none; padding: 0.5rem 0; background: transparent;">
-                    <span class="stat-badge stat-badge--neutral badge-wall__count" id="badge-wall-summary">0 / 10</span>
-                    <div id="badges-grid" class="badges-grid" style="margin-top: 0.75rem;"></div>
-                  </div>
-                </div>
-              </div>
-
-              <div id="profile-tab-content-highlights-notes" class="profile-subpage hidden" aria-hidden="true">
-                <header class="profile-subpage__header">
-                  <button type="button" class="profile-subpage__back" data-profile-close aria-label="返回">
-                    <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
-                    <span>返回</span>
-                  </button>
-                  <span class="profile-subpage__title">我的螢光＆筆記</span>
-                  <span class="profile-subpage__header-spacer"></span>
-                </header>
-                <div class="profile-subpage__body">
-                  <div class="profile-hn-tabs" role="tablist">
-                    <button type="button" class="profile-hn-tab active" role="tab" aria-selected="true" data-hn-tab="highlights">螢光</button>
-                    <button type="button" class="profile-hn-tab" role="tab" aria-selected="false" data-hn-tab="notes">筆記</button>
-                  </div>
-                  <div class="profile-hn-sort" role="radiogroup" aria-label="排序方式">
-                    <button type="button" class="profile-hn-sort-btn active" role="radio" aria-checked="true" data-hn-sort="recent">最新在前</button>
-                    <button type="button" class="profile-hn-sort-btn" role="radio" aria-checked="false" data-hn-sort="bible-order">依聖經順序</button>
-                  </div>
-                  <div id="profile-hn-list" class="profile-hn-list" aria-live="polite"></div>
-                </div>
-              </div>
-
             </div>
           </div>
 
@@ -2553,6 +2420,145 @@
     window.dismissMockCareReminder = function() {};
   </script>
 
+  <!-- Profile subpages (我的測驗 / 偏好設定 / 我的徽章 / 我的螢光＆筆記).
+       Deliberately at the top level, NOT inside #profile-view: .view-pane's
+       fadeIn animation leaves `transform: translateY(0)` on the pane via its
+       `forwards` fill, which makes it the containing block for these
+       position:fixed overlays — nesting them there pins the overlay to the
+       top of the (tall, scrolled) profile section instead of the viewport,
+       so it renders off-screen and looks blank. See openProfileDetail(). -->
+  <div id="profile-tab-content-exams" class="profile-subpage hidden" aria-hidden="true">
+    <header class="profile-subpage__header">
+      <button type="button" class="profile-subpage__back" data-profile-close aria-label="返回">
+        <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
+        <span>返回</span>
+      </button>
+      <span class="profile-subpage__title">我的測驗</span>
+      <button type="button" class="profile-subpage__action" id="profile-exams-refresh">重新整理</button>
+    </header>
+    <div class="profile-subpage__body">
+      <p class="profile-exams__intro">正式作答與複習分開保存；只有正式作答列入評分。</p>
+      <div id="profile-exams-list" class="profile-exams__list" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <div id="profile-tab-content-preferences" class="profile-subpage hidden" aria-hidden="true">
+    <header class="profile-subpage__header">
+      <button type="button" class="profile-subpage__back" data-profile-close aria-label="返回">
+        <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
+        <span>返回</span>
+      </button>
+      <span class="profile-subpage__title">偏好設定</span>
+      <span class="profile-subpage__header-spacer"></span>
+    </header>
+    <div class="profile-subpage__body">
+    <div class="app-settings-group offline-login-settings">
+      <label class="offline-login-option" for="offline-reading-enabled">
+        <span class="app-settings-item__meta">
+          <span class="app-settings-item__title">保持登入並允許離線閱讀</span>
+          <span class="app-settings-item__subtitle">此裝置離線時，可使用最近 30 天內驗證過的身分進入受限閱讀模式</span>
+        </span>
+        <input type="checkbox" id="offline-reading-enabled" checked>
+      </label>
+    </div>
+    <div class="app-settings-group offline-bible-settings" id="offline-bible-settings">
+      <div class="app-settings-group__header">
+        <span class="app-settings-group__header-icon">
+          <span class="nlc-icon nlc-icon--sm" data-icon="download" aria-hidden="true"></span>
+        </span>
+        <div class="app-settings-group__header-text">
+          <h3 class="text-sm font-medium m-0">離線聖經</h3>
+          <p class="text-xs text-secondary m-0">下載後，即使沒有網路也能閱讀完整聖經；連線閱讀仍預設 CUNP。</p>
+        </div>
+      </div>
+      <div class="app-settings-list">
+        <div class="offline-bible-item">
+          <div class="app-settings-item__meta">
+            <span class="app-settings-item__title">當代譯本開放資源（繁體）</span>
+            <span class="app-settings-item__subtitle" data-offline-bible-status="OCCB">CC BY-SA 4.0・檢查中</span>
+          </div>
+          <button type="button" class="offline-bible-action" data-offline-bible-action="OCCB">下載</button>
+        </div>
+        <div class="offline-bible-item">
+          <div class="app-settings-item__meta">
+            <span class="app-settings-item__title">World English Bible</span>
+            <span class="app-settings-item__subtitle" data-offline-bible-status="WEB">Public Domain・檢查中</span>
+          </div>
+          <button type="button" class="offline-bible-action" data-offline-bible-action="WEB">下載</button>
+        </div>
+      </div>
+      <p class="offline-bible-license-note">下載內容只包含經文文字。版本名稱、來源及授權聲明會保存在離線資料中。</p>
+      <details class="offline-bible-license-details">
+        <summary>授權與來源</summary>
+        <p>Biblica® 聖經，當代譯本™開放資源，版權所有 © 1979, 2005, 2007, 2012, 2023 Biblica, Inc.，依 CC BY-SA 4.0 提供。<a href="https://ebible.org/bible/details.php?id=cmncbt" target="_blank" rel="noopener noreferrer">查看來源</a></p>
+        <p>World English Bible 經文屬 Public Domain；World English Bible 為 eBible.org 商標。<a href="https://ebible.org/bible/details.php?id=engwebp" target="_blank" rel="noopener noreferrer">查看來源</a></p>
+      </details>
+    </div>
+    <div class="app-settings-group profile-preferences-group">
+      <div class="app-settings-group__header">
+        <span class="app-settings-group__header-icon">
+          <span class="nlc-icon nlc-icon--sm" data-icon="sun" aria-hidden="true"></span>
+        </span>
+        <div class="app-settings-group__header-text">
+          <h3 class="text-sm font-medium m-0">畫面主題</h3>
+          <p class="text-xs text-secondary m-0">選擇適合閱讀環境的顯示色調</p>
+        </div>
+      </div>
+      <div class="profile-theme-options" role="radiogroup" aria-label="畫面主題">
+        <button type="button" class="profile-theme-option" data-profile-theme="light" role="radio" aria-checked="false">
+          <span class="profile-theme-option__swatch profile-theme-option__swatch--light" aria-hidden="true"></span>
+          <span>明亮</span>
+        </button>
+
+        <button type="button" class="profile-theme-option" data-profile-theme="dark" role="radio" aria-checked="false">
+          <span class="profile-theme-option__swatch profile-theme-option__swatch--dark" aria-hidden="true"></span>
+          <span>深色</span>
+        </button>
+      </div>
+    </div>
+
+    </div>
+  </div>
+
+  <div id="profile-tab-content-badges" class="profile-subpage hidden" aria-hidden="true">
+    <header class="profile-subpage__header">
+      <button type="button" class="profile-subpage__back" data-profile-close aria-label="返回">
+        <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
+        <span>返回</span>
+      </button>
+      <span class="profile-subpage__title">我的徽章</span>
+      <span class="profile-subpage__header-spacer"></span>
+    </header>
+    <div class="profile-subpage__body">
+      <div class="profile-badges-card badge-wall" id="profile-badges-inner-card" style="border: none; padding: 0.5rem 0; background: transparent;">
+        <span class="stat-badge stat-badge--neutral badge-wall__count" id="badge-wall-summary">0 / 10</span>
+        <div id="badges-grid" class="badges-grid" style="margin-top: 0.75rem;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="profile-tab-content-highlights-notes" class="profile-subpage hidden" aria-hidden="true">
+    <header class="profile-subpage__header">
+      <button type="button" class="profile-subpage__back" data-profile-close aria-label="返回">
+        <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
+        <span>返回</span>
+      </button>
+      <span class="profile-subpage__title">我的螢光＆筆記</span>
+      <span class="profile-subpage__header-spacer"></span>
+    </header>
+    <div class="profile-subpage__body">
+      <div class="profile-hn-tabs" role="tablist">
+        <button type="button" class="profile-hn-tab active" role="tab" aria-selected="true" data-hn-tab="highlights">螢光</button>
+        <button type="button" class="profile-hn-tab" role="tab" aria-selected="false" data-hn-tab="notes">筆記</button>
+      </div>
+      <div class="profile-hn-sort" role="radiogroup" aria-label="排序方式">
+        <button type="button" class="profile-hn-sort-btn active" role="radio" aria-checked="true" data-hn-sort="recent">最新在前</button>
+        <button type="button" class="profile-hn-sort-btn" role="radio" aria-checked="false" data-hn-sort="bible-order">依聖經順序</button>
+      </div>
+      <div id="profile-hn-list" class="profile-hn-list" aria-live="polite"></div>
+    </div>
+  </div>
+
   <!-- YouVersion Immersive Badge Detail Page -->
   <div id="badge-detail-page" class="hidden fixed inset-0 w-full h-full overflow-y-auto z-50 pb-12">
 
@@ -2740,7 +2746,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260901_member_hub_org_dedupe"></script>
+  <script type="module" src="js/app.js?v=20260901_profile_subpage_overlay_fix"></script>
 </body>
 
 </html>

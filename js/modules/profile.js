@@ -601,6 +601,12 @@ function openProfileDetail(key) {
   state.profileDetailOpen = key;
   page.classList.remove("hidden");
   page.setAttribute("aria-hidden", "false");
+  // The overlay is a fixed-position pane that scrolls internally; a re-opened
+  // subpage otherwise keeps its previous scrollTop (Chrome preserves it across
+  // display:none), landing the user mid- or bottom-content and looking broken.
+  page.scrollTop = 0;
+  requestAnimationFrame(() => { page.scrollTop = 0; });
+  document.body.classList.add("profile-subpage-open");
 
   if (key === "badges" && typeof window.renderBadgeWall === "function") {
     window.renderBadgeWall("badges-grid");
@@ -620,6 +626,7 @@ function closeProfileDetail() {
     page.classList.add("hidden");
     page.setAttribute("aria-hidden", "true");
   }
+  document.body.classList.remove("profile-subpage-open");
 }
 window.openProfileDetail = openProfileDetail;
 window.closeProfileDetail = closeProfileDetail;

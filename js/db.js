@@ -223,10 +223,44 @@ function mapGlobalPlanRecord(dbPlan) {
   } else if (isCampaignStage || isCohortStage) {
     const storedStageNo = Number(dbPlan.rules && dbPlan.rules.stageNo)
       || Number(String(dbPlan.id || "").slice(-12));
-    const stored = dbPlan.rules && Array.isArray(dbPlan.rules.stages) && Array.isArray(dbPlan.rules.segments)
-      ? dbPlan.rules
-      : window.getChurchCampaignStageDefinition(storedStageNo);
-    if (stored) campaignDefinition = window.cloneChurchCampaign(stored);
+    const cohortStart = isCohortStage ? String(dbPlan.start_date || "").slice(0, 10) : null;
+    const cohortEnd = isCohortStage ? String(dbPlan.end_date || "").slice(0, 10) : null;
+    const rulesHasSchedule = dbPlan.rules
+      && Array.isArray(dbPlan.rules.stages) && Array.isArray(dbPlan.rules.segments);
+    // 延後大區梯次：DB rules 若已 materialize（含 stages/segments 陣列且起訖對得上這一列）
+    // 就直接用；否則從正式階段即時壓縮成梯次視窗（前端保底，讓舊列 / 未跑 migration 的列
+    // 也能正確顯示），並吼一聲提醒該列尚未 materialize。
+    if (isCohortStage) {
+      const materialized = rulesHasSchedule
+        && String(dbPlan.rules.startDate || "").slice(0, 10) === cohortStart
+        && String(dbPlan.rules.endDate || "").slice(0, 10) === cohortEnd;
+      if (materialized) {
+        campaignDefinition = window.cloneChurchCampaign(dbPlan.rules);
+      } else {
+        const sourceStage = window.getChurchCampaignStageDefinition(storedStageNo);
+        campaignDefinition = sourceStage && typeof window.buildCohortStageDefinition === "function"
+          ? window.buildCohortStageDefinition(sourceStage, cohortStart, cohortEnd)
+          : null;
+        if (campaignDefinition) {
+          console.error(
+            `[cohort] global_plan ${dbPlan.id} 尚未 materialize（rules 缺平移後 stages/segments），` +
+            `已於前端即時壓縮階段 ${storedStageNo} 排程至 ${cohortStart}~${cohortEnd}。請重跑 create_region_stage_cohort。`
+          );
+        }
+      }
+      if (campaignDefinition
+        && (campaignDefinition.startDate !== cohortStart || campaignDefinition.endDate !== cohortEnd)) {
+        console.error(
+          `[cohort] global_plan ${dbPlan.id} 排程視窗與 DB 起訖不一致：` +
+          `def ${campaignDefinition.startDate}~${campaignDefinition.endDate} vs row ${cohortStart}~${cohortEnd}`
+        );
+      }
+    } else {
+      const stored = rulesHasSchedule
+        ? dbPlan.rules
+        : window.getChurchCampaignStageDefinition(storedStageNo);
+      if (stored) campaignDefinition = window.cloneChurchCampaign(stored);
+    }
   }
   // cohort 用 DB 列的名稱 / 起訖（延後版），其餘（大題、獎項、階段序）沿用 campaignDefinition
   const useCampaignSchedule = Boolean(campaignDefinition) && !isCohortStage;
@@ -4851,10 +4885,21 @@ const db = {
     return true;
   },
 
-  // 延後大區梯次：為某大區建立 / 更新某階段的平行梯次計畫（migration 0128）
+  // 延後大區梯次：為某大區建立 / 更新某階段的平行梯次計畫（migration 0128 + 0140）
+  // 排程定義（把來源階段壓進 [startDate,endDate] 視窗、examDate=null）在前端算好，
+  // 由 buildCohortStageDefinition 產出，後端只驗證 + 存進 rules，並以它的起訖為準。
   async createRegionStageCohort({ greatRegion, sourceStageNo, startDate, endDate, isHidden = true }) {
     if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) {
       return { success: false, message: "此功能需要登入正式帳號。" };
+    }
+    const sourceStage = typeof window.getChurchCampaignStageDefinition === "function"
+      ? window.getChurchCampaignStageDefinition(Number(sourceStageNo))
+      : null;
+    const cohortDefinition = sourceStage && typeof window.buildCohortStageDefinition === "function"
+      ? window.buildCohortStageDefinition(sourceStage, String(startDate).slice(0, 10), String(endDate).slice(0, 10))
+      : null;
+    if (!cohortDefinition) {
+      return { success: false, message: "找不到來源階段定義，無法建立延後梯次。" };
     }
     try {
       const { data, error } = await state.supabase.rpc("create_region_stage_cohort", {
@@ -4862,7 +4907,8 @@ const db = {
         p_source_stage_no: Number(sourceStageNo),
         p_start_date: startDate,
         p_end_date: endDate,
-        p_is_hidden: isHidden !== false
+        p_is_hidden: isHidden !== false,
+        p_cohort_definition: cohortDefinition
       });
       if (error) {
         const raw = String(error.message || error);
