@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260901_admin_drill_ds_align" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260901_urgent_announcement_pin" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -270,6 +270,11 @@
       <!-- VIEW 1: DASHBOARD -->
       <section id="dashboard-view" class="view-pane hidden">
         <div class="grid-layout">
+          <!-- 最置頂：重要／緊急公告。renderChurchAnnouncements() 會把標題帶
+               【緊急】/【重要】的公告抽出來放這裡，暖色外框（跟大測驗預告同一套
+               --color-warning 強調語言），比一般公告更醒目；沒有就整塊隱藏。 -->
+          <div class="glass-card card-col span-12 bento-card urgent-announcement-banner hidden" id="urgent-announcements-banner" aria-live="polite"></div>
+
           <!-- 置頂：速讀「大測驗」預告 / 入口。內容由後台「預告文」分頁維護，
                透過 db.getExamHomeBanner() 帶入；功能關閉或尚未發佈預告時整塊隱藏。 -->
           <div class="glass-card card-col span-12 bento-card quiz-announcement-banner hidden" id="quiz-announcement-banner">
@@ -2722,7 +2727,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260901_admin_drill_ds_align"></script>
+  <script type="module" src="js/app.js?v=20260901_urgent_announcement_pin"></script>
 </body>
 
 </html>

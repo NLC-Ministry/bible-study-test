@@ -10941,6 +10941,67 @@ body.dark-theme .plan-calendar .plan-day-cell.active .day-number, body.dark-them
 }
 #quiz-announcement-banner.hidden { display: none; }
 
+/* 置頂「重要／緊急公告」——沿用大測驗預告那套暖色 Alert 語言（純色外框 + 極淡
+   底色，不用漸層、不用品牌色光暈）。同樣要用 #id + !important 蓋過暗色/暖色
+   主題對 .bento-card / .glass-card 的既有覆蓋。 */
+#urgent-announcements-banner {
+  border: 1.5px solid var(--color-warning) !important;
+  background-color: color-mix(in srgb, var(--color-warning) 8%, var(--bg-card)) !important;
+}
+#urgent-announcements-banner:hover {
+  transform: none;
+  box-shadow: var(--shadow-sm);
+  border-color: var(--color-warning) !important;
+}
+#urgent-announcements-banner.hidden { display: none; }
+
+.urgent-announcement-banner__list {
+  display: grid;
+  gap: 0.85rem;
+}
+.urgent-announcement-banner__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+.urgent-announcement-banner__item + .urgent-announcement-banner__item {
+  border-top: 1px solid color-mix(in srgb, var(--color-warning) 24%, var(--border-card));
+  padding-top: 0.85rem;
+}
+.urgent-announcement-banner__icon {
+  color: var(--color-warning);
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+.urgent-announcement-banner__main {
+  flex: 1;
+  min-width: 0;
+}
+.urgent-announcement-banner__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.3rem;
+}
+.urgent-announcement-banner__time {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+.urgent-announcement-banner__title {
+  margin: 0 0 0.2rem;
+  font-size: 1rem;
+  font-weight: var(--type-weight-strong, 500);
+  color: var(--text-primary);
+}
+.urgent-announcement-banner__body {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+
 /* 首頁「速讀大測驗」置頂區塊：內容由後台預告文帶入（喇叭圖示 + 標題/說明 + 入口鈕）。 */
 .exam-home-banner {
   display: grid;

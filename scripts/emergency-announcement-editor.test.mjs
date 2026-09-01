@@ -17,7 +17,9 @@ describe("公告管理區塊", () => {
     expect(html).toContain('<option value="urgent">重要／緊急公告</option>');
     expect(admin).toContain('type === "urgent" ? "【緊急】" : "【一般】"');
     expect(admin).toContain("重要／緊急公告請設定顯示到期時間");
-    expect(home).toContain("return aUrgent ? -1 : 1");
+    // 重要／緊急公告改為置頂獨立區塊（暖色），不再混在下方一般公告列表裡。
+    expect(html).toContain('id="urgent-announcements-banner"');
+    expect(home).toContain("renderUrgentAnnouncementsBanner");
     expect(home).toContain("expiresAt > now");
     expect(home).not.toContain("openAnnouncementForm");
     expect(html).not.toContain("btn-show-announcement-form");

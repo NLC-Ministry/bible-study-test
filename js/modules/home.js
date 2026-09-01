@@ -820,24 +820,67 @@ function formatRelativeAnnouncementTime(dateString) {
   return date.toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', month: '2-digit', day: '2-digit' });
 }
 
+// 重要／緊急公告單獨置頂（#urgent-announcements-banner），暖色外框，比一般公告醒目。
+// 沒有有效的緊急公告時整塊隱藏。
+function renderUrgentAnnouncementsBanner(urgentAnnouncements) {
+  const banner = document.getElementById("urgent-announcements-banner");
+  if (!banner) return;
+
+  if (!urgentAnnouncements || urgentAnnouncements.length === 0) {
+    banner.classList.add("hidden");
+    banner.innerHTML = "";
+    return;
+  }
+
+  banner.classList.remove("hidden");
+  banner.innerHTML = `
+    <div class="urgent-announcement-banner__list">
+      ${urgentAnnouncements.map(ann => {
+        const category = getAnnouncementCategory(ann.title);
+        const displayTitle = category.cleanTitle || ann.title;
+        const expiresAt = Date.parse(ann.expires_at || "") || 0;
+        const metaText = expiresAt
+          ? `顯示至 ${formatRelativeAnnouncementTime(ann.expires_at)}`
+          : formatRelativeAnnouncementTime(ann.created_at);
+        return `
+        <article class="urgent-announcement-banner__item">
+          <span class="urgent-announcement-banner__icon nlc-icon nlc-icon--md" data-icon="flame" aria-hidden="true"></span>
+          <div class="urgent-announcement-banner__main">
+            <div class="urgent-announcement-banner__head">
+              <span class="announcement-badge announcement-badge--danger">
+                <span class="nlc-icon nlc-icon--sm" data-icon="flame" aria-hidden="true"></span>
+                <span>重要／緊急公告</span>
+              </span>
+              <time class="urgent-announcement-banner__time">${escapeHTML(metaText)}</time>
+            </div>
+            <h4 class="urgent-announcement-banner__title">${escapeHTML(displayTitle)}</h4>
+            <p class="urgent-announcement-banner__body">${escapeHTML(ann.content || "")}</p>
+          </div>
+        </article>`;
+      }).join("")}
+    </div>`;
+
+  if (typeof hydrateIcons === "function") hydrateIcons(banner);
+}
+
 async function renderChurchAnnouncements() {
   const container = document.getElementById("church-announcements-list");
   if (!container) return;
 
   const now = Date.now();
-  const announcements = (await db.fetchAnnouncements())
+  const isUrgent = ann => getAnnouncementCategory(ann.title).badgeClass === "announcement-badge--danger";
+  const allAnnouncements = (await db.fetchAnnouncements())
     .filter(announcement => {
-      const category = getAnnouncementCategory(announcement.title);
-      if (category.badgeClass !== "announcement-badge--danger") return true;
+      if (!isUrgent(announcement)) return true;
       const expiresAt = Date.parse(announcement.expires_at || "") || 0;
       return !expiresAt || expiresAt > now;
     })
-    .sort((a, b) => {
-      const aUrgent = getAnnouncementCategory(a.title).badgeClass === "announcement-badge--danger";
-      const bUrgent = getAnnouncementCategory(b.title).badgeClass === "announcement-badge--danger";
-      if (aUrgent !== bUrgent) return aUrgent ? -1 : 1;
-      return (Date.parse(b.created_at || "") || 0) - (Date.parse(a.created_at || "") || 0);
-    });
+    .sort((a, b) => (Date.parse(b.created_at || "") || 0) - (Date.parse(a.created_at || "") || 0));
+
+  // 重要／緊急公告抽出來置頂，其餘留在下方一般公告列表。
+  const urgentAnnouncements = allAnnouncements.filter(isUrgent);
+  const announcements = allAnnouncements.filter(ann => !isUrgent(ann));
+  renderUrgentAnnouncementsBanner(urgentAnnouncements);
 
   if (announcements.length === 0) {
     container.className = "announcements-list";

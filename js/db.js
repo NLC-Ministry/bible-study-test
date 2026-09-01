@@ -3819,6 +3819,16 @@ const db = {
     };
   },
 
+  // 延後大區梯次（church_campaign_stage_cohort）目前沒有 cohort-aware 版本的
+  // 團隊 / 成員清單 RPC（get_unjoined_plan_members / get_joined_plan_members /
+  // get_admin_member_team_placements 都是 0135 版，對 cohort 會 RAISE → nlc-data
+  // 回 400，每次進管理分頁就洗一次 console）。這些 RPC 失敗後本來就會走
+  // _get*Fallback 純 PostgREST 查詢，所以對 cohort 直接跳過 RPC、走 fallback，
+  // 行為不變、少一個 400。之後若補了 cohort-aware RPC，拿掉這個守衛即可。
+  _managementPlanUsesTeamRpc(plan) {
+    return String(plan && plan.planKind || plan && plan.plan_kind || "") !== "church_campaign_stage_cohort";
+  },
+
   _resolveManagementGlobalPlanId(plan) {
     const globalPlans = Array.isArray(state.globalPlans) ? state.globalPlans : [];
     const identifiers = [
@@ -3907,7 +3917,7 @@ const db = {
 
   async getUnjoinedPlanMembers(plan) {
     const planId = this._resolveManagementGlobalPlanId(plan);
-    if (planId) {
+    if (planId && this._managementPlanUsesTeamRpc(plan)) {
       const result = await this._callReadingTeamRpc("get_unjoined_plan_members", {
         p_global_plan_id: planId,
         p_plan_key: String(plan && (plan.presetKey || plan.preset_key) || "")
@@ -3989,7 +3999,7 @@ const db = {
 
   async getJoinedPlanMembers(plan) {
     const planId = this._resolveManagementGlobalPlanId(plan);
-    if (planId) {
+    if (planId && this._managementPlanUsesTeamRpc(plan)) {
       const result = await this._callReadingTeamRpc("get_joined_plan_members", {
         p_global_plan_id: planId,
         p_plan_key: String(plan && (plan.presetKey || plan.preset_key) || "")
@@ -4085,8 +4095,8 @@ const db = {
 
   async getAdminMemberTeamPlacements(plan) {
     const planId = this._resolveManagementGlobalPlanId(plan);
-    if (!planId) {
-      return this._getAdminMemberTeamPlacementsFallback(plan, null);
+    if (!planId || !this._managementPlanUsesTeamRpc(plan)) {
+      return this._getAdminMemberTeamPlacementsFallback(plan, planId || null);
     }
     const result = await this._callReadingTeamRpc("get_admin_member_team_placements", {
       p_global_plan_id: planId
@@ -4100,7 +4110,7 @@ const db = {
 
   async sendPlanJoinInvitation(plan, recipientId) {
     const planId = this._resolveManagementGlobalPlanId(plan);
-    if (planId) {
+    if (planId && this._managementPlanUsesTeamRpc(plan)) {
       const result = await this._callReadingTeamRpc("send_plan_join_invitation", {
         p_global_plan_id: planId,
         p_recipient_id: recipientId,
