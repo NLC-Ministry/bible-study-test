@@ -2375,6 +2375,14 @@ function renderPresetPlansList() {
     // 沒帶這個旗標 → 完全隱藏，等管理員開放（is_hidden 轉 false）才現身。
     const showAsLocked = window.isCampaignStageLocked(plan)
       && window.isCampaignStageDiscoverableWhileLocked(plan);
+    // 第三階段起（2027 年～，沒帶 discoverWhenLocked）的隱藏階段計畫：探索清單裡
+    // 只有「系統管理員」看得到；牧者 / 區長 / 小組長也都看不到，直到 is_hidden
+    // 轉 false 才對所有人現身。（一般隱藏計畫仍照 canManageHiddenPlans 放行給管理者預覽。）
+    const isFullyHiddenCampaignStage = isHidden
+      && window.isCampaignStageLocked(plan)
+      && !window.isCampaignStageDiscoverableWhileLocked(plan);
+    const viewerRole = (state.currentUser && getUserRoleCode(state.currentUser)) || "member";
+    if (isFullyHiddenCampaignStage && viewerRole !== "admin") return false;
     if (isHidden && !canManageHiddenPlans() && !showAsLocked) return false;
     if (!matchesSearch) return false;
     return !isAlreadyJoined;

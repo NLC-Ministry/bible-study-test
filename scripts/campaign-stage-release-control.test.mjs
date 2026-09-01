@@ -48,6 +48,9 @@ describe("campaign stage release control", () => {
     // 第三階段之後 = false → 完全隱藏）。
     expect(planModule).toContain("window.isCampaignStageLocked(plan)");
     expect(planModule).toContain("window.isCampaignStageDiscoverableWhileLocked(plan)");
+    // 第三階段起的隱藏階段：探索清單只有系統管理員 (role === "admin") 看得到。
+    expect(planModule).toContain("const isFullyHiddenCampaignStage = isHidden");
+    expect(planModule).toContain('if (isFullyHiddenCampaignStage && viewerRole !== "admin") return false;');
     expect(planModule).toContain("if (isHidden && !canManageHiddenPlans() && !showAsLocked) return false;");
     expect(planModule).toContain("const isLockedStage = window.isCampaignStageLocked(plan)");
     expect(planModule).toContain('actions: isLockedStage ? "" : renderPlanCardActions([');
