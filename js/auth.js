@@ -20,7 +20,7 @@ const auth = {
     issuer: (typeof NLC_CONFIG !== "undefined" && NLC_CONFIG.issuer) || "https://sso.newlife.org.tw/oidc",
     clientId: (typeof NLC_CONFIG !== "undefined" && NLC_CONFIG.clientId) || "",
     memberHubUrl: (typeof NLC_CONFIG !== "undefined" && NLC_CONFIG.memberHubUrl) || "https://member.newlife.org.tw",
-    scopes: (typeof NLC_CONFIG !== "undefined" && NLC_CONFIG.scopes) || "openid profile email member:read.basic",
+    scopes: (typeof NLC_CONFIG !== "undefined" && NLC_CONFIG.scopes) || "openid profile email offline_access member:read.basic",
     platformResource: (typeof NLC_CONFIG !== "undefined" && NLC_CONFIG.platformResource) || "https://platform.newlife.org.tw"
   },
 
