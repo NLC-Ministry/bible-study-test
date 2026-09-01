@@ -8,10 +8,10 @@ const admin = read("js/modules/admin.js");
 const plan = read("js/modules/plan.js");
 
 describe("計劃管理: explicit refresh button", () => {
-  it("adds a 更新 button next to the shared org filter, below the feature menu", () => {
-    const panelStart = html.indexOf('id="admin-plans-panel"');
+  it("adds a 更新 button next to the shared org filter in the unified plan context", () => {
+    const panelStart = html.indexOf('id="admin-plan-context"');
     const filterCardStart = html.indexOf('id="admin-plan-filter-title"', panelStart);
-    const firstPanelStart = html.indexOf('id="admin-plan-subtab-join-status"', filterCardStart);
+    const firstPanelStart = html.indexOf('id="admin-section-join-status"', filterCardStart);
     const filterArea = html.slice(filterCardStart, firstPanelStart);
     expect(filterArea).toContain('id="admin-plan-refresh-btn"');
     expect(filterArea).toContain(">更新<");

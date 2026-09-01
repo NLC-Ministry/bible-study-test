@@ -11,7 +11,7 @@ const db = fs.readFileSync(join(root, "js/db.js"), "utf8");
 describe("公告管理區塊", () => {
   it("與大測驗分離並提供新增與編輯文案", () => {
     expect(html).toContain('dashboard-panel-card__title-text">教會公告');
-    expect(html).toContain('id="admin-system-subtab-announcements"');
+    expect(html).toContain('id="admin-section-announcements"');
     expect(admin).toContain("{ id: 'announcements', group: '內容管理',   label: '公告管理'");
     expect(html).toContain('<option value="general">一般公告</option>');
     expect(html).toContain('<option value="urgent">重要／緊急公告</option>');

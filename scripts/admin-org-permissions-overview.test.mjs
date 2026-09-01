@@ -7,9 +7,9 @@ const html = read("index.html");
 const admin = read("js/modules/admin.js");
 const css = read("css/admin-registration-statistics.css");
 
-describe("admin org structure permissions overview (系統管理 → 組織架構權限總覽)", () => {
-  it("mounts a collapsible section in the system panel, above the existing 管理範圍設定 editor it links into", () => {
-    const panelStart = html.indexOf('id="admin-system-panel"');
+describe("admin org structure permissions overview (管理 → 權限管理)", () => {
+  it("mounts a collapsible section in the unified permissions destination, above the existing 管理範圍設定 editor it links into", () => {
+    const panelStart = html.indexOf('id="admin-section-permissions"');
     const overviewIndex = html.indexOf('id="admin-org-permissions-col"', panelStart);
     const editorIndex = html.indexOf('id="admin-managed-scopes-col"', panelStart);
     expect(overviewIndex).toBeGreaterThan(-1);
@@ -71,7 +71,7 @@ describe("admin org structure permissions overview (系統管理 → 組織架�
     expect(saveHandler).toContain("renderAdminOrgPermissionsOverview()");
   });
 
-  it("is wired into the admin module's init() alongside the other system-panel renderers", () => {
+  it("is wired into the admin module's init() alongside the other admin renderers", () => {
     const initStart = admin.indexOf("export function init()");
     const initEnd = admin.indexOf("\n}", initStart);
     const initBody = admin.slice(initStart, initEnd);

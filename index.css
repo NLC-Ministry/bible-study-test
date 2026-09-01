@@ -13624,9 +13624,7 @@ select,
 
 
 /* Management information architecture */
-/* ── 統一的管理功能清單（取代三層 tab bar）─────────────────────────────
-   Step 1：平面堆疊（清單在上、選到的面板在下）。手機 drag-in / 桌機側欄
-   在後續步驟加。 */
+/* ── 統一的管理功能清單（取代三層 tab bar）───────────────────────────── */
 .admin-section-nav {
   display: flex;
   flex-direction: column;
@@ -13719,158 +13717,46 @@ select,
   flex-shrink: 0;
 }
 
-.admin-primary-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.25rem;
-  max-width: 32rem;
-  margin: 0 auto 1.25rem;
-  padding: 0.25rem;
-  border: 1px solid var(--border-card);
-  border-radius: 12px;
-  background: var(--bg-input);
-}
+/* 桌機：功能清單固定在左側，所選內容直接在右側打開。app.js 會寫入
+   display:block inline style，因此 active 狀態需用 !important 完成雙欄。 */
+@media (min-width: 960px) {
+  #admin-view.active {
+    display: grid !important;
+    grid-template-columns: minmax(230px, 280px) minmax(0, 1fr);
+    align-items: start;
+    column-gap: 1.25rem;
+  }
 
-.admin-primary-tab {
-  min-height: 2.75rem;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  font-weight: 500;
-  cursor: pointer;
-}
+  #admin-view > #admin-section-nav {
+    grid-column: 1;
+    grid-row: 1;
+    position: sticky;
+    top: 86px;
+    max-height: calc(100vh - 106px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 0.25rem;
+  }
 
-.admin-primary-tab.active {
-  background: var(--bg-card);
-  color: var(--primary-color);
-  box-shadow: var(--shadow-sm);
-}
-
-.admin-plan-management {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-.admin-plan-feature-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-  border-top: 3px solid var(--color-brand);
-}
-
-.admin-plan-feature-menu__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.admin-plan-feature-menu__header h2 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 1.05rem;
-  font-weight: 500;
-}
-
-.admin-plan-feature-menu__header p {
-  margin: 0.2rem 0 0;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-}
-
-.admin-plan-feature-menu__hint {
-  flex: 0 0 auto;
-  color: var(--color-brand);
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.admin-plan-feature-menu .admin-plan-subtabs {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
-  overflow: visible;
-  mask-image: none;
-  -webkit-mask-image: none;
-}
-
-.admin-plan-feature-menu .admin-plan-subtab {
-  justify-content: center;
-  min-width: 0;
-  min-height: 3rem;
-  border: 1px solid transparent;
-  white-space: normal;
-  text-align: center;
-}
-
-.admin-plan-feature-menu .admin-plan-subtab:not(.active) {
-  border-color: var(--border-card);
-  background: var(--bg-card);
-}
-
-.admin-plan-feature-menu .admin-plan-subtab.active {
-  border-color: var(--color-brand);
-  background: var(--color-brand);
-  color: #fff;
-}
-
-.admin-plan-subtabs {
-  display: flex;
-  gap: 0.35rem;
-  padding: 0.3rem;
-  border: 1px solid var(--border-card);
-  border-radius: 12px;
-  background: var(--bg-input);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-/* Below this width the tab labels (icon + Chinese text × 4-5 tabs) reliably
-   overflow, so fading the trailing edge is a safe static hint that there's
-   more to swipe to. Skipped above it so a fully-visible tab set on wider
-   screens doesn't show a fade that isn't actually hiding anything. */
-@media (max-width: 900px) {
-  .admin-plan-subtabs {
-    -webkit-mask-image: linear-gradient(to right, black 0%, black calc(100% - 2rem), transparent 100%);
-    mask-image: linear-gradient(to right, black 0%, black calc(100% - 2rem), transparent 100%);
+  #admin-view > #admin-section-content {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
   }
 }
 
-.admin-plan-subtabs::-webkit-scrollbar {
-  display: none;
+.admin-section-content {
+  min-width: 0;
 }
 
-.admin-plan-subtab {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-height: 2.5rem;
-  padding: 0.4rem 0.75rem;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
+.admin-plan-context {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
 }
 
-.admin-plan-subtab .nlc-icon {
-  font-size: 1rem;
-}
-
-.admin-plan-subtab.active {
-  background: var(--bg-card);
-  color: var(--color-brand);
-  box-shadow: var(--shadow-sm);
-}
-
-.admin-plan-subtab-panel {
+.admin-section-panel {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
@@ -14088,28 +13974,6 @@ select,
 }
 
 @media (max-width: 640px) {
-  .admin-plan-feature-menu {
-    gap: 0.75rem;
-  }
-
-  .admin-plan-feature-menu__hint {
-    display: none;
-  }
-
-  .admin-plan-feature-menu .admin-plan-subtabs {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5rem;
-    padding: 0;
-    border: 0;
-    background: transparent;
-  }
-
-  .admin-plan-feature-menu .admin-plan-subtab {
-    width: 100%;
-    min-height: 3.25rem;
-    padding: 0.55rem 0.65rem;
-  }
-
   .admin-unjoined-plan-card__header {
     align-items: stretch;
     flex-direction: column;

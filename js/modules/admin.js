@@ -45,11 +45,8 @@ function updateDailyQuizFeatureControl(enabled, options = {}) {
 }
 
 function applyAdminDailyQuizFeatureVisibility(enabled) {
-  const tab = document.querySelector('#admin-plan-subtabs [data-plan-subtab="quizzes"]');
-  const panel = document.getElementById("admin-plan-subtab-quizzes");
-  tab?.classList.toggle("hidden", !enabled);
-  if (tab) tab.style.display = enabled ? "" : "none";
-  if (!enabled && activeAdminPlanSubtab === "quizzes") setAdminPlanSubtab("join-status");
+  const panel = document.getElementById("admin-section-quizzes");
+  if (!enabled && activeAdminSection === "quizzes") setAdminSection("join-status");
   if (!enabled && panel) panel.classList.add("hidden");
   if (typeof renderAdminSectionNav === "function") renderAdminSectionNav();
 }
@@ -74,10 +71,8 @@ function applyAdminExamVisibility(enabled) {
     ? getUserRoleCode(state.currentUser) : null;
   const canSee = ["admin", "pastor", "great_zone_leader", "zone_leader", "group_leader"].includes(roleCode);
   const show = canSee && enabled === true;
-  const tab = document.querySelector('#admin-plan-subtabs [data-plan-subtab="exam"]');
-  const panel = document.getElementById("admin-plan-subtab-exam");
-  if (tab) { tab.classList.toggle("hidden", !show); tab.style.display = show ? "" : "none"; }
-  if (!show && activeAdminPlanSubtab === "exam") setAdminPlanSubtab("join-status");
+  const panel = document.getElementById("admin-section-exam");
+  if (!show && activeAdminSection === "exam") setAdminSection("join-status");
   if (!show && panel) panel.classList.add("hidden");
   if (typeof renderAdminSectionNav === "function") renderAdminSectionNav();
 }
@@ -1469,48 +1464,10 @@ export async function renderAdminAnnouncements() {
   if (typeof hydrateIcons === "function") hydrateIcons(host);
 }
 
-const ADMIN_SYSTEM_SUBTABS = ['users', 'permissions', 'registrations', 'reports', 'announcements', 'settings'];
-let activeAdminSystemSubtab = ADMIN_SYSTEM_SUBTABS[0];
-
-function setAdminSystemSubtab(subtab) {
-  const requested = ADMIN_SYSTEM_SUBTABS.includes(subtab) ? subtab : ADMIN_SYSTEM_SUBTABS[0];
-  activeAdminSystemSubtab = requested;
-  try {
-    sessionStorage.setItem('selected_admin_system_subtab', requested);
-  } catch (_e) {}
-
-  document.querySelectorAll('#admin-system-subtabs [data-system-subtab]').forEach(button => {
-    const active = button.dataset.systemSubtab === requested;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-selected', active ? 'true' : 'false');
-  });
-  ADMIN_SYSTEM_SUBTABS.forEach(name => {
-    const panel = document.getElementById(`admin-system-subtab-${name}`);
-    if (!panel) return;
-    panel.classList.toggle('hidden', name !== requested);
-    panel.style.display = name === requested ? 'flex' : 'none';
-  });
-}
-
-function initAdminSystemSubtabs() {
-  const nav = document.getElementById('admin-system-subtabs');
-  if (!nav || nav.dataset.listenerBound) return;
-  nav.dataset.listenerBound = 'true';
-  nav.querySelectorAll('[data-system-subtab]').forEach(button => {
-    button.addEventListener('click', () => setAdminSystemSubtab(button.dataset.systemSubtab));
-  });
-  let savedSubtab = ADMIN_SYSTEM_SUBTABS[0];
-  try {
-    savedSubtab = sessionStorage.getItem('selected_admin_system_subtab') || ADMIN_SYSTEM_SUBTABS[0];
-  } catch (_e) {}
-  setAdminSystemSubtab(savedSubtab);
-}
-
 export function init() {
   void renderAdminFeatureSettings();
   void renderAdminUserDirectory();
   void renderAdminOrgPermissionsOverview();
-  initAdminSystemSubtabs();
   renderAdminSectionNav();
   void renderAdminManagedScopes();
   void renderAdminRegistrationStatistics();
@@ -1555,39 +1512,9 @@ function isSystemAdministrator() {
   return role === 'admin';
 }
 
-let currentActiveAdminPanel = null;
-
-function setAdminPrimaryPanel(panelName) {
-  const isAdmin = isSystemAdministrator();
-  const requested = panelName === 'system' && isAdmin ? 'system' : 'plans';
-  currentActiveAdminPanel = requested;
-  try {
-    sessionStorage.setItem('selected_admin_panel', requested);
-  } catch (_e) {}
-  const tabs = document.getElementById('admin-primary-tabs');
-  const systemPanel = document.getElementById('admin-system-panel');
-  const plansPanel = document.getElementById('admin-plans-panel');
-  if (tabs) tabs.classList.toggle('hidden', !isAdmin);
-  if (systemPanel) {
-    systemPanel.classList.toggle('hidden', requested !== 'system');
-    systemPanel.style.display = requested === 'system' ? 'grid' : 'none';
-  }
-  if (plansPanel) {
-    plansPanel.classList.remove('hidden');
-    plansPanel.style.display = requested === 'plans' ? 'block' : 'none';
-    plansPanel.style.visibility = 'visible';
-    plansPanel.style.opacity = '1';
-  }
-  document.querySelectorAll('[data-admin-panel]').forEach(button => {
-    const active = button.dataset.adminPanel === requested;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-selected', active ? 'true' : 'false');
-  });
-}
-
 function mountPlanManagementSections() {
   const orgFilterSlot = document.getElementById('admin-plan-org-filter-slot');
-  const joinStatusPanel = document.getElementById('admin-plan-subtab-join-status');
+  const joinStatusPanel = document.getElementById('admin-section-join-status');
   const participantSlot = document.getElementById('admin-plan-participants-slot');
   const statisticsSlot = document.getElementById('admin-plan-statistics-slot');
   const orgControls = document.getElementById('members-organization-controls');
@@ -1634,71 +1561,10 @@ function mountPlanManagementSections() {
   }
 }
 
-const ADMIN_PLAN_SUBTABS = ['join-status', 'members', 'teams', 'statistics', 'quizzes', 'exam'];
-let activeAdminPlanSubtab = ADMIN_PLAN_SUBTABS[0];
+let activeAdminPlanSubtab = 'join-status';
 const adminDailyQuizDashboardCache = new Map();
 
-function setAdminPlanSubtab(subtab, loadData = true) {
-  const requested = ADMIN_PLAN_SUBTABS.includes(subtab) ? subtab : ADMIN_PLAN_SUBTABS[0];
-  activeAdminPlanSubtab = requested;
-  try {
-    sessionStorage.setItem('selected_admin_plan_subtab', requested);
-  } catch (_e) {}
-
-  document.querySelectorAll('#admin-plan-subtabs [data-plan-subtab]').forEach(button => {
-    const active = button.dataset.planSubtab === requested;
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-selected', active ? 'true' : 'false');
-  });
-  ADMIN_PLAN_SUBTABS.forEach(name => {
-    const panel = document.getElementById(`admin-plan-subtab-${name}`);
-    if (!panel) return;
-    panel.classList.toggle('hidden', name !== requested);
-    panel.style.display = name === requested ? 'flex' : 'none';
-  });
-  // 小測驗的「發布範圍」已經在發布面板內提供完整的大區／牧區／小組
-  // 選擇器；隱藏共用查看範圍，避免畫面上下出現兩組相同篩選器。
-  const sharedOrgFilter = document.querySelector('.admin-plan-filter-card--org');
-  if (sharedOrgFilter) {
-    const hideSharedOrgFilter = requested === 'quizzes' || requested === 'exam';
-    sharedOrgFilter.classList.toggle('hidden', hideSharedOrgFilter);
-    sharedOrgFilter.style.display = hideSharedOrgFilter ? 'none' : 'flex';
-  }
-  // 大測驗有自己的「試卷清單」下拉，不吃共用的「計畫篩選」。
-  const sharedPlanFilter = document.querySelector('.admin-plan-filter-card:not(.admin-plan-filter-card--org)');
-  if (sharedPlanFilter) {
-    const hidePlanFilter = requested === 'exam';
-    sharedPlanFilter.classList.toggle('hidden', hidePlanFilter);
-    sharedPlanFilter.style.display = hidePlanFilter ? 'none' : 'flex';
-  }
-  if (loadData && state.activePlan) {
-    void loadActiveAdminPlanSubtab(false);
-  }
-}
-
-function initAdminPlanSubtabs() {
-  const nav = document.getElementById('admin-plan-subtabs');
-  if (!nav || nav.dataset.listenerBound) return;
-  nav.dataset.listenerBound = 'true';
-  nav.querySelectorAll('[data-plan-subtab]').forEach(button => {
-    button.addEventListener('click', () => setAdminPlanSubtab(button.dataset.planSubtab));
-  });
-  let savedSubtab = ADMIN_PLAN_SUBTABS[0];
-  try {
-    savedSubtab = sessionStorage.getItem('selected_admin_plan_subtab') || ADMIN_PLAN_SUBTABS[0];
-  } catch (_e) {}
-  // The selected plan is resolved immediately afterwards by
-  // renderAdminPlanManagement(). Avoid starting a stale/duplicate request
-  // against whatever plan happened to be active before opening Admin.
-  // Tab visibility is (re)asserted authoritatively by renderAdminFeatureSettings()
-  // once the speed_reading_exam flag is known; use the cached value meanwhile.
-  applyAdminExamVisibility(window.speedReadingExamFeatureEnabled === true);
-  setAdminPlanSubtab(savedSubtab, false);
-}
-
-// ── 統一的管理功能清單（Step 1：把「主分頁 + 系統/計畫子分頁」三層 tab bar
-//    收成一份分組清單）。每一項對應到既有的面板；setAdminSection() 只是把舊的
-//    setAdminPrimaryPanel + setAdminSystemSubtab/setAdminPlanSubtab 串起來。 ──
+// ── 統一管理架構：一份功能清單直接控制一組內容面板。 ──
 const ADMIN_SECTIONS = [
   { id: 'users',         group: '帳號與權限', label: '使用者基本資料', icon: 'personBox',     panel: 'system', sub: 'users' },
   { id: 'permissions',   group: '帳號與權限', label: '權限管理',       icon: 'shieldCheck',   panel: 'system', sub: 'permissions' },
@@ -1734,6 +1600,29 @@ function getAvailableAdminSections() {
 
 let activeAdminSection = null;
 
+function getAdminSectionPanelId(section) {
+  return section ? `admin-section-${section.id}` : '';
+}
+
+function revealAdminSectionContent(section) {
+  if (!section) return;
+  const target = document.getElementById(getAdminSectionPanelId(section));
+  if (!target) return;
+
+  requestAnimationFrame(() => {
+    const rect = target.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    // 桌機雙欄時內容已在右側，不移動畫面；手機的內容位於長清單下方，
+    // 點擊後平滑移到內容頂端，避免「狀態已切換但看起來沒有打開」。
+    if (rect.top <= Math.max(120, viewportHeight * 0.55)) return;
+    const stickyHeaderOffset = 84;
+    window.scrollTo({
+      top: Math.max(0, window.scrollY + rect.top - stickyHeaderOffset),
+      behavior: 'smooth'
+    });
+  });
+}
+
 function setAdminSection(id, options = {}) {
   const available = getAvailableAdminSections();
   if (available.length === 0) return;
@@ -1741,13 +1630,38 @@ function setAdminSection(id, options = {}) {
   activeAdminSection = section.id;
   try { sessionStorage.setItem('selected_admin_section', section.id); } catch (_e) {}
 
-  setAdminPrimaryPanel(section.panel);
-  if (section.panel === 'system') {
-    setAdminSystemSubtab(section.sub);
-  } else {
-    setAdminPlanSubtab(section.sub, options.loadData !== false);
+  const targetId = getAdminSectionPanelId(section);
+  document.querySelectorAll('#admin-section-content > .admin-section-panel').forEach(panel => {
+    const active = panel.id === targetId;
+    panel.classList.toggle('hidden', !active);
+    panel.style.display = active ? 'flex' : 'none';
+  });
+
+  const isPlanSection = section.panel === 'plans';
+  const planContext = document.getElementById('admin-plan-context');
+  if (planContext) {
+    planContext.classList.toggle('hidden', !isPlanSection);
+    planContext.style.display = isPlanSection ? 'flex' : 'none';
+  }
+
+  if (isPlanSection) {
+    activeAdminPlanSubtab = section.sub;
+    const sharedOrgFilter = document.querySelector('.admin-plan-filter-card--org');
+    if (sharedOrgFilter) {
+      const hideSharedOrgFilter = section.sub === 'quizzes' || section.sub === 'exam';
+      sharedOrgFilter.classList.toggle('hidden', hideSharedOrgFilter);
+      sharedOrgFilter.style.display = hideSharedOrgFilter ? 'none' : 'flex';
+    }
+    const sharedPlanFilter = document.querySelector('.admin-plan-filter-card:not(.admin-plan-filter-card--org)');
+    if (sharedPlanFilter) {
+      const hidePlanFilter = section.sub === 'exam';
+      sharedPlanFilter.classList.toggle('hidden', hidePlanFilter);
+      sharedPlanFilter.style.display = hidePlanFilter ? 'none' : 'flex';
+    }
+    if (options.loadData !== false && state.activePlan) void loadActiveAdminPlanSubtab(false);
   }
   renderAdminSectionNav();
+  if (options.focusContent === true) revealAdminSectionContent(section);
 }
 
 function renderAdminSectionNav() {
@@ -1785,7 +1699,7 @@ function renderAdminSectionNav() {
   `).join('');
 
   nav.querySelectorAll('[data-admin-section]').forEach(button => {
-    button.addEventListener('click', () => setAdminSection(button.dataset.adminSection));
+    button.addEventListener('click', () => setAdminSection(button.dataset.adminSection, { focusContent: true }));
   });
   if (typeof hydrateIcons === 'function') hydrateIcons(nav);
 }
@@ -2614,22 +2528,14 @@ export async function renderAdminPlanManagement() {
   try {
     const role = (state.currentUser && getUserRoleCode(state.currentUser)) || 'member';
     if (!MANAGEMENT_ROLES.includes(role)) {
-      setAdminPrimaryPanel('plans');
-      const plansPanel = document.getElementById('admin-plans-panel');
-      if (plansPanel) {
-        plansPanel.innerHTML = '<div class="admin-unjoined-plan-empty" style="padding: 2rem; text-align: center;">您目前沒有計畫管理權限。</div>';
-      }
+      const content = document.getElementById('admin-section-content');
+      if (content) content.innerHTML = '<div class="admin-unjoined-plan-empty" style="padding: 2rem; text-align: center;">您目前沒有管理權限。</div>';
       return;
     }
-    let savedPanel = 'plans';
-    try {
-      savedPanel = sessionStorage.getItem('selected_admin_panel') || currentActiveAdminPanel || 'plans';
-    } catch (_e) {}
-    setAdminPrimaryPanel(savedPanel);
     mountPlanManagementSections();
-    initAdminPlanSubtabs();
+    applyAdminExamVisibility(window.speedReadingExamFeatureEnabled === true);
 
-    // 統一功能清單：還原上次選的 section（否則挑第一個可用的）並渲染側清單。
+    // 還原統一功能清單的選擇；不再經過舊 system/plans tab 包裝層。
     let savedSection = null;
     try { savedSection = sessionStorage.getItem('selected_admin_section'); } catch (_e) {}
     setAdminSection(savedSection || activeAdminSection, { loadData: false });
@@ -2660,10 +2566,6 @@ export async function renderAdminPlanManagement() {
         await selectManagementPlan(select.value);
       }
     }
-
-    document.querySelectorAll('[data-admin-panel]').forEach(button => {
-      button.onclick = () => setAdminPrimaryPanel(button.dataset.adminPanel);
-    });
 
     const refreshBtn = document.getElementById('admin-plan-refresh-btn');
     if (refreshBtn && !refreshBtn.dataset.bound) {

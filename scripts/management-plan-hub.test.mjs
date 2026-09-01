@@ -12,29 +12,37 @@ const css = readFileSync("index.css", "utf8");
 
 describe("management plan hub", () => {
   it("puts the requested plan management sections in discovery order", () => {
-    const planPanel = html.slice(html.indexOf('id="admin-plans-panel"'), html.indexOf('    </main>', html.indexOf('id="admin-plans-panel"')));
+    const contentStart = html.indexOf('id="admin-section-content"');
+    const planPanel = html.slice(contentStart, html.indexOf('    </main>', contentStart));
     const labels = ["\u8a08\u756b\u7be9\u9078", "\u53c3\u8207\u8005\u7e3d\u89bd", "3 \u4eba\u5718\u968a\u5831\u540d\u72c0\u6cc1", "6 \u4eba\u5718\u968a\u5831\u540d\u72c0\u6cc1", "\u5404\u7a2e\u7d71\u8a08"];
     const positions = labels.map(label => planPanel.indexOf(label));
     expect(positions.every(position => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
   });
 
-  it("places a clearly labelled feature list before plan and organization filters", () => {
-    const planPanel = html.slice(html.indexOf('id="admin-plans-panel"'), html.indexOf('    </main>', html.indexOf('id="admin-plans-panel"')));
-    const featureMenuIndex = planPanel.indexOf('id="admin-plan-feature-menu-title"');
-    const planFilterIndex = planPanel.indexOf('id="admin-plan-filter-title"');
-    const orgFilterIndex = planPanel.indexOf('id="admin-plan-filter-disclosure"');
-    expect(featureMenuIndex).toBeGreaterThan(-1);
-    expect(featureMenuIndex).toBeLessThan(planFilterIndex);
-    expect(featureMenuIndex).toBeLessThan(orgFilterIndex);
+  it("places one unified management navigation before the shared plan filters", () => {
+    const adminViewStart = html.indexOf('id="admin-view"');
+    const adminView = html.slice(adminViewStart, html.indexOf('    </main>', adminViewStart));
+    const navigationIndex = adminView.indexOf('id="admin-section-nav"');
+    const planPanelIndex = adminView.indexOf('id="admin-plan-context"');
+    const planFilterIndex = adminView.indexOf('id="admin-plan-filter-title"');
+    expect(navigationIndex).toBeGreaterThan(-1);
+    expect(navigationIndex).toBeLessThan(planPanelIndex);
+    expect(planPanelIndex).toBeLessThan(planFilterIndex);
+    expect(adminView).not.toContain('id="admin-plan-feature-menu-title"');
   });
 
-  it("gives system administrators system and plan tabs", () => {
-    expect(html).toContain('data-admin-panel="system">\u7cfb\u7d71\u7ba1\u7406</button>');
-    expect(html).toContain('data-admin-panel="plans">\u8a08\u756b\u7ba1\u7406</button>');
+  it("gives system administrators unified system and plan destinations without legacy panel tabs", () => {
+    expect(html).toContain('id="admin-section-nav"');
+    expect(html).toContain('id="admin-section-users"');
+    expect(html).toContain('id="admin-section-join-status"');
+    expect(html).not.toContain('data-admin-panel=');
+    expect(html).not.toContain('id="admin-system-panel"');
+    expect(html).not.toContain('id="admin-plans-panel"');
     expect(html).not.toContain('id="admin-users-accordion-root"');
     expect(html).toContain('id="admin-reports-root"');
-    expect(admin).toContain("panelName === 'system' && isAdmin");
+    expect(admin).toContain("const ADMIN_SECTIONS = [");
+    expect(admin).not.toContain("setAdminPrimaryPanel");
   });
 
   it("keeps plan management available for management roles down to group_leader", () => {

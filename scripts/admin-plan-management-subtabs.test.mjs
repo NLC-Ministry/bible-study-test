@@ -9,45 +9,29 @@ const db = read("js/db.js");
 const edge = read("supabase/functions/nlc-data/index.ts");
 const migration = read("supabase/migrations/0073_get_joined_plan_members.sql");
 
-describe("plan management: 4-tab restructure", () => {
-  it("puts a prominent feature menu above the shared plan + org filters", () => {
-    const panelStart = html.indexOf('id="admin-plans-panel"');
-    const panelEnd = html.indexOf("</main>", panelStart);
-    const panel = html.slice(panelStart, panelEnd);
-
-    expect(panel).toContain('id="admin-management-plan-select"');
-    expect(panel).toContain('id="admin-plan-org-filter-slot"');
-    expect(panel).toContain('id="admin-plan-subtabs"');
-
-    const subtabs = ["join-status", "members", "teams", "statistics"];
-    for (const subtab of subtabs) {
-      expect(panel).toContain(`data-plan-subtab="${subtab}"`);
-      expect(panel).toContain(`id="admin-plan-subtab-${subtab}"`);
+describe("plan management: unified section architecture", () => {
+  it("uses the shared plan context followed by direct unified destinations", () => {
+    const content = html.slice(html.indexOf('id="admin-section-content"'), html.indexOf("</main>"));
+    expect(content).toContain('id="admin-plan-context"');
+    expect(content).toContain('id="admin-management-plan-select"');
+    expect(content).toContain('id="admin-plan-org-filter-slot"');
+    for (const section of ["join-status", "members", "teams", "statistics"]) {
+      expect(content).toContain(`id="admin-section-${section}"`);
+      expect(admin).toContain(`id: '${section}'`);
     }
-
-    expect(panel).toContain('id="admin-plan-feature-menu-title">功能列表</h2>');
-    expect(panel).toContain('aria-label="計畫管理功能列表"');
-
-    // The feature menu must appear before filters so it cannot be buried by them.
-    const filterIndex = panel.indexOf('id="admin-plan-org-filter-slot"');
-    const tabsIndex = panel.indexOf('id="admin-plan-subtabs"');
-    expect(tabsIndex).toBeLessThan(filterIndex);
-    for (const subtab of subtabs) {
-      expect(panel.indexOf(`id="admin-plan-subtab-${subtab}"`)).toBeGreaterThan(tabsIndex);
-    }
+    expect(content).not.toContain('id="admin-plan-subtabs"');
   });
 
-  it("shows the feature menu as a non-scrolling two-column grid on mobile", () => {
+  it("uses the unified responsive navigation instead of a second mobile tab grid", () => {
     const css = read("index.css");
-    expect(css).toContain(".admin-plan-feature-menu .admin-plan-subtabs");
-    expect(css).toContain("grid-template-columns: repeat(2, minmax(0, 1fr));");
-    expect(css).toContain("overflow: visible;");
-    expect(css).toContain("border-top: 3px solid var(--color-brand);");
+    expect(css).toContain("#admin-view.active");
+    expect(css).toContain("grid-template-columns: minmax(230px, 280px) minmax(0, 1fr)");
+    expect(css).not.toContain(".admin-plan-feature-menu .admin-plan-subtabs");
   });
 
   it("maps 加入計畫狀況 to 已加入計畫 (new) + 尚未加入計畫", () => {
-    const panelStart = html.indexOf('id="admin-plan-subtab-join-status"');
-    const panelEnd = html.indexOf('id="admin-plan-subtab-members"', panelStart);
+    const panelStart = html.indexOf('id="admin-section-join-status"');
+    const panelEnd = html.indexOf('id="admin-section-members"', panelStart);
     const panel = html.slice(panelStart, panelEnd);
 
     expect(panel).toContain('id="admin-joined-plan-section"');
@@ -67,16 +51,16 @@ describe("plan management: 4-tab restructure", () => {
   });
 
   it("maps 組員總覽 to the existing 參與者總覽 slot", () => {
-    const panelStart = html.indexOf('id="admin-plan-subtab-members"');
-    const panelEnd = html.indexOf('id="admin-plan-subtab-teams"', panelStart);
+    const panelStart = html.indexOf('id="admin-section-members"');
+    const panelEnd = html.indexOf('id="admin-section-teams"', panelStart);
     const panel = html.slice(panelStart, panelEnd);
     expect(panel).toContain(">參與者總覽<");
     expect(panel).toContain('id="admin-plan-participants-slot"');
   });
 
   it("maps 組隊狀況 to 尚未加入團隊 (renamed) + the 3人/6人 sections", () => {
-    const panelStart = html.indexOf('id="admin-plan-subtab-teams"');
-    const panelEnd = html.indexOf('id="admin-plan-subtab-statistics"', panelStart);
+    const panelStart = html.indexOf('id="admin-section-teams"');
+    const panelEnd = html.indexOf('id="admin-section-statistics"', panelStart);
     const panel = html.slice(panelStart, panelEnd);
     expect(panel).toContain('id="admin-team-placements-card-wrap"');
     expect(panel).toContain("尚未加入團隊");
@@ -87,21 +71,21 @@ describe("plan management: 4-tab restructure", () => {
   });
 
   it("maps 計畫統計 to the existing 各種統計 slot", () => {
-    const panelStart = html.indexOf('id="admin-plan-subtab-statistics"');
+    const panelStart = html.indexOf('id="admin-section-statistics"');
     const panelEnd = html.indexOf("</div>\n        </div>\n      </section>", panelStart);
     const panel = html.slice(panelStart, panelEnd > panelStart ? panelEnd : panelStart + 500);
     expect(panel).toContain(">各種統計<");
     expect(panel).toContain('id="admin-plan-statistics-slot"');
   });
 
-  it("wires tab-switching to show exactly one panel and persist the selection", () => {
-    expect(admin).toContain("function setAdminPlanSubtab(subtab, loadData = true)");
-    expect(admin).toContain("function initAdminPlanSubtabs()");
-    expect(admin).toContain("sessionStorage.setItem('selected_admin_plan_subtab', requested)");
-    expect(admin).toContain("panel.classList.toggle('hidden', name !== requested)");
+  it("routes plan destinations through the same unified section switcher", () => {
+    expect(admin).toContain("function setAdminSection(id, options = {})");
+    expect(admin).toContain("activeAdminPlanSubtab = section.sub");
+    expect(admin).toContain("sessionStorage.setItem('selected_admin_section', section.id)");
+    expect(admin).toContain("panel.classList.toggle('hidden', !active)");
     expect(admin).toContain("void loadActiveAdminPlanSubtab(false)");
-    expect(admin).toContain("initAdminPlanSubtabs();");
-    expect(admin).toContain("const hideSharedOrgFilter = requested === 'quizzes'");
+    expect(admin).not.toContain("setAdminPlanSubtab");
+    expect(admin).toContain("const hideSharedOrgFilter = section.sub === 'quizzes'");
     expect(admin).toContain("sharedOrgFilter.classList.toggle('hidden', hideSharedOrgFilter)");
     expect(admin).toContain("sharedOrgFilter.style.display = hideSharedOrgFilter ? 'none' : 'flex'");
   });
@@ -129,7 +113,7 @@ describe("plan management: 4-tab restructure", () => {
   it("moves the shared org filter controls above the tabs, not into one tab's panel", () => {
     const mountFn = admin.slice(
       admin.indexOf("function mountPlanManagementSections()"),
-      admin.indexOf("const ADMIN_PLAN_SUBTABS")
+      admin.indexOf("let activeAdminPlanSubtab")
     );
     expect(mountFn).toContain("const orgFilterSlot = document.getElementById('admin-plan-org-filter-slot')");
     expect(mountFn).toContain("const orgControls = document.getElementById('members-organization-controls')");

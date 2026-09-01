@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260901_admin_section_nav_step1_emergency_announcement_editor" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260901_admin_section_unified_v2" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -1715,37 +1715,11 @@
 
       <!-- VIEW 6: ADMIN CONSOLE -->
       <section id="admin-view" class="view-pane hidden">
-        <!-- 統一的管理功能清單（取代舊的 主分頁 + 系統/計畫子分頁三層 tab bar）。
-             JS 依角色 / 功能開關動態產生；點一項就切到對應面板。 -->
+        <!-- 統一管理架構：一份功能清單 + 一個內容區。 -->
         <nav id="admin-section-nav" class="admin-section-nav" aria-label="管理功能"></nav>
+        <div id="admin-section-content" class="admin-section-content">
 
-        <nav id="admin-primary-tabs" class="admin-primary-tabs hidden" role="tablist" aria-label="管理分頁">
-          <button type="button" class="admin-primary-tab" id="admin-tab-system" role="tab"
-            aria-selected="false" aria-controls="admin-system-panel" data-admin-panel="system">系統管理</button>
-          <button type="button" class="admin-primary-tab active" id="admin-tab-plans" role="tab"
-            aria-selected="true" aria-controls="admin-plans-panel" data-admin-panel="plans">計畫管理</button>
-        </nav>
-
-        <div id="admin-system-panel" class="grid-layout hidden" role="tabpanel"
-          aria-labelledby="admin-tab-system">
-          <div class="card-col span-12 hidden">
-            <nav id="admin-system-subtabs" class="admin-plan-subtabs" role="tablist" aria-label="系統管理分頁">
-              <button type="button" class="admin-plan-subtab active" role="tab" aria-selected="true"
-                aria-controls="admin-system-subtab-users" data-system-subtab="users"><span class="nlc-icon" data-icon="personBox" aria-hidden="true"></span><span>使用者基本資料</span></button>
-              <button type="button" class="admin-plan-subtab" role="tab" aria-selected="false"
-                aria-controls="admin-system-subtab-permissions" data-system-subtab="permissions"><span class="nlc-icon" data-icon="shieldCheck" aria-hidden="true"></span><span>權限管理</span></button>
-              <button type="button" class="admin-plan-subtab" role="tab" aria-selected="false"
-                aria-controls="admin-system-subtab-registrations" data-system-subtab="registrations"><span class="nlc-icon" data-icon="journalText" aria-hidden="true"></span><span>報名註冊統計</span></button>
-              <button type="button" class="admin-plan-subtab" role="tab" aria-selected="false"
-                aria-controls="admin-system-subtab-reports" data-system-subtab="reports"><span class="nlc-icon" data-icon="inbox" aria-hidden="true"></span><span>回報管理</span></button>
-              <button type="button" class="admin-plan-subtab" role="tab" aria-selected="false"
-                aria-controls="admin-system-subtab-announcements" data-system-subtab="announcements"><span class="nlc-icon" data-icon="megaphone" aria-hidden="true"></span><span>公告管理</span></button>
-              <button type="button" class="admin-plan-subtab" role="tab" aria-selected="false"
-                aria-controls="admin-system-subtab-settings" data-system-subtab="settings"><span class="nlc-icon" data-icon="setting" aria-hidden="true"></span><span>功能開放設定</span></button>
-            </nav>
-          </div>
-
-          <div id="admin-system-subtab-users" class="card-col span-12 admin-plan-subtab-panel">
+          <div id="admin-section-users" class="card-col span-12 admin-section-panel">
           <div class="card-col span-12 hidden" id="admin-user-directory-col">
             <section class="glass-card admin-user-directory" id="admin-user-directory" aria-label="使用者基本資料">
               <div class="admin-user-directory__body">
@@ -1814,7 +1788,7 @@
           </div>
           </div>
 
-          <div id="admin-system-subtab-permissions" class="card-col span-12 admin-plan-subtab-panel hidden">
+          <div id="admin-section-permissions" class="card-col span-12 admin-section-panel hidden">
           <div class="card-col span-12 hidden" id="admin-org-permissions-col">
             <details class="glass-card admin-org-permissions" id="admin-org-permissions-disclosure" aria-labelledby="admin-org-permissions-title" open>
               <summary class="admin-org-permissions__summary">
@@ -1863,7 +1837,7 @@
           </div>
           </div>
 
-          <div id="admin-system-subtab-registrations" class="card-col span-12 admin-plan-subtab-panel hidden">
+          <div id="admin-section-registrations" class="card-col span-12 admin-section-panel hidden">
           <div class="card-col span-12 hidden" id="admin-registration-statistics-col">
             <section class="glass-card admin-registration-statistics" aria-labelledby="admin-registration-statistics-title">
               <div class="admin-registration-statistics__header">
@@ -1894,13 +1868,13 @@
           </div>
           </div>
 
-          <div id="admin-system-subtab-reports" class="card-col span-12 admin-plan-subtab-panel hidden">
+          <div id="admin-section-reports" class="card-col span-12 admin-section-panel hidden">
           <div class="card-col span-12" id="admin-reports-root">
             <!-- Rendered dynamically by React -->
           </div>
           </div>
 
-          <div id="admin-system-subtab-announcements" class="card-col span-12 admin-plan-subtab-panel hidden">
+          <div id="admin-section-announcements" class="card-col span-12 admin-section-panel hidden">
             <section class="glass-card admin-announcements" aria-labelledby="admin-announcements-title">
               <div class="admin-announcements__header">
                 <div>
@@ -1939,7 +1913,7 @@
             </section>
           </div>
 
-          <div id="admin-system-subtab-settings" class="card-col span-12 admin-plan-subtab-panel hidden">
+          <div id="admin-section-settings" class="card-col span-12 admin-section-panel hidden">
           <div class="card-col span-12">
             <div class="glass-card admin-feature-settings-card">
               <div class="admin-feature-settings-card__copy">
@@ -1987,35 +1961,8 @@
             </div>
           </div>
           </div>
-        </div>
 
-        <div id="admin-plans-panel" class="admin-plan-management" role="tabpanel"
-          aria-labelledby="admin-tab-plans">
-          <section class="glass-card admin-plan-feature-menu hidden" aria-labelledby="admin-plan-feature-menu-title">
-            <div class="admin-plan-feature-menu__header">
-              <div>
-                <h2 id="admin-plan-feature-menu-title">功能列表</h2>
-                <p>請先選擇要管理的項目</p>
-              </div>
-              <span class="admin-plan-feature-menu__hint">點選即可切換</span>
-            </div>
-
-            <nav id="admin-plan-subtabs" class="admin-plan-subtabs" role="tablist" aria-label="計畫管理功能列表">
-              <button type="button" class="admin-plan-subtab active" role="tab" aria-selected="true"
-                aria-controls="admin-plan-subtab-join-status" data-plan-subtab="join-status"><span class="nlc-icon" data-icon="calendarCheck" aria-hidden="true"></span><span>加入計畫狀況</span></button>
-              <button type="button" class="admin-plan-subtab" role="tab" aria-selected="false"
-                aria-controls="admin-plan-subtab-members" data-plan-subtab="members"><span class="nlc-icon" data-icon="peoples" aria-hidden="true"></span><span>組員總覽</span></button>
-              <button type="button" class="admin-plan-subtab" role="tab" aria-selected="false"
-                aria-controls="admin-plan-subtab-teams" data-plan-subtab="teams"><span class="nlc-icon" data-icon="trophy" aria-hidden="true"></span><span>組隊狀況</span></button>
-              <button type="button" class="admin-plan-subtab" role="tab" aria-selected="false"
-                aria-controls="admin-plan-subtab-statistics" data-plan-subtab="statistics"><span class="nlc-icon" data-icon="barChart" aria-hidden="true"></span><span>計畫統計</span></button>
-              <button type="button" class="admin-plan-subtab hidden" role="tab" aria-selected="false"
-                aria-controls="admin-plan-subtab-quizzes" data-plan-subtab="quizzes"><span class="nlc-icon" data-icon="checkCircle" aria-hidden="true"></span><span>小測驗</span></button>
-              <button type="button" class="admin-plan-subtab hidden" role="tab" aria-selected="false"
-                aria-controls="admin-plan-subtab-exam" data-plan-subtab="exam"><span class="nlc-icon" data-icon="pencil" aria-hidden="true"></span><span>大測驗</span></button>
-            </nav>
-          </section>
-
+          <div id="admin-plan-context" class="admin-plan-context hidden">
           <section class="glass-card admin-plan-filter-card" aria-labelledby="admin-plan-filter-title">
             <label id="admin-plan-filter-title" for="admin-management-plan-select">計畫篩選</label>
             <select id="admin-management-plan-select" class="form-control"></select>
@@ -2035,8 +1982,9 @@
               <span>更新</span>
             </button>
           </section>
+          </div>
 
-          <div id="admin-plan-subtab-join-status" class="admin-plan-subtab-panel" role="tabpanel">
+          <div id="admin-section-join-status" class="admin-section-panel hidden">
             <section class="admin-management-section">
               <section id="admin-joined-plan-section" class="admin-unjoined-plan-card" aria-labelledby="admin-joined-plan-title">
                 <div class="admin-unjoined-plan-card__header" style="cursor: pointer; user-select: none;">
@@ -2057,7 +2005,7 @@
             <!-- #admin-unjoined-plan-section (尚未加入計畫) is moved in here by mountPlanManagementSections() -->
           </div>
 
-          <div id="admin-plan-subtab-members" class="admin-plan-subtab-panel hidden" role="tabpanel"
+          <div id="admin-section-members" class="admin-section-panel hidden"
             aria-labelledby="admin-participants-title">
             <section class="admin-management-section" aria-labelledby="admin-participants-title">
               <h2 id="admin-participants-title" class="admin-management-section__title">參與者總覽</h2>
@@ -2065,7 +2013,7 @@
             </section>
           </div>
 
-          <div id="admin-plan-subtab-teams" class="admin-plan-subtab-panel hidden" role="tabpanel">
+          <div id="admin-section-teams" class="admin-section-panel hidden">
             <section class="admin-management-section" id="admin-team-placements-card-wrap" aria-labelledby="admin-team-placements-title">
               <details class="glass-card admin-team-status-disclosure" id="admin-team-placements-disclosure" open>
                 <summary id="admin-team-placements-toggle" aria-controls="admin-team-placements-panel">
@@ -2142,14 +2090,14 @@
             </section>
           </div>
 
-          <div id="admin-plan-subtab-statistics" class="admin-plan-subtab-panel hidden" role="tabpanel"
+          <div id="admin-section-statistics" class="admin-section-panel hidden"
             aria-labelledby="admin-statistics-title">
             <section class="admin-management-section" aria-labelledby="admin-statistics-title">
               <h2 id="admin-statistics-title" class="admin-management-section__title">各種統計</h2>
               <div id="admin-plan-statistics-slot"></div>
             </section>
           </div>
-          <div id="admin-plan-subtab-quizzes" class="admin-plan-subtab-panel hidden" role="tabpanel"
+          <div id="admin-section-quizzes" class="admin-section-panel hidden"
             aria-labelledby="admin-quizzes-title">
             <section class="admin-management-section" aria-labelledby="admin-quizzes-title">
               <div id="admin-daily-quiz-root" aria-live="polite">
@@ -2157,7 +2105,7 @@
               </div>
             </section>
           </div>
-          <div id="admin-plan-subtab-exam" class="admin-plan-subtab-panel hidden" role="tabpanel"
+          <div id="admin-section-exam" class="admin-section-panel hidden"
             aria-labelledby="admin-exam-title">
             <section class="admin-management-section" aria-labelledby="admin-exam-title">
               <div id="admin-exam-root" aria-live="polite">
@@ -2771,7 +2719,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260901_admin_section_nav_step1_emergency_announcement_editor"></script>
+  <script type="module" src="js/app.js?v=20260901_admin_section_unified_v2"></script>
 </body>
 
 </html>
