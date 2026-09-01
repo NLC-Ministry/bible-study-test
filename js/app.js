@@ -1035,7 +1035,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     _lastForegroundRunAt = now;
 
     // 1) 一定要做的輕事：主動續期（到期前才會真的換）+ 通知數（自帶 30s 節流）
-    try { if (typeof auth !== "undefined") auth.scheduleProactiveRefresh?.(); } catch (_) {}
+    // getValidAccessToken() 內部只在接近到期時才真的續，token 還新鮮就只是讀 localStorage；
+    // 回前景直接補一次，別等下一個資料請求 401 才反應（背景期間 timer 常被瀏覽器凍結）。
+    try {
+      if (typeof auth !== "undefined") {
+        auth.scheduleProactiveRefresh?.();
+        auth.getValidAccessToken?.().catch(() => {});
+      }
+    } catch (_) {}
     refreshCareReminderBadge();
     clearBadge().catch(() => {});
 

@@ -63,8 +63,30 @@ const auth = {
     return this.isLoggedIn();
   },
 
+  _metadataCacheKey: "nlc_oidc_metadata",
+  _metadataFreshMs: 24 * 60 * 60 * 1000,
+
+  _readCachedMetadata() {
+    try {
+      const raw = localStorage.getItem(this._metadataCacheKey);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj || obj.issuer !== this.config.issuer) return null;
+      if (!obj.meta || !obj.meta.authorization_endpoint || !obj.meta.token_endpoint) return null;
+      return obj;
+    } catch (_) { return null; }
+  },
+
   async _fetchMetadata() {
     if (this.metadata) return this.metadata;
+
+    // 冷啟動先吃 localStorage 快取（24h 內視為新鮮）——行動網路下 .well-known
+    // 抓不到就不會卡住續期 / 登入健康檢查。
+    const cached = this._readCachedMetadata();
+    if (cached && Date.now() - (cached.__fetchedAt || 0) < this._metadataFreshMs) {
+      this.metadata = cached.meta;
+      return cached.meta;
+    }
 
     const issuer = this.config.issuer.replace(/\/+$/, "");
     const candidates = [this._joinUrl(issuer, ".well-known/openid-configuration")];
@@ -87,11 +109,22 @@ const auth = {
         const metadata = await response.json();
         if (metadata.authorization_endpoint && metadata.token_endpoint) {
           this.metadata = metadata;
+          try {
+            localStorage.setItem(this._metadataCacheKey, JSON.stringify({
+              meta: metadata, issuer: this.config.issuer, __fetchedAt: Date.now()
+            }));
+          } catch (_) {}
           return metadata;
         }
       } catch (err) {
         lastError = err;
       }
+    }
+
+    // 全部抓失敗：只要有舊快取就用（過期也用），別讓網路抖動變成「請重新登入」。
+    if (cached) {
+      this.metadata = cached.meta;
+      return cached.meta;
     }
 
     throw lastError || new Error("OIDC discovery failed");
@@ -643,7 +676,8 @@ const auth = {
     const expiresAt = parseInt(localStorage.getItem(this.keys.expiresAt) || "0", 10);
     if (!refreshToken || !expiresAt) return;
 
-    const REFRESH_BUFFER_MS = 5 * 60 * 1000;
+    // 15 分鐘 token 提前 6 分鐘續（約第 9 分鐘）——留足夠餘裕，續期失敗還有第 2、3 次機會。
+    const REFRESH_BUFFER_MS = 6 * 60 * 1000;
     const delay = Math.max(0, expiresAt - Date.now() - REFRESH_BUFFER_MS);
 
     this._proactiveRefreshTimer = setTimeout(() => {
@@ -658,55 +692,89 @@ const auth = {
 
   _refreshPromise: null,
 
+  // 實際打 Logto token 端點。進來前假設已拿到跨情境鎖（或環境沒有 navigator.locks）。
+  // startExpiresAt = 呼叫端在搶鎖前看到的到期時間，用來判斷「等鎖期間有沒有別的情境已換好」。
+  async _doRefreshOnce(startExpiresAt) {
+    // 搶到鎖之後先看 localStorage：另一個分頁 / 測驗滿版頁可能剛換好一張還很新的，
+    // 就直接用，不要再拿（可能已被輪替掉的）refresh token 去打 Logto。
+    const freshTok = localStorage.getItem(this.keys.accessToken);
+    const freshExp = parseInt(localStorage.getItem(this.keys.expiresAt) || "0", 10);
+    if (freshTok && freshExp > (startExpiresAt || 0) && Date.now() < freshExp - 90000) {
+      this.scheduleProactiveRefresh();
+      return true;
+    }
+
+    const refreshToken = localStorage.getItem(this.keys.refreshToken);
+    if (!refreshToken) return false;
+
+    try {
+      const endpoints = await this._getEndpoints();
+      const refreshParams = new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        client_id: this.config.clientId
+      });
+      if (this.config.platformResource) {
+        refreshParams.set("resource", this.config.platformResource);
+      }
+      if (this.config.scopes) {
+        refreshParams.set("scope", this.config.scopes);
+      }
+
+      const response = await fetch(endpoints.tokenEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: refreshParams
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        const refreshError = new Error(`OIDC refresh failed: ${response.status}${errorText ? " - " + errorText : ""}`);
+        refreshError.authRejected = [400, 401, 403].includes(response.status);
+        throw refreshError;
+      }
+
+      this._saveTokens(await response.json());
+      return true;
+    } catch (err) {
+      console.error("Logto token refresh error:", err);
+      if (err?.authRejected) {
+        // Logto 拒了這張 refresh token。常見假警報：另一個情境剛把它輪替掉、
+        // 這個 context 手上的是舊的。鎖內再確認一次——真的有更新的 access token
+        // 就當成功，不要清掉登入狀態。
+        const afterTok = localStorage.getItem(this.keys.accessToken);
+        const afterExp = parseInt(localStorage.getItem(this.keys.expiresAt) || "0", 10);
+        if (afterTok && afterExp > (startExpiresAt || 0) && Date.now() < afterExp - 90000) return true;
+        this._clearStoredTokens();
+        localStorage.removeItem("offline_trusted_identity");
+        return false;
+      }
+      // Discovery/network failures do not mean the account was rejected.
+      // Keep the refresh token so the trusted device can resume when online.
+      return null;
+    }
+  },
+
   async refreshTokens() {
     if (this._refreshPromise) {
       return this._refreshPromise;
     }
 
+    const startExpiresAt = parseInt(localStorage.getItem(this.keys.expiresAt) || "0", 10);
     this._refreshPromise = (async () => {
-      const refreshToken = localStorage.getItem(this.keys.refreshToken);
-      if (!refreshToken) return false;
-
-      try {
-        const endpoints = await this._getEndpoints();
-        const refreshParams = new URLSearchParams({
-          grant_type: "refresh_token",
-          refresh_token: refreshToken,
-          client_id: this.config.clientId
-        });
-        if (this.config.platformResource) {
-          refreshParams.set("resource", this.config.platformResource);
+      // 跨「所有同源情境」序列化續期：Safari 分頁 + 加到主畫面的 PWA + 測驗滿版頁
+      // 不會各自拿 refresh token 去打 Logto、互相把對方輪替掉（登出的最大宗）。
+      const locks = (typeof navigator !== "undefined" && navigator.locks && navigator.locks.request)
+        ? navigator.locks : null;
+      if (locks) {
+        try {
+          return await locks.request("nlc-token-refresh", { mode: "exclusive" },
+            () => this._doRefreshOnce(startExpiresAt));
+        } catch (lockErr) {
+          console.warn("token-refresh lock unavailable; refreshing without it", lockErr);
         }
-        if (this.config.scopes) {
-          refreshParams.set("scope", this.config.scopes);
-        }
-
-        const response = await fetch(endpoints.tokenEndpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: refreshParams
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => "");
-          const refreshError = new Error(`OIDC refresh failed: ${response.status}${errorText ? " - " + errorText : ""}`);
-          refreshError.authRejected = [400, 401, 403].includes(response.status);
-          throw refreshError;
-        }
-
-        this._saveTokens(await response.json());
-        return true;
-      } catch (err) {
-        console.error("Logto token refresh error:", err);
-        if (err?.authRejected) {
-          this._clearStoredTokens();
-          localStorage.removeItem("offline_trusted_identity");
-          return false;
-        }
-        // Discovery/network failures do not mean the account was rejected.
-        // Keep the refresh token so the trusted device can resume when online.
-        return null;
       }
+      return await this._doRefreshOnce(startExpiresAt);
     })();
 
     try {
@@ -727,9 +795,11 @@ const auth = {
     const token = localStorage.getItem(this.keys.accessToken);
     const refreshToken = localStorage.getItem(this.keys.refreshToken);
     const expiresAt = parseInt(localStorage.getItem(this.keys.expiresAt) || "0", 10);
-    const shouldRefresh = forceRefresh || !token || Date.now() > expiresAt - 60000;
+    // 120 秒 skew（原本 60）：續期來回在 3G 上可能 > 60 秒、廉價 Android 時鐘也常偏差。
+    const CLOCK_SKEW_MS = 120000;
+    const shouldRefresh = forceRefresh || !token || Date.now() > expiresAt - CLOCK_SKEW_MS;
 
-    if (forceRefresh && !refreshToken && token && Date.now() < expiresAt - 60000) {
+    if (forceRefresh && !refreshToken && token && Date.now() < expiresAt - CLOCK_SKEW_MS) {
       console.warn("force_refresh_without_refresh_token: using still-valid Logto access token.");
       return token;
     }
@@ -756,7 +826,7 @@ const auth = {
         // （清掉會讓 app.js 的健康檢查偵測到 !currentUser.name → 再 loadUserData → 迴圈）。
         const sharedToken = localStorage.getItem(this.keys.accessToken);
         const sharedExp = parseInt(localStorage.getItem(this.keys.expiresAt) || "0", 10);
-        if (sharedToken && sharedToken !== token && Date.now() < sharedExp - 5000) {
+        if (sharedToken && sharedToken !== token && Date.now() < sharedExp - 30000) {
           return sharedToken;
         }
         // 給另一個 context 一點時間完成輪替，再試最後一次
