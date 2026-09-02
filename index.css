@@ -15596,3 +15596,156 @@ textarea::placeholder {
 .plan-card--dev {
   border-color: color-mix(in srgb, var(--color-warning) 40%, var(--border-card));
 }
+
+/* ══ 線上簡答批改頁（grade.html / js/modules/grading.js）══════════════════ */
+.grade-loading, .grade-error { padding: 2rem 1.25rem; color: var(--text-secondary); font-size: 0.95rem; line-height: 1.7; }
+.grade-error__hint { color: var(--text-muted); font-size: 0.875rem; margin-top: 0.5rem; }
+.grade-wrap { max-width: 760px; margin: 0 auto; padding: 0 0 6rem; }
+
+.grade-head {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--bg-page); border-bottom: 1px solid var(--border-card);
+  padding: 0.6rem 1rem 0.7rem; display: flex; flex-direction: column; gap: 0.35rem;
+}
+.grade-head__nav { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.grade-navbtn {
+  display: inline-flex; align-items: center; gap: 0.15rem;
+  border: 1px solid var(--border-card); background: var(--bg-card); color: var(--text-primary);
+  border-radius: var(--radius-sm); padding: 0.3rem 0.6rem; font-size: 0.875rem; cursor: pointer;
+}
+.grade-navbtn:disabled { opacity: 0.4; cursor: default; }
+.grade-head__pos { font-size: 0.875rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.grade-total {
+  margin-left: auto; font-size: 0.95rem; color: var(--text-primary);
+  background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 999px;
+  padding: 0.2rem 0.7rem; font-variant-numeric: tabular-nums;
+}
+.grade-total b { color: var(--color-brand); font-weight: var(--type-weight-strong); }
+.grade-total--wait b { color: var(--text-secondary); }
+.grade-total--bad { border-color: var(--color-danger); }
+.grade-total--bad b { color: var(--color-danger); }
+.grade-total__note { color: var(--text-muted); font-size: 0.875rem; margin-left: 0.25rem; }
+.grade-head__who { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+.grade-head__who b { font-size: 1.05rem; color: var(--text-primary); }
+.grade-head__org { font-size: 0.875rem; color: var(--text-secondary); }
+.grade-head__meta { font-size: 0.875rem; color: var(--text-muted); }
+.grade-lock { color: var(--color-brand); }
+.grade-banner {
+  font-size: 0.875rem; color: var(--text-primary);
+  background: color-mix(in srgb, var(--color-warning) 14%, var(--bg-card));
+  border: 1px solid color-mix(in srgb, var(--color-warning) 30%, var(--border-card));
+  border-radius: var(--radius-sm); padding: 0.4rem 0.6rem;
+}
+.grade-conflict {
+  font-size: 0.875rem; color: var(--text-primary); line-height: 1.6;
+  background: color-mix(in srgb, var(--color-danger) 12%, var(--bg-card));
+  border: 1px solid color-mix(in srgb, var(--color-danger) 32%, var(--border-card));
+  border-radius: var(--radius-sm); padding: 0.5rem 0.6rem; display: flex; flex-wrap: wrap;
+  gap: 0.4rem; align-items: center;
+}
+
+.grade-body { padding: 0.75rem 1rem 0; display: flex; flex-direction: column; gap: 0.9rem; }
+.grade-q {
+  border: 1px solid var(--border-card); border-radius: var(--radius-md);
+  background: var(--bg-card); padding: 0.85rem 1rem; display: flex; flex-direction: column; gap: 0.5rem;
+}
+.grade-q--bad { border-color: var(--color-danger); }
+.grade-q__head { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.grade-q__no { font-size: 0.9375rem; font-weight: var(--type-weight-strong, 500); color: var(--text-primary); }
+.grade-q__score { margin-left: auto; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.875rem; color: var(--text-secondary); }
+.grade-q__score input {
+  width: 4.2rem; text-align: right; font-size: 1rem; padding: 0.3rem 0.4rem;
+  border: 1px solid var(--border-card); border-radius: var(--radius-sm);
+  background: var(--bg-input, var(--bg-page)); color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.grade-q--bad .grade-q__score input { border-color: var(--color-danger); }
+.grade-q__of { color: var(--text-muted); }
+.grade-q__stem { margin: 0; font-size: 0.9375rem; line-height: 1.7; color: var(--text-primary); white-space: pre-wrap; }
+.grade-q__ref { margin: 0; font-size: 0.875rem; color: var(--text-secondary); line-height: 1.6; }
+.grade-q__rubric { margin: 0; padding-left: 1.2rem; font-size: 0.875rem; color: var(--text-muted); line-height: 1.6; }
+.grade-q__resp {
+  font-size: 0.95rem; line-height: 1.8; color: var(--text-primary); white-space: pre-wrap;
+  background: var(--bg-page); border: 1px solid var(--border-card); border-radius: var(--radius-sm);
+  padding: 0.6rem 0.7rem; max-height: 320px; overflow-y: auto;
+}
+.grade-q__empty { color: var(--text-muted); }
+
+.grade-overall { display: flex; flex-direction: column; gap: 0.4rem; }
+.grade-overall__label { font-size: 0.9375rem; font-weight: var(--type-weight-strong, 500); color: var(--text-primary); }
+.grade-overall__label span { font-weight: 400; font-size: 0.875rem; color: var(--text-muted); margin-left: 0.35rem; }
+.grade-overall textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 5.5rem;
+  font: inherit; font-size: 0.95rem; line-height: 1.7; padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border-card); border-radius: var(--radius-sm);
+  background: var(--bg-input, var(--bg-page)); color: var(--text-primary);
+}
+
+.grade-foot {
+  position: sticky; bottom: 0; z-index: 5; margin-top: 1rem;
+  background: var(--bg-page); border-top: 1px solid var(--border-card);
+  padding: 0.55rem 1rem calc(0.55rem + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+}
+.grade-foot__status { font-size: 0.875rem; color: var(--text-muted); flex: 1; min-width: 8rem; }
+.grade-foot__btns { display: flex; gap: 0.5rem; }
+
+.grade-batchbar {
+  margin: 1rem 1rem 0; padding: 0.6rem 0.8rem; display: flex; align-items: center;
+  justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;
+  border: 1px solid color-mix(in srgb, var(--color-brand) 30%, var(--border-card));
+  background: color-mix(in srgb, var(--color-brand) 8%, var(--bg-card));
+  border-radius: var(--radius-md); font-size: 0.9375rem; color: var(--text-primary);
+}
+
+.grade-roster { margin: 1rem 1rem 0; border: 1px solid var(--border-card); border-radius: var(--radius-md); background: var(--bg-card); }
+.grade-roster > summary { cursor: pointer; padding: 0.6rem 0.85rem; font-size: 0.9375rem; font-weight: var(--type-weight-strong, 500); color: var(--text-primary); }
+.grade-roster__list { display: flex; flex-direction: column; border-top: 1px solid var(--border-card); max-height: 60vh; overflow-y: auto; }
+.grade-rrow {
+  display: flex; align-items: center; gap: 0.6rem; text-align: left;
+  padding: 0.55rem 0.85rem; border: none; border-bottom: 1px solid var(--border-card);
+  background: transparent; color: var(--text-primary); cursor: pointer; font: inherit;
+}
+.grade-rrow:last-child { border-bottom: none; }
+.grade-rrow--on { background: color-mix(in srgb, var(--color-brand) 10%, transparent); }
+.grade-rrow__name { font-size: 0.9375rem; }
+.grade-rrow__org { font-size: 0.875rem; color: var(--text-muted); margin-left: auto; }
+
+.grade-badge {
+  font-size: 0.875rem; border-radius: 999px; padding: 0.1rem 0.5rem;
+  border: 1px solid var(--border-card); color: var(--text-muted); white-space: nowrap;
+}
+.grade-badge--done { color: var(--color-brand); border-color: color-mix(in srgb, var(--color-brand) 40%, var(--border-card)); }
+.grade-badge--partial { color: var(--text-secondary); }
+.grade-badge--draft { color: var(--text-secondary); border-style: dashed; }
+.grade-badge--dirty { color: var(--color-warning); border-color: color-mix(in srgb, var(--color-warning) 40%, var(--border-card)); }
+.grade-danger { color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 40%, var(--border-card)); }
+
+/* 後台「簡答指派」子分頁（js/modules/exam.js renderExamAssign） */
+.exam-assign { display: flex; flex-direction: column; gap: 1rem; }
+.exam-assign__bar { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: end; }
+.exam-assign__bar label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.875rem; color: var(--text-muted); }
+.exam-assign__bar select, .exam-assign__bar input {
+  font: inherit; font-size: 0.9375rem; padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border-card); border-radius: var(--radius-sm);
+  background: var(--bg-input, var(--bg-page)); color: var(--text-primary);
+}
+.exam-assign__grader {
+  border: 1px solid var(--border-card); border-radius: var(--radius-md);
+  background: var(--bg-card); padding: 0.75rem 0.9rem; display: flex; flex-direction: column; gap: 0.5rem;
+}
+.exam-assign__cands { display: flex; flex-direction: column; gap: 0.25rem; max-height: 220px; overflow-y: auto; }
+.exam-assign__cand {
+  text-align: left; border: 1px solid var(--border-card); border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-primary); cursor: pointer; font: inherit;
+  padding: 0.4rem 0.6rem; font-size: 0.9375rem;
+}
+.exam-assign__cand--on { border-color: var(--color-brand); background: color-mix(in srgb, var(--color-brand) 10%, transparent); }
+.exam-assign__list-wrap { overflow-x: auto; }
+.exam-assign__table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+.exam-assign__table th, .exam-assign__table td {
+  text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border-card);
+  color: var(--text-primary); white-space: nowrap;
+}
+.exam-assign__table th { color: var(--text-secondary); font-weight: var(--type-weight-strong, 600); }
+.exam-assign__meta { font-size: 0.875rem; color: var(--text-muted); }

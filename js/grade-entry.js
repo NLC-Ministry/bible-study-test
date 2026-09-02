@@ -1,9 +1,11 @@
-// js/exam-entry.js — 「速讀測驗」獨立頁 (exam.html) 的進入點。
-// 只載入測驗需要的核心（config / state / auth / db），不載 app 的 router / views /
-// PWA / Tailwind / Chart。這是一個真正獨立的網頁，不會被 app 的重繪或框架限制。
+// js/grade-entry.js — 「線上簡答批改」獨立頁 (grade.html) 的進入點。
+// 設計文件：docs/exam-online-grading-design.md
+//
+// 批改人員 = 一般 NLC 會友（不需 admin 角色）。連結：/grade?paper=<id>。
+// 點進來 → SSO 登入 → 只看到指派給自己的名單。
+// 只載入需要的核心（config / state / auth / db），不載 app 的 router / views /
+// PWA / Tailwind / Chart。與 js/exam-entry.js 同一套前置。
 
-// 與 js/app.js 相同的核心前置（state.js 在 module-eval 時就需要 church_campaign /
-// design token 等全域）。不含 app 的 router / views / PWA / Tailwind / badge-service.ts。
 import '../config.js';
 import './data/bible_data.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './data/bible_verse_counts.js';
@@ -16,27 +18,24 @@ import './design/icons.js';
 import './state.js?v=20260901_highlights_notes_review';
 import './auth.js?v=20260831_perf_b7';
 import './auth-launch.mjs';
-import './db.js?v=20260901_highlights_notes_review';
+import './db.js?v=20260903_online_grading';
 import './utils.js?v=20260901_highlights_notes_review';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
-import { mountExamRunner } from './modules/exam.js?v=20260903_online_grading';
+import { mountGradingWorkspace } from './modules/grading.js?v=20260903_online_grading';
 
-const boot = document.getElementById('exam-boot');
+const boot = document.getElementById('grade-boot');
 const setBoot = (msg) => { if (boot) boot.textContent = msg; };
 
 (async () => {
   try { window.initTheme?.(); } catch (_) {}
 
-  // 建立 / 還原 session：沿用 app 的 db.init()。exam.html 沒有 login-gate 的 DOM，
-  // 相關 getElementById 會回 null、對應 wiring 安靜略過。
   try {
     await window.db.init();
   } catch (err) {
-    console.warn('[exam-entry] db.init failed', err);
+    console.warn('[grade-entry] db.init failed', err);
   }
 
-  // 獨立測驗頁自己沒有 app.js 的主動續期，作答時又不會切分頁 → token 會在
-  // 75 分鐘測驗途中（~60 分）過期，害送出當下失敗。這裡主動排程續期。
+  // 獨立頁沒有 app.js 的主動續期；批改可能一坐就是一兩小時 → 主動排程續期。
   try { window.auth?.scheduleProactiveRefresh?.(); } catch (_) {}
 
   const loggedIn = typeof window.auth?.isLoggedIn === 'function' ? window.auth.isLoggedIn() : false;
@@ -47,17 +46,19 @@ const setBoot = (msg) => { if (boot) boot.textContent = msg; };
     return;
   }
 
-  // 取得 state.currentUser（宣示畫面要顯示姓名）；失敗不致命。
   try {
     if (typeof window.db.loadUserData === 'function') await window.db.loadUserData(true);
   } catch (err) {
-    console.warn('[exam-entry] loadUserData failed', err);
+    console.warn('[grade-entry] loadUserData failed', err);
   }
 
   const qs = new URLSearchParams(location.search);
   const paperId = qs.get('paper') || null;
-  const preview = qs.get('preview') === '1' || qs.get('preview') === 'true';
-  const attemptKind = qs.get('attempt') === 'practice' ? 'practice' : 'official';
+  const attemptId = qs.get('attempt') || null;
+  if (!paperId) {
+    setBoot('連結缺少試卷代碼（?paper=…）。請向管理員索取正確的批改連結。');
+    return;
+  }
   boot?.remove();
-  mountExamRunner({ paperId, standalone: true, preview, attemptKind });
+  mountGradingWorkspace({ paperId, attemptId });
 })();
