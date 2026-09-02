@@ -3633,10 +3633,28 @@ const db = {
     return this._callExamRpc("exam_export_answers", { p_paper_id: paperId });
   },
   async gradeExamAnswersBatch(paperId, grades = []) {
-    return this._callExamRpc("exam_grade_answers_batch", {
-      p_paper_id: paperId,
-      p_grades: Array.isArray(grades) ? grades : []
-    });
+    const list = Array.isArray(grades) ? grades : [];
+    // exam_grade_answers_batch（migration 0125）單次上限 500 筆。超過就自己切段
+    // 依序送，累計結果；某段失敗就停在那裡並回報已完成的筆數。
+    const CHUNK = 400;
+    if (list.length <= CHUNK) {
+      return this._callExamRpc("exam_grade_answers_batch", { p_paper_id: paperId, p_grades: list });
+    }
+    let updated = 0, attemptsFinalized = 0, summary = null;
+    for (let i = 0; i < list.length; i += CHUNK) {
+      const slice = list.slice(i, i + CHUNK);
+      const r = await this._callExamRpc("exam_grade_answers_batch", { p_paper_id: paperId, p_grades: slice });
+      if (!r.success) {
+        return {
+          success: false, error: r.error, message: r.message,
+          data: { paperId, updated, attemptsFinalized, summary, partial: true }
+        };
+      }
+      updated += (r.data && r.data.updated) != null ? r.data.updated : slice.length;
+      attemptsFinalized += (r.data && r.data.attemptsFinalized) || 0;
+      summary = (r.data && r.data.summary) || summary;
+    }
+    return { success: true, data: { paperId, updated, attemptsFinalized, summary } };
   },
   // ── 線上簡答批改（grade.html，migration 0146）──────────────────────────
   // 後台：可指派的作答者清單（admin/pastor）

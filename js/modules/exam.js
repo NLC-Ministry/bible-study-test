@@ -1395,7 +1395,14 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
     const r = await db.gradeExamAnswersBatch(paperId, grades);
     emptyZeroButton.disabled = false;
     emptyZeroButton.textContent = "未作答全部給 0 分";
-    if (!r.success) { toast(r.message || "未作答歸零失敗，沒有資料被更改"); return; }
+    if (!r.success) {
+      const done = (r.data && r.data.updated) || 0;
+      toast(done
+        ? `已評 ${done} 筆為 0 分，其餘失敗（${r.message || "請再按一次補完"}）`
+        : (r.message || "未作答歸零失敗，沒有資料被更改"));
+      renderExamGrading(host, paperId, locked, paperStatus, paperTitle);
+      return;
+    }
     const ids = new Set(unanswered.map((item) => String(item.answerId)));
     host.querySelectorAll(".exam-admin__grade-card").forEach((card) => {
       if (!ids.has(String(card.dataset.answerId))) return;
