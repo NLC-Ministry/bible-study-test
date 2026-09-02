@@ -15768,6 +15768,15 @@ textarea::placeholder {
 .grade-foot__status { font-size: 0.875rem; color: var(--text-muted); flex: 1; min-width: 8rem; }
 .grade-foot__btns { display: flex; gap: 0.5rem; }
 
+/* 送出成功後短暫的打勾狀態——見 grading.js 的 _flashSubmitSuccess() */
+.grade-submit--success {
+  display: flex; align-items: center; justify-content: center; gap: 0.35rem;
+  background: var(--color-success-subtle) !important;
+  color: var(--color-success-foreground) !important;
+  border-color: var(--color-success-border) !important;
+  opacity: 1 !important;
+}
+
 .grade-batchbar {
   margin: 1rem 1rem 0; padding: 0.6rem 0.8rem; display: flex; align-items: center;
   justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;
