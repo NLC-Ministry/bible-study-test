@@ -3443,9 +3443,7 @@ const db = {
       exam_batch_invalid: "批改資料格式不正確，這一批沒有寫入。",
       exam_batch_duplicate_answer: "同一題在這一批中重複出現，這一批沒有寫入。",
       exam_batch_validation_failed: "部分題目或分數不符合目前試卷，這一批沒有寫入。",
-      exam_batch_too_large: "單次最多儲存 500 筆批改，請分段送出。",
-      exam_sheet_invalid: "匯回的資料格式不對，沒有寫入任何一列。",
-      exam_sheet_too_large: "單次最多匯回 2000 列，請分批。"
+      exam_batch_too_large: "單次最多儲存 500 筆批改，請分段送出。"
     };
     const key = Object.keys(messages).find(code => raw.includes(code));
     return key ? messages[key] : "目前無法載入大測驗資料，請稍後再試。";
@@ -3627,17 +3625,6 @@ const db = {
     return this._callExamRpc("exam_grade_answers_batch", {
       p_paper_id: paperId,
       p_grades: Array.isArray(grades) ? grades : []
-    });
-  },
-  // 簡答批改 Google 試算表往返（migration 0146）
-  async getGradingSheetRows(paperId) {
-    return this._callExamRpc("exam_grading_sheet_rows", { p_paper_id: paperId });
-  },
-  // rows = [{ attemptId, grades:[{position, points}], overall }]
-  async applySheetGrades(paperId, rows = []) {
-    return this._callExamRpc("exam_apply_sheet_grades", {
-      p_paper_id: paperId,
-      p_rows: Array.isArray(rows) ? rows : []
     });
   },
   async getExamPracticeRecords(paperId) {

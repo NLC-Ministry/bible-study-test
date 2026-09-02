@@ -122,9 +122,6 @@ const EXAM_RPC_FUNCTIONS = new Set([
   "exam_grade_answers_batch",
   "exam_get_stats",
   "exam_export_answers",
-  // 簡答批改 Google 試算表往返（migration 0146）——匯出、匯回都要 admin/pastor
-  "exam_grading_sheet_rows",
-  "exam_apply_sheet_grades",
   "get_exam_notifications",
   "mark_exam_notifications_read"
 ]);
@@ -152,9 +149,7 @@ const EXAM_ADMIN_RPC_FUNCTIONS = new Set([
   "exam_finalize_expired",
   "exam_get_grading_queue",
   "exam_grade_answer",
-  "exam_grade_answers_batch",
-  "exam_grading_sheet_rows",
-  "exam_apply_sheet_grades"
+  "exam_grade_answers_batch"
   // exam_get_stats 不在此：它自己做角色 + 委派範圍檢查（migration 0121），
   // 開放給 great_zone_leader / zone_leader / group_leader 看自己範圍的統計。
 ]);
