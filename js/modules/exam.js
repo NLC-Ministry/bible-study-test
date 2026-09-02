@@ -1322,6 +1322,25 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
   const saveButton = host.querySelector("[data-grade-batch-save]");
   const emptyZeroButton = host.querySelector("[data-grade-empty-zero]");
   const dirtyLabel = host.querySelector("[data-grade-dirty-count]");
+  // 分組標題「待批 X／已批 Y」跟上面的跳題鈕「第X題・待N／・完」只在第一次
+  // 渲染時算過一次，之後整批/局部儲存只更新了每張卡片自己的徽章跟最上面那
+  // 一行總計——分組跟跳題鈕會停在舊數字。從目前 DOM 上每張卡片的
+  // data-was-graded 重新算一次，直接刷新這兩處。
+  const refreshGradeGroupCounts = () => {
+    host.querySelectorAll(".exam-admin__grade-group").forEach((group) => {
+      const key = group.dataset.gradeGroup;
+      const cards = group.querySelectorAll(".exam-admin__grade-card");
+      const done = [...cards].filter((c) => c.dataset.wasGraded === "true").length;
+      const pending = cards.length - done;
+      const summaryMeta = group.querySelector(":scope > summary .exam-admin__meta");
+      if (summaryMeta) summaryMeta.textContent = `待批 ${pending}／已批 ${done}`;
+      const jumpBtn = host.querySelector(`[data-grade-jump="${CSS.escape(key)}"]`);
+      if (jumpBtn) {
+        jumpBtn.classList.toggle("is-done", pending === 0);
+        jumpBtn.textContent = `第${group.dataset.gradePosition}題${pending ? `・待${pending}` : "・完"}`;
+      }
+    });
+  };
   const syncDirtyState = () => {
     const count = host.querySelectorAll(".exam-admin__grade-card.is-dirty").length;
     if (dirtyLabel) dirtyLabel.textContent = count ? `尚未儲存 ${count} 筆，可先分段送出` : "目前沒有未儲存的修改";
@@ -1362,6 +1381,7 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
     const nextSummary = r.data?.summary;
     const summaryEl = host.querySelector("[data-grade-summary]");
     if (summaryEl && nextSummary) summaryEl.textContent = `待批 ${nextSummary.pending ?? "?"}／已批 ${nextSummary.graded ?? "?"}／共 ${nextSummary.total ?? "?"}`;
+    refreshGradeGroupCounts();
     syncDirtyState();
     toast(`已儲存本次 ${r.data?.updated ?? grades.length} 筆修改，可繼續批改下一段`);
   });
@@ -1417,6 +1437,7 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
     const nextSummary = r.data?.summary;
     const summaryEl = host.querySelector("[data-grade-summary]");
     if (summaryEl && nextSummary) summaryEl.textContent = `待批 ${nextSummary.pending ?? "?"}／已批 ${nextSummary.graded ?? "?"}／共 ${nextSummary.total ?? "?"}`;
+    refreshGradeGroupCounts();
     toast(`已將 ${r.data?.updated ?? unanswered.length} 筆未作答簡答題評為 0 分`);
   });
 }
@@ -1629,7 +1650,7 @@ function renderGradeGroups(items, paperId) {
 
   const body = keys.map((k) => {
     const g = groups.get(k); const p = pendOf(g); const done = g.list.length - p;
-    return `<details class="exam-admin__grade-group" data-grade-group="${esc(k)}" ${p ? "open" : ""}>
+    return `<details class="exam-admin__grade-group" data-grade-group="${esc(k)}" data-grade-position="${esc(g.position)}" ${p ? "open" : ""}>
       <summary><strong>第 ${esc(g.position)} 題</strong>（${esc(g.points)} 分）　<span class="exam-admin__meta">待批 ${p}／已批 ${done}</span></summary>
       <p class="exam-admin__grade-group-stem">${esc(g.stem || "")}</p>
       ${g.list.map((it) => gradeCard(it, true, paperId)).join("")}

@@ -3463,6 +3463,15 @@ const db = {
     return key ? messages[key] : "目前無法載入大測驗資料，請稍後再試。";
   },
 
+  // token 徹底失效（連續期都被 Logto 拒絕）時，nlc-data 回的是
+  // invalid_logto_token / profile_identity_not_found，跟一般的業務錯誤
+  // （分數超出配分之類）完全不同——這種狀況重試沒有用，呼叫端要改成請使用者
+  // 重新登入，而不是照一般錯誤處理（見 grade.html 的批改頁）。
+  _isAuthExpiredError(error) {
+    const raw = String((error && (error.error || error.message)) || "").toLowerCase();
+    return raw.includes("invalid_logto_token") || raw.includes("invalid_token") || raw.includes("profile_identity_not_found");
+  },
+
   async _callExamRpc(functionName, args = {}) {
     if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) {
       return { success: false, message: "大測驗功能需要登入正式帳號。" };
@@ -3471,7 +3480,13 @@ const db = {
       const { data, error } = await state.supabase.rpc(functionName, args);
       if (error) {
         console.warn(`[Exam] ${functionName} failed: ${JSON.stringify(error)}`);
-        return { success: false, error, message: this._examErrorMessage(error) };
+        const authExpired = this._isAuthExpiredError(error);
+        return {
+          success: false,
+          error,
+          authExpired,
+          message: authExpired ? "登入已過期，請重新登入才能繼續。" : this._examErrorMessage(error)
+        };
       }
       return { success: true, data };
     } catch (error) {
@@ -3710,6 +3725,10 @@ const db = {
     return this._callExamRpc("exam_grade_attempts_bulk", {
       p_items: Array.isArray(items) ? items : []
     });
+  },
+  // 批改頁：整份重設為待批（清空分數/評語，退回「已送出、尚未批改」）
+  async resetAttemptGrading(attemptId) {
+    return this._callExamRpc("exam_reset_attempt_grading", { p_attempt_id: attemptId });
   },
 
   async getExamPracticeRecords(paperId) {

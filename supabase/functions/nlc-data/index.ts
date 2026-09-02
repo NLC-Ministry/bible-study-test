@@ -132,6 +132,7 @@ const EXAM_RPC_FUNCTIONS = new Set([
   "exam_save_grading_draft",
   "exam_grade_attempt",
   "exam_grade_attempts_bulk",
+  "exam_reset_attempt_grading",
   "get_exam_notifications",
   "mark_exam_notifications_read"
 ]);
