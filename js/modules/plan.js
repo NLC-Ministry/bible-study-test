@@ -3828,6 +3828,83 @@ function openReaderPassage(ref) {
 }
 window.openReaderPassage = openReaderPassage;
 
+// 從「使徒行傳 4:23-31」/「使徒行傳 7:54-8:1」這種標籤，退而求其次解析出經文範圍。
+// 當批次匯入沒帶結構化 passageRefs 時，仍能讓「經文進度」列可點。
+function parsePassageLabel(label) {
+  if (!label || typeof label !== "string") return null;
+  const m = label.trim().match(/^(.+?)\s*(\d+)\s*[:：]\s*(\d+)\s*(?:[-~–—]\s*(?:(\d+)\s*[:：]\s*)?(\d+))?\s*[a-z]?\s*$/i);
+  if (!m) return null;
+  const book = m[1].trim();
+  if (!(window.BIBLE_BOOKS || []).some(b => b.name === book)) return null;
+  const chapterFrom = Number(m[2]) || 1;
+  const verseFrom = Number(m[3]) || 1;
+  const chapterTo = m[4] ? Number(m[4]) : chapterFrom;
+  const verseTo = m[5] ? Number(m[5]) : verseFrom;
+  return { book, chapterFrom, verseFrom, chapterTo, verseTo };
+}
+window.parsePassageLabel = parsePassageLabel;
+
+// 靈修「經文進度」點下去：先在靈修畫面內「只顯示該段經文」（風格沿用讀經系統的
+// .bible-verse / .verse-num / .verse-text），再按「查看完整章節」才切到聖經讀經系統。
+async function renderDevotionPassageInline(host, ref, label, onBack) {
+  if (!host || !ref || !ref.book) { if (typeof onBack === "function") onBack(); return; }
+  const version = String((state.readerState && state.readerState.version) || "CUNP").toUpperCase();
+  const book = (window.BIBLE_BOOKS || []).find(b => b.name === ref.book);
+  const chapFrom = Number(ref.chapterFrom) || 1;
+  const chapTo = Math.max(chapFrom, Number(ref.chapterTo) || chapFrom);
+  const vFrom = Number(ref.verseFrom) || 1;
+  const vTo = Number(ref.verseTo) || 9999;
+  const refLabel = label || `${ref.book} ${chapFrom}:${vFrom}`;
+  const chevL = typeof renderIcon === "function" ? renderIcon("chevronLeft", { size: "sm", className: "nlc-icon" }) : "‹";
+
+  host.innerHTML = `
+    <div class="devotion-view">
+      <section class="devotion-passage">
+        <div class="devotion-passage__bar">
+          <button type="button" class="devotion-passage__back" data-devo-passage-back>${chevL}<span>返回靈修</span></button>
+          <span class="devotion-passage__ref">${escapeHTML(refLabel)}</span>
+          <span class="devotion-passage__ver">${escapeHTML(version)}</span>
+        </div>
+        <div class="devotion-passage__text"><p class="devotion-view__muted">正在載入經文…</p></div>
+        <button type="button" class="secondary-btn devotion-passage__full" data-devo-passage-full>查看完整章節</button>
+      </section>
+    </div>`;
+
+  host.querySelector("[data-devo-passage-back]")?.addEventListener("click", () => { if (typeof onBack === "function") onBack(); });
+  host.querySelector("[data-devo-passage-full]")?.addEventListener("click", () => {
+    if (typeof openReaderPassage === "function") openReaderPassage(ref);
+  });
+  if (typeof hydrateIcons === "function") hydrateIcons(host);
+
+  const textEl = host.querySelector(".devotion-passage__text");
+  if (!book) {
+    if (textEl) textEl.innerHTML = `<p class="devotion-view__muted">找不到「${escapeHTML(ref.book)}」這卷書，請直接看完整章節。</p>`;
+    return;
+  }
+
+  try {
+    const rows = [];
+    const lastChap = Math.min(chapTo, chapFrom + 3); // 保險：最多跨 4 章
+    for (let c = chapFrom; c <= lastChap; c++) {
+      const data = await fetchBibleChapter(book.eng, c, version);
+      const verses = (data && Array.isArray(data.verses)) ? data.verses : [];
+      const lo = c === chapFrom ? vFrom : 1;
+      const hi = c === chapTo ? vTo : 9999;
+      const picked = verses.filter(v => Number(v.verse) >= lo && Number(v.verse) <= hi);
+      if (lastChap > chapFrom && picked.length) rows.push(`<div class="devotion-passage__chap">${escapeHTML(book.name)} ${c}章</div>`);
+      picked.forEach(v => {
+        rows.push(`<div class="bible-verse" data-verse="${v.verse}"><span class="verse-num">${v.verse}</span><span class="verse-text">${v.text}</span></div>`);
+      });
+    }
+    if (textEl) textEl.innerHTML = rows.length
+      ? rows.join("")
+      : `<p class="devotion-view__muted">這段經文暫時載入不到，請點「查看完整章節」。</p>`;
+  } catch (_) {
+    if (textEl) textEl.innerHTML = `<p class="devotion-view__muted">經文載入失敗，請點「查看完整章節」。</p>`;
+  }
+}
+window.renderDevotionPassageInline = renderDevotionPassageInline;
+
 function updatePlanCheckboxState(key, isChecked) {
   // Safe empty fallback since we redraw tasks on update
   if (state.activePlan) {
@@ -9033,14 +9110,21 @@ function renderDevotionViewer(plan) {
     const todayStr = d.today || "";
     const checkIcon = typeof renderIcon === "function" ? renderIcon("check", { size: "sm", className: "nlc-icon" }) : "✓";
 
-    // ── 日曆（沿用計畫的 .plan-calendar 樣式）──
+    // ── 日曆（與一般計畫日曆完全一致：同樣的滑動視窗、淡色鄰月格、5 列高度上限）──
     const buildCalendar = () => {
       const dts = days.map(x => new Date(`${x.displayDate}T00:00:00`)).filter(x => !Number.isNaN(x.getTime()));
       if (!dts.length) return "";
-      const min = new Date(Math.min(...dts)), max = new Date(Math.max(...dts));
-      const start = new Date(min.getFullYear(), min.getMonth(), 1);
-      start.setDate(start.getDate() - start.getDay()); // 回到週日
-      const end = new Date(max.getFullYear(), max.getMonth() + 1, 0);
+      // 起訖：優先用計畫 start/end，否則退回第一 / 最後一個靈修日
+      let planStart = d.startDate ? new Date(`${d.startDate}T00:00:00`) : null;
+      let planEnd = d.endDate ? new Date(`${d.endDate}T00:00:00`) : null;
+      if (!planStart || Number.isNaN(planStart.getTime())) planStart = new Date(Math.min(...dts));
+      if (!planEnd || Number.isNaN(planEnd.getTime())) planEnd = new Date(Math.max(...dts));
+      // 滑動視窗：start −14 天回到週日、end +21 天前進到週六（與 renderHorizontalDateStrip 同一套規則）
+      const start = new Date(planStart);
+      start.setDate(start.getDate() - 14);
+      start.setDate(start.getDate() - start.getDay());
+      const end = new Date(planEnd);
+      end.setDate(end.getDate() + 21);
       end.setDate(end.getDate() + (6 - end.getDay()));
       const byDate = new Map(days.map(x => [x.displayDate, x]));
       let cells = "";
@@ -9048,7 +9132,12 @@ function renderDevotionViewer(plan) {
         const iso = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
         const row = byDate.get(iso);
         const label = t.getDate() === 1 ? `${t.getMonth() + 1}/1` : `${t.getDate()}`;
-        if (!row) { cells += `<div class="plan-day-cell plan-day-cell--empty" aria-hidden="true"></div>`; continue; }
+        if (!row) {
+          // 非靈修日：沿用一般計畫日曆的淡色 other-month 格（保留日期數字＋灰點）
+          const isToday = iso === todayStr;
+          cells += `<span class="plan-day-cell plan-day-cell--muted other-month${isToday ? " today" : ""}" aria-hidden="true"><span class="day-number">${label}</span>${isToday ? "" : '<span class="day-status-dot dot-grey"></span>'}</span>`;
+          continue;
+        }
         const cls = ["plan-day-cell"];
         if (row.dayIndex === cur.dayIndex) cls.push("active");
         if (iso === todayStr) cls.push("today");
@@ -9062,12 +9151,45 @@ function renderDevotionViewer(plan) {
       </div>`;
     };
 
+    // 與一般計畫日曆一致：把捲動區高度壓到 5 列，並在首次繪製時把選取日置中
+    let calendarCentered = false;
+    const tuneCalendar = () => {
+      const sc = host.querySelector(".calendar-scroll-container");
+      const grid = host.querySelector(".calendar-grid");
+      const firstCell = grid && grid.querySelector(".plan-day-cell");
+      if (!sc || !grid || !firstCell) return;
+      const gs = getComputedStyle(grid);
+      const rowGap = parseFloat(gs.rowGap) || 0;
+      const padY = (parseFloat(gs.paddingTop) || 0) + (parseFloat(gs.paddingBottom) || 0);
+      const rowH = firstCell.getBoundingClientRect().height;
+      if (rowH > 0) {
+        const rows = 5;
+        sc.style.maxHeight = Math.ceil(rowH * rows + rowGap * (rows - 1) + padY) + "px";
+      }
+      if (!calendarCentered) {
+        const activeCell = grid.querySelector(".plan-day-cell.active");
+        if (activeCell && sc.clientHeight > 0) {
+          sc.scrollTop = Math.max(0, activeCell.offsetTop - sc.clientHeight / 2 + activeCell.offsetHeight / 2);
+        }
+        calendarCentered = true;
+      }
+    };
+
+    let devotionPassageView = null; // { ref, label } —非 null 時，靈修畫面內只顯示該段經文
+
     const paint = () => {
+      if (devotionPassageView) {
+        renderDevotionPassageInline(host, devotionPassageView.ref, devotionPassageView.label, () => {
+          devotionPassageView = null;
+          paint();
+        });
+        return;
+      }
       cur = days.find(x => x.dayIndex === devotionViewerDayIndex) || cur;
       const locked = cur.locked === true;
       const reflections = Array.isArray(cur.reflections) ? cur.reflections : [];
       const refs = Array.isArray(cur.passageRefs) ? cur.passageRefs : [];
-      const firstRef = refs[0] || null;
+      const firstRef = refs[0] || (typeof parsePassageLabel === "function" ? parsePassageLabel(cur.passageLabel) : null);
       const passageRead = lsGet(readKey(cur.dayIndex));
 
       const taskRow = ({ checked, title, opens, arrow, dataAttr }) => `
@@ -9120,6 +9242,8 @@ function renderDevotionViewer(plan) {
         </div>`;
 
       if (typeof hydrateIcons === "function") hydrateIcons(host);
+      if (typeof requestAnimationFrame === "function") requestAnimationFrame(tuneCalendar);
+      else tuneCalendar();
 
       host.querySelectorAll("[data-devo-day]").forEach(btn => btn.addEventListener("click", () => {
         devotionViewerDayIndex = Number(btn.dataset.devoDay);
@@ -9140,8 +9264,10 @@ function renderDevotionViewer(plan) {
           paint();
         });
         item.querySelector("[data-devo-open]")?.addEventListener("click", () => {
-          if (firstRef && firstRef.book && typeof openReaderPassage === "function") openReaderPassage(firstRef);
-          else if (firstRef && firstRef.book && typeof readChapterDirect === "function") readChapterDirect(firstRef.book, Number(firstRef.chapterFrom) || 1);
+          if (firstRef && firstRef.book) {
+            devotionPassageView = { ref: firstRef, label: cur.passageLabel || "" };
+            paint();
+          }
         });
       });
     };
