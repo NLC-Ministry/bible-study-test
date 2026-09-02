@@ -252,22 +252,32 @@ class GradingWorkspace {
     const qHtml = qs.map((q) => {
       const v = this.working.scores[q.questionId];
       const bad = v != null && (v < 0 || v > (Number(q.points) || 0));
-      const ref = q.referenceAnswer;
-      const rubric = Array.isArray(q.rubric) ? q.rubric : [];
+      // 卡片只留：題目 ＋ 這位作答者的作答 ＋ 分數框。不顯示參考答案 / 評分要點
+      //（那些對每個人都一樣，會被誤讀成「大家都填了 AI 的答案」）。
+      const answered = typeof q.response === "string" && q.response.trim() !== "";
+      const scoreInput = `<label class="grade-q__score">得分
+        <input type="number" inputmode="decimal" step="0.5" min="0" max="${q.points}"
+          data-q-score="${esc(q.questionId)}" value="${v == null ? "" : v}"
+          ${this._readonly ? "disabled" : ""} aria-label="第 ${q.position} 題得分">
+        <span class="grade-q__of">/ ${q.points}</span>
+      </label>`;
+      // 未作答：收成一行（題號 + 未作答標籤 + 分數框），不佔版面
+      if (!answered) {
+        return `<section class="grade-q grade-q--blank${bad ? " grade-q--bad" : ""}">
+          <div class="grade-q__head">
+            <span class="grade-q__no">第 ${q.position} 題（${q.points} 分）</span>
+            <span class="grade-q__blanktag">未作答</span>
+            ${scoreInput}
+          </div>
+        </section>`;
+      }
       return `<section class="grade-q${bad ? " grade-q--bad" : ""}">
         <div class="grade-q__head">
           <span class="grade-q__no">第 ${q.position} 題（${q.points} 分）</span>
-          <label class="grade-q__score">得分
-            <input type="number" inputmode="decimal" step="0.5" min="0" max="${q.points}"
-              data-q-score="${esc(q.questionId)}" value="${v == null ? "" : v}"
-              ${this._readonly ? "disabled" : ""} aria-label="第 ${q.position} 題得分">
-            <span class="grade-q__of">/ ${q.points}</span>
-          </label>
+          ${scoreInput}
         </div>
         ${q.stem ? `<p class="grade-q__stem">${esc(q.stem)}</p>` : ""}
-        ${ref ? `<p class="grade-q__ref"><b>參考答案：</b>${esc(ref)}</p>` : ""}
-        ${rubric.length ? `<ul class="grade-q__rubric">${rubric.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
-        <div class="grade-q__resp">${q.response ? esc(q.response) : '<span class="grade-q__empty">（未作答）</span>'}</div>
+        <div class="grade-q__resp">${esc(q.response)}</div>
       </section>`;
     }).join("");
 

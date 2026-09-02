@@ -15650,6 +15650,14 @@ textarea::placeholder {
   background: var(--bg-card); padding: 0.85rem 1rem; display: flex; flex-direction: column; gap: 0.5rem;
 }
 .grade-q--bad { border-color: var(--color-danger); }
+/* 未作答：收成一行、灰底、不佔版面 */
+.grade-q--blank { padding: 0.5rem 0.85rem; background: var(--bg-page); gap: 0; }
+.grade-q--blank .grade-q__head { flex-wrap: nowrap; }
+.grade-q--blank .grade-q__no { color: var(--text-secondary); }
+.grade-q__blanktag {
+  font-size: 0.875rem; color: var(--text-muted);
+  border: 1px solid var(--border-card); border-radius: 999px; padding: 0.05rem 0.5rem; white-space: nowrap;
+}
 .grade-q__head { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .grade-q__no { font-size: 0.9375rem; font-weight: var(--type-weight-strong, 500); color: var(--text-primary); }
 .grade-q__score { margin-left: auto; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.875rem; color: var(--text-secondary); }

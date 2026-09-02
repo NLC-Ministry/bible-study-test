@@ -20,7 +20,7 @@ import {
 } from "./export-time.mjs";
 // Keep the ?v= in sync with any change to exam.js so a deploy isn't masked by a
 // Service Worker that cached /modules/exam.js at its bare (unversioned) URL.
-import { renderExamPanel } from "./exam.js?v=20260903_exam_err_msg";
+import { renderExamPanel } from "./exam.js?v=20260903_grade_card_lean";
 
 function updatePastoralWallControl(enabled, options = {}) {
   const toggle = document.getElementById("admin-pastoral-wall-toggle");
