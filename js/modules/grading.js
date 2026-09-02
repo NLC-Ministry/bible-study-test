@@ -396,6 +396,10 @@ class GradingWorkspace {
     r.querySelectorAll("[data-q-score]").forEach((el) => {
       el.addEventListener("input", onEdit);
       el.addEventListener("change", onEdit);
+      // 離開欄位時把超出配分/負數收斂到有效範圍，不留下無效分數（見 utils.js）
+      el.addEventListener("blur", () => {
+        if (typeof window.clampScoreInput === "function" && window.clampScoreInput(el)) onEdit();
+      });
     });
     r.querySelector("[data-overall]")?.addEventListener("input", onEdit);
 

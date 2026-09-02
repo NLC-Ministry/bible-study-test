@@ -2918,3 +2918,25 @@ if (typeof window !== "undefined") {
   window.firstPaint = firstPaint;
   window.renderInto = renderInto;
 }
+
+// 改考卷分數欄防呆：讓使用者自由輸入（不要每個按鍵都打斷），離開欄位
+// (blur) 時把值收斂到 [0, max] 範圍內；非數字、空白或打到一半的內容一律
+// 視為未填、清空欄位，不留下無效資料。用在 grade.html（線上批改）跟後台
+// 舊版「簡答批改」分頁的得分輸入框。
+function clampScoreInput(el) {
+  if (!el) return false;
+  const raw = String(el.value ?? "").trim();
+  if (raw === "") return false;
+  const max = Number(el.max);
+  const min = Number.isFinite(Number(el.min)) ? Number(el.min) : 0;
+  let num = Number(raw);
+  if (!Number.isFinite(num)) { el.value = ""; return true; }
+  let clamped = num;
+  if (clamped < min) clamped = min;
+  if (Number.isFinite(max) && clamped > max) clamped = max;
+  if (clamped !== num) { el.value = String(clamped); return true; }
+  return false;
+}
+if (typeof window !== "undefined") {
+  window.clampScoreInput = clampScoreInput;
+}
