@@ -15536,8 +15536,8 @@ textarea::placeholder {
   font-size: 0.9375rem; font-weight: var(--type-weight-strong, 500); color: var(--text-primary);
 }
 .devotion-passage__ver {
-  font-size: 0.8125rem; color: var(--text-muted);
-  border: 1px solid var(--border-card); border-radius: 999px; padding: 0.05rem 0.5rem;
+  font-size: 0.875rem; color: var(--text-muted);
+  border: 1px solid var(--border-card); border-radius: 999px; padding: 0.1rem 0.55rem;
 }
 .devotion-passage__chap {
   font-size: 0.875rem; color: var(--text-muted); font-weight: var(--type-weight-strong, 500);
