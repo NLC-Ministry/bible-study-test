@@ -1058,7 +1058,25 @@ export async function renderReaderText(options = {}) {
   }
 
   updateReaderFontSize();
-  setReaderScrollTop(0, "auto");
+  // 靈修「打開閱讀器」：跳到指定的起始節（不是捲到頂），並短暫標示。
+  const jumpVerse = Number(state.readerState && state.readerState.pendingScrollVerse) || 0;
+  if (jumpVerse > 0) {
+    state.readerState.pendingScrollVerse = null;
+    setTimeout(() => {
+      const el = container.querySelector(`.bible-verse[data-verse="${jumpVerse}"]`)
+        || container.querySelector(`#reader-verse-${jumpVerse}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        const prevBg = el.style.backgroundColor;
+        el.style.backgroundColor = "var(--color-brand-subtle, rgba(4,169,210,0.22))";
+        setTimeout(() => { el.style.backgroundColor = prevBg; }, 1500);
+      } else {
+        setReaderScrollTop(0, "auto");
+      }
+    }, 120);
+  } else {
+    setReaderScrollTop(0, "auto");
+  }
   updateReaderBottomActionBar();
   bindReaderEndObserver();
   scheduleReaderBottomDwellCheck();
@@ -1421,7 +1439,6 @@ function renderVersesList(container, verses, bookName, chapter) {
 
     container.appendChild(verseDiv);
   });
-
 
   const sentinel = document.createElement("div");
   sentinel.id = "reader-end-sentinel";

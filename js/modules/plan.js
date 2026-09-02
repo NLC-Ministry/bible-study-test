@@ -3809,6 +3809,17 @@ function readChapterDirect(bookName, chapter) {
   }
 }
 
+// 靈修「打開閱讀器」：進入聖經讀經、整章顯示，直接跳到該經文的起始節。
+// ref = {book, chapterFrom, verseFrom, verseTo}
+function openReaderPassage(ref) {
+  if (!ref || !ref.book) return;
+  const book = BIBLE_BOOKS.find(b => b.name === ref.book);
+  if (!book) return;
+  state.readerState.pendingScrollVerse = Number(ref.verseFrom) || 1;
+  readChapterDirect(ref.book, Number(ref.chapterFrom) || 1);
+}
+window.openReaderPassage = openReaderPassage;
+
 function updatePlanCheckboxState(key, isChecked) {
   // Safe empty fallback since we redraw tasks on update
   if (state.activePlan) {
@@ -9029,7 +9040,9 @@ function renderDevotionViewer(plan) {
       host.querySelector("[data-devo-prev]")?.addEventListener("click", () => { if (prev) { devotionViewerDayIndex = prev.dayIndex; paint(); } });
       host.querySelector("[data-devo-next]")?.addEventListener("click", () => { if (next) { devotionViewerDayIndex = next.dayIndex; paint(); } });
       host.querySelector("[data-devo-read]")?.addEventListener("click", () => {
-        if (firstRef && firstRef.book && typeof readChapterDirect === "function") {
+        if (firstRef && firstRef.book && typeof openReaderPassage === "function") {
+          openReaderPassage(firstRef);
+        } else if (firstRef && firstRef.book && typeof readChapterDirect === "function") {
           readChapterDirect(firstRef.book, Number(firstRef.chapterFrom) || 1);
         }
       });
