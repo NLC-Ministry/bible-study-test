@@ -515,11 +515,14 @@ class GradingWorkspace {
     box.className = "grade-auth-expired";
     box.innerHTML = `<p>登入已過期，需要重新登入才能繼續批改。你目前的分數已經存在這台裝置上，重新登入後會自動回到這一張。</p>
       <button type="button" class="primary-btn" data-g-relogin>重新登入</button>`;
-    box.querySelector("[data-g-relogin]").addEventListener("click", () => {
+    box.querySelector("[data-g-relogin]").addEventListener("click", async () => {
       this._readInputs();
       this._mirror();
-      const back = encodeURIComponent(location.pathname + location.search);
-      location.href = "/?return=" + back;
+      if (typeof window.auth?.startInteractiveLogin === "function") {
+        await window.auth.startInteractiveLogin({ intent: "login", returnTo: location.pathname + location.search });
+      } else {
+        location.href = "/";
+      }
     });
     document.body.appendChild(box);
   }
