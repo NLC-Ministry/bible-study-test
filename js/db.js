@@ -3203,6 +3203,7 @@ const db = {
       duplicate_team_name: "這個團隊名稱已有人使用，請換一個名稱。",
       already_in_plan_team: "你已加入這個人數組別的團隊。",
       already_in_plan_division: "你已加入這個人數組別的團隊；仍可參加另一種人數的團隊。",
+      already_in_other_team: "你已經在這個計畫的團隊裡了，沒辦法直接加入另一隊。要換隊的話，請先離開現在的團隊（或請隊長把你移出），再輸入新的邀請碼。",
       team_invite_not_found: "找不到這組邀請碼，請向隊長確認。",
       reading_team_full: "這個團隊已額滿。",
       ready_team_roster_locked: "團隊已額滿，名單目前不能調整。",

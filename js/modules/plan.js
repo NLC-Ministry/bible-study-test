@@ -2061,9 +2061,10 @@ function setupGlobalJoinTeamForm() {
         const teamData = res.result && res.result.data;
         const teamName = teamData && (teamData.teamName || teamData.name || teamData.team && teamData.team.name)
           || res.result && (res.result.teamName || res.result.name);
-        showToast(teamName
-          ? `已成功加入「${planName}」的「${teamName}」團隊！`
-          : `已成功加入「${planName}」的團隊！`);
+        const alreadyMember = Boolean(teamData && teamData.alreadyMember);
+        showToast(alreadyMember
+          ? (teamName ? `你已經在「${teamName}」團隊裡了。` : "你已經在這個團隊裡了。")
+          : (teamName ? `已成功加入「${planName}」的「${teamName}」團隊！` : `已成功加入「${planName}」的團隊！`));
         input.value = "";
 
         resetPlanTeamInvitePanel();
