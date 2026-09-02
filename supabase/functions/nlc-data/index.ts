@@ -158,6 +158,17 @@ const PROFILE_SELECT = "id, name, email, avatar_url, great_region, pastoral_zone
 // as a retry target wherever a query against PROFILE_SELECT fails, so a
 // database that hasn't been migrated yet degrades instead of hard-failing.
 const PROFILE_SELECT_LEGACY = "id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments, role_definition:role_definitions(id, code, label, sort_order, is_assignable, can_manage_plans, can_manage_permissions, scope_type)";
+// 每日靈修（devotional plan，migration 0145）。write 的 RPC 自己在 SQL 端用
+// _devotion_actor_can_manage() 檢查 admin/pastor；get_devotional_plan 自己檢查
+// daily_devotion flag（管理者放行）。這裡只需注入 p_actor_id。
+const DEVOTION_RPC_FUNCTIONS = new Set([
+  "get_devotional_plan",
+  "list_devotion_days",
+  "upsert_devotion_day",
+  "delete_devotion_day",
+  "bulk_upsert_devotion_days",
+  "set_devotional_plan_future_open"
+]);
 const RPC_FUNCTIONS = new Set([
   "increment_likes",
   "decrement_likes",
@@ -166,7 +177,8 @@ const RPC_FUNCTIONS = new Set([
   ...TEAM_RPC_FUNCTIONS,
   ...ADMIN_RPC_FUNCTIONS,
   ...QUIZ_RPC_FUNCTIONS,
-  ...EXAM_RPC_FUNCTIONS
+  ...EXAM_RPC_FUNCTIONS,
+  ...DEVOTION_RPC_FUNCTIONS
 ]);
 
 function jsonResponse(body: unknown, status = 200) {
@@ -595,6 +607,7 @@ Deno.serve(async (req: Request) => {
         || TEAM_RPC_FUNCTIONS.has(functionName)
         || QUIZ_RPC_FUNCTIONS.has(functionName)
         || EXAM_RPC_FUNCTIONS.has(functionName)
+        || DEVOTION_RPC_FUNCTIONS.has(functionName)
         || functionName === "get_admin_registration_statistics"
         || functionName === "create_region_stage_cohort")
         ? { ...(body.args || {}), p_actor_id: profile.id }

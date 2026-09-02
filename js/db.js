@@ -296,6 +296,8 @@ function mapGlobalPlanRecord(dbPlan) {
     examDate: campaignDefinition ? campaignDefinition.examDate : null,
     // 鎖住時是否仍出現在探索清單（月度期末賽 = true；第三階段之後 = 無此旗標 → 完全隱藏）
     discoverWhenLocked: Boolean(dbPlan.rules && dbPlan.rules.discoverWhenLocked),
+    // 每日靈修計畫（plan_kind='devotional'）：是否開放未來日期（migration 0145）。
+    devotionFutureOpen: Boolean(dbPlan.rules && dbPlan.rules.devotionFutureOpen),
     ruleVersion: Number(dbPlan.rule_version || (campaignDefinition && campaignDefinition.version) || 1),
     publishedAt: dbPlan.published_at || null,
     campaignDefinition
@@ -5236,8 +5238,62 @@ const db = {
     }
   },
 
+  // ── 每日靈修（devotional plan, migration 0145 + nlc-data DEVOTION_RPC_FUNCTIONS）──
+  _devotionErrorMessage(error) {
+    const raw = (error && (error.message || error.error_description || error.msg)) || String(error || "");
+    const map = {
+      daily_devotion_feature_disabled: "每日靈修功能目前未開放。",
+      devotional_plan_not_found: "找不到這份靈修計畫。",
+      devotion_admin_required: "只有系統管理員 / 牧者可以編輯每日靈修。",
+      devotion_payload_invalid: "資料格式不正確，未寫入。",
+      forbidden_rpc: "沒有權限執行此操作。"
+    };
+    const key = Object.keys(map).find(code => raw.includes(code));
+    return key ? map[key] : "目前無法載入每日靈修，請稍後再試。";
+  },
+  async _callDevotionRpc(functionName, args = {}) {
+    if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) {
+      return { success: false, message: "每日靈修需要登入正式帳號。" };
+    }
+    try {
+      const { data, error } = await state.supabase.rpc(functionName, args);
+      if (error) {
+        console.warn(`[Devotion] ${functionName} failed: ${JSON.stringify({ message: error.message, code: error.code })}`);
+        return { success: false, error, message: this._devotionErrorMessage(error) };
+      }
+      return { success: true, data };
+    } catch (error) {
+      console.warn(`[Devotion] ${functionName} failed: ${String(error)}`);
+      return { success: false, error, message: this._devotionErrorMessage(error) };
+    }
+  },
+  async getDevotionalPlan(globalPlanId) {
+    return this._callDevotionRpc("get_devotional_plan", { p_global_plan_id: globalPlanId });
+  },
+  async listDevotionDays(globalPlanId) {
+    return this._callDevotionRpc("list_devotion_days", { p_global_plan_id: globalPlanId });
+  },
+  async upsertDevotionDay(payload) {
+    return this._callDevotionRpc("upsert_devotion_day", { p_payload: payload || {} });
+  },
+  async deleteDevotionDay(id) {
+    return this._callDevotionRpc("delete_devotion_day", { p_id: id });
+  },
+  async bulkUpsertDevotionDays(globalPlanId, rows) {
+    return this._callDevotionRpc("bulk_upsert_devotion_days", {
+      p_global_plan_id: globalPlanId,
+      p_rows: Array.isArray(rows) ? rows : []
+    });
+  },
+  async setDevotionalPlanFutureOpen(globalPlanId, open) {
+    return this._callDevotionRpc("set_devotional_plan_future_open", {
+      p_global_plan_id: globalPlanId,
+      p_open: open === true
+    });
+  },
+
   async getFeatureSetting(key, fallback = false) {
-    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz", "speed_reading_exam"]);
+    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz", "speed_reading_exam", "daily_devotion"]);
     if (!allowedKeys.has(key)) {
       return { enabled: Boolean(fallback), error: new Error("unknown_feature_setting") };
     }
@@ -5264,7 +5320,7 @@ const db = {
   },
 
   async updateFeatureSetting(key, enabled) {
-    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz", "speed_reading_exam"]);
+    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz", "speed_reading_exam", "daily_devotion"]);
     if (!allowedKeys.has(key)) return { error: new Error("unknown_feature_setting") };
     if (!state.currentUser || getUserRoleCode(state.currentUser) !== "admin") {
       return { error: new Error("admin_required") };

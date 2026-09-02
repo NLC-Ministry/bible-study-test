@@ -63,6 +63,30 @@ function updateExamFeatureControl(enabled, options = {}) {
     : "已關閉：隱藏「大測驗」分頁並停止作答；既有試卷、題目與成績都會保留。";
 }
 
+function updateDevotionFeatureControl(enabled, options = {}) {
+  const toggle = document.getElementById("admin-daily-devotion-feature-toggle");
+  const status = document.getElementById("admin-daily-devotion-feature-status");
+  if (!toggle || !status) return;
+  toggle.setAttribute("aria-checked", enabled ? "true" : "false");
+  toggle.setAttribute("aria-label", enabled ? "每日靈修功能已開啟" : "每日靈修功能已關閉");
+  toggle.disabled = options.disabled === true;
+  status.textContent = enabled
+    ? "已開啟：會友在「計畫」看得到靈修計畫，可按日期閱讀每日靈修內容。"
+    : "已關閉：會友端隱藏所有靈修計畫；管理端仍可先編輯內容，既有內容都保留。";
+}
+
+// 「每日靈修」計劃管理分頁：系統管理員 / 牧者 + daily_devotion 功能開啟時才顯示。
+function applyAdminDevotionVisibility(enabled) {
+  const roleCode = state.currentUser && typeof getUserRoleCode === "function"
+    ? getUserRoleCode(state.currentUser) : null;
+  const canSee = ["admin", "pastor"].includes(roleCode);
+  const show = canSee && enabled === true;
+  const panel = document.getElementById("admin-section-devotions");
+  if (!show && activeAdminSection === "devotions") setAdminSection("join-status");
+  if (!show && panel) panel.classList.add("hidden");
+  if (typeof renderAdminSectionNav === "function") renderAdminSectionNav();
+}
+
 // 「大測驗」計劃管理分頁：系統管理員 + speed_reading_exam 功能開啟時才顯示。
 function applyAdminExamVisibility(enabled) {
   // 系統管理員：完整後台（出題 / 發佈 / 批改 / 統計）。
@@ -91,9 +115,10 @@ export async function renderAdminFeatureSettings() {
   const isAdmin = state.currentUser && getUserRoleCode(state.currentUser) === "admin";
   card.classList.toggle("hidden", !isAdmin);
   if (!isAdmin) {
-    const [quizResult, examResult] = await Promise.all([
+    const [quizResult, examResult, devotionResult] = await Promise.all([
       db.getFeatureSetting("daily_quiz", false),
-      db.getFeatureSetting("speed_reading_exam", false)
+      db.getFeatureSetting("speed_reading_exam", false),
+      db.getFeatureSetting("daily_devotion", false)
     ]);
     const quizEnabled = !quizResult.error && quizResult.enabled === true;
     window.dailyQuizFeatureEnabled = quizEnabled;
@@ -101,6 +126,9 @@ export async function renderAdminFeatureSettings() {
     const examEnabled = !examResult.error && examResult.enabled === true;
     window.speedReadingExamFeatureEnabled = examEnabled;
     applyAdminExamVisibility(examEnabled);
+    const devotionEnabled = !devotionResult.error && devotionResult.enabled === true;
+    window.dailyDevotionFeatureEnabled = devotionEnabled;
+    applyAdminDevotionVisibility(devotionEnabled);
     return;
   }
 
@@ -112,11 +140,15 @@ export async function renderAdminFeatureSettings() {
   updateDailyQuizFeatureControl(false, { disabled: true });
   if (examFeedback) { examFeedback.classList.add("hidden"); examFeedback.textContent = ""; }
   updateExamFeatureControl(false, { disabled: true });
+  const devotionFeedback = document.getElementById("admin-daily-devotion-feature-feedback");
+  if (devotionFeedback) { devotionFeedback.classList.add("hidden"); devotionFeedback.textContent = ""; }
+  updateDevotionFeatureControl(false, { disabled: true });
 
-  const [result, quizResult, examResult] = await Promise.all([
+  const [result, quizResult, examResult, devotionResult] = await Promise.all([
     db.getFeatureSetting("pastoral_sharing_wall", false),
     db.getFeatureSetting("daily_quiz", false),
-    db.getFeatureSetting("speed_reading_exam", false)
+    db.getFeatureSetting("speed_reading_exam", false),
+    db.getFeatureSetting("daily_devotion", false)
   ]);
   if (result.error) {
     updatePastoralWallControl(false, { disabled: true });
@@ -146,6 +178,43 @@ export async function renderAdminFeatureSettings() {
     window.speedReadingExamFeatureEnabled = examEnabled;
     updateExamFeatureControl(examEnabled);
     applyAdminExamVisibility(examEnabled);
+  }
+  if (devotionResult.error) {
+    updateDevotionFeatureControl(false, { disabled: true });
+    if (devotionFeedback) {
+      devotionFeedback.textContent = "無法載入設定：從伺服器獲取每日靈修設定失敗。";
+      devotionFeedback.classList.remove("hidden");
+    }
+  } else {
+    const devotionEnabled = devotionResult.enabled === true;
+    window.dailyDevotionFeatureEnabled = devotionEnabled;
+    updateDevotionFeatureControl(devotionEnabled);
+    applyAdminDevotionVisibility(devotionEnabled);
+  }
+  const devotionToggle = document.getElementById("admin-daily-devotion-feature-toggle");
+  if (devotionToggle && !devotionToggle.dataset.featureSettingBound) {
+    devotionToggle.dataset.featureSettingBound = "true";
+    devotionToggle.addEventListener("click", async () => {
+      const currentEnabled = devotionToggle.getAttribute("aria-checked") === "true";
+      const nextEnabled = !currentEnabled;
+      updateDevotionFeatureControl(currentEnabled, { disabled: true });
+      devotionFeedback?.classList.add("hidden");
+      const saveResult = await db.updateFeatureSetting("daily_devotion", nextEnabled);
+      if (saveResult.error) {
+        updateDevotionFeatureControl(currentEnabled);
+        if (devotionFeedback) {
+          devotionFeedback.textContent = "更新設定失敗：無法將設定儲存至伺服器。";
+          devotionFeedback.classList.remove("hidden");
+        }
+        return;
+      }
+      window.dailyDevotionFeatureEnabled = nextEnabled;
+      updateDevotionFeatureControl(nextEnabled);
+      applyAdminDevotionVisibility(nextEnabled);
+      if (typeof showToast === "function") {
+        showToast(nextEnabled ? "每日靈修功能已開啟！" : "每日靈修功能已關閉。內容都會保留。");
+      }
+    });
   }
 
   if (examToggle && !examToggle.dataset.featureSettingBound) {
@@ -1577,6 +1646,7 @@ const ADMIN_SECTIONS = [
   { id: 'statistics',    group: '計畫營運',   label: '計畫統計',       icon: 'barChart',      panel: 'plans',  sub: 'statistics' },
   { id: 'quizzes',       group: '測驗',       label: '小測驗',         icon: 'checkCircle',   panel: 'plans',  sub: 'quizzes', flag: 'quiz' },
   { id: 'exam',          group: '測驗',       label: '大測驗',         icon: 'pencil',        panel: 'plans',  sub: 'exam',    flag: 'exam' },
+  { id: 'devotions',     group: '內容管理',   label: '每日靈修',       icon: 'bookOpen',      panel: 'plans',  sub: 'devotions', flag: 'devotion' },
   { id: 'settings',      group: '設定',       label: '功能開放設定',   icon: 'setting',       panel: 'system', sub: 'settings' }
 ];
 
@@ -1590,6 +1660,11 @@ function isAdminSectionAvailable(section) {
       ? getUserRoleCode(state.currentUser) : null;
     const canSee = ['admin', 'pastor', 'great_zone_leader', 'zone_leader', 'group_leader'].includes(roleCode);
     return canSee && window.speedReadingExamFeatureEnabled === true;
+  }
+  if (section.flag === 'devotion') {
+    const roleCode = state.currentUser && typeof getUserRoleCode === 'function'
+      ? getUserRoleCode(state.currentUser) : null;
+    return ['admin', 'pastor'].includes(roleCode) && window.dailyDevotionFeatureEnabled === true;
   }
   return true;
 }
@@ -2550,6 +2625,14 @@ async function loadActiveAdminPlanSubtab(forceRefresh = false) {
     return;
   }
 
+  if (activeAdminPlanSubtab === 'devotions') {
+    const root = document.getElementById('admin-devotion-root');
+    if (root) {
+      try { await renderAdminDevotionPlan(root, forceRefresh); } catch (e) { console.warn('[Admin] renderAdminDevotionPlan error caught:', e); }
+    }
+    return;
+  }
+
   if (activeAdminPlanSubtab === 'teams') {
     const results = await Promise.allSettled([
       renderAdminTeamPlacementLookup(state.activePlan, forceRefresh),
@@ -2565,6 +2648,236 @@ async function loadActiveAdminPlanSubtab(forceRefresh = false) {
   }
 }
 
+// ── 每日靈修（devotional plan）管理 ────────────────────────────────────────
+let adminDevotionSelectedPlanId = null;
+
+function getDevotionalPlans() {
+  return (Array.isArray(state.globalPlans) ? state.globalPlans : [])
+    .filter(p => p && (p.planKind === 'devotional' || p.plan_kind === 'devotional'));
+}
+
+// 貼上的文字 → [{dayIndex, passageLabel, reflections:[]}]
+// 支援標頭：「第N天 ｜ 使徒行傳 1:1-5」或「N. 使徒行傳 1:1-5」或「N、使徒行傳…」。
+// 標頭之後的非空行都當一條思想經文，去掉前面的 -、•、1.、（1）、① 等標記。
+function parseDevotionBulkText(text) {
+  const rows = [];
+  const blocks = String(text || '').replace(/\r\n/g, '\n').split(/\n{2,}/);
+  blocks.forEach(block => {
+    const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return;
+    const head = lines[0];
+    let m = head.match(/^第\s*(\d+)\s*天\s*[｜|]\s*(.+)$/)
+      || head.match(/^(\d+)\s*[.、]\s*(.+)$/);
+    if (!m) return;
+    const dayIndex = Number(m[1]);
+    const passageLabel = m[2].trim();
+    const reflections = lines.slice(1)
+      .map(l => l.replace(/^[-•*▪●·]\s*/, '')
+                 .replace(/^[（(]?\s*\d+\s*[）).、]\s*/, '')
+                 .replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, '')
+                 .trim())
+      .filter(Boolean);
+    if (Number.isFinite(dayIndex) && dayIndex >= 1) {
+      rows.push({ dayIndex, passageLabel, reflections });
+    }
+  });
+  return rows.sort((a, b) => a.dayIndex - b.dayIndex);
+}
+
+async function renderAdminDevotionPlan(root, forceRefresh = false) {
+  if (!root) return;
+  const plans = getDevotionalPlans();
+  if (!plans.length) {
+    root.innerHTML = '<div class="admin-user-directory__empty" style="padding:1.5rem;text-align:center;">'
+      + '目前沒有靈修計畫。請先在 Supabase 執行 <code>scratch/seed_devotional_plan_acts_1.sql</code> 建立「使徒行傳靈修（一）」，再回到這裡編輯內容。</div>';
+    return;
+  }
+  if (!adminDevotionSelectedPlanId || !plans.some(p => String(p.id) === String(adminDevotionSelectedPlanId))) {
+    adminDevotionSelectedPlanId = String(plans[0].id);
+  }
+  const planId = adminDevotionSelectedPlanId;
+
+  if (firstPaint(root)) root.innerHTML = '<div class="admin-user-directory__empty">正在載入每日靈修…</div>';
+  const res = await db.listDevotionDays(planId);
+  if (!res.success) {
+    root.innerHTML = `<div class="admin-user-directory__empty">${escapeHTML(res.message || '無法載入每日靈修內容。')}</div>`;
+    return;
+  }
+  const data = res.data || {};
+  const days = Array.isArray(data.days) ? data.days : [];
+
+  const planOptions = plans.map(p =>
+    `<option value="${escapeHTML(String(p.id))}"${String(p.id) === String(planId) ? ' selected' : ''}>${escapeHTML(p.name || '未命名靈修計畫')}</option>`
+  ).join('');
+
+  const rowHtml = days.map(d => `
+    <tr data-devotion-day-id="${escapeHTML(String(d.id))}" data-devotion-day-index="${d.dayIndex}">
+      <td>第 ${d.dayIndex} 天<br><span class="admin-devotion__date">${escapeHTML(d.displayDate || '')}</span></td>
+      <td>${escapeHTML(d.passageLabel || '（未填）')}</td>
+      <td style="text-align:center;">${Array.isArray(d.reflections) ? d.reflections.length : 0}</td>
+      <td style="text-align:center;">${d.videoUrl ? '✔' : '—'}</td>
+      <td style="text-align:center;">${d.isPublished
+        ? '<span class="stat-badge stat-badge--positive">已發佈</span>'
+        : '<span class="stat-badge stat-badge--neutral">草稿</span>'}</td>
+      <td style="text-align:right;white-space:nowrap;">
+        <button type="button" class="secondary-btn" data-devotion-edit>編輯</button>
+        <button type="button" class="danger-btn" data-devotion-delete>刪除</button>
+      </td>
+    </tr>`).join('');
+
+  root.innerHTML = `
+    <div class="admin-devotion">
+      <div class="admin-devotion__toolbar">
+        <label class="admin-registration-statistics__filter">
+          <span>靈修計畫</span>
+          <select id="admin-devotion-plan-select" class="form-control">${planOptions}</select>
+        </label>
+        <div class="admin-devotion__meta">
+          ${escapeHTML(data.startDate || '')} ～ ${escapeHTML(data.endDate || '')}　｜　共 ${days.length} 天
+        </div>
+        <label class="admin-devotion__future">
+          <span>開放未來日期</span>
+          <button type="button" class="feature-switch" id="admin-devotion-future-toggle"
+            role="switch" aria-checked="${data.futureOpen ? 'true' : 'false'}"
+            aria-label="開放未來日期">
+            <span class="feature-switch__thumb" aria-hidden="true"></span>
+          </button>
+        </label>
+      </div>
+      <p class="admin-feature-setting-feedback hidden" id="admin-devotion-feedback" role="status"></p>
+
+      <details class="admin-devotion__import">
+        <summary>貼文字批次匯入</summary>
+        <p class="admin-devotion__hint">每段一天，空行分隔。第一行「第1天 ｜ 使徒行傳 1:1-5」或「1. 使徒行傳 1:1-5」；之後每一行是一條思想經文（開頭的 -、1.、① 會自動去掉）。匯入不會自動發佈，逐日確認後再勾「發佈」。</p>
+        <textarea id="admin-devotion-bulk" class="form-control" rows="10" placeholder="第1天 ｜ 使徒行傳 1:1-5&#10;- 從 v.1-2 看路加寫這卷書的目的是什麼？&#10;- ...&#10;&#10;第2天 ｜ 使徒行傳 1:6-11&#10;- ..."></textarea>
+        <div style="margin-top:.5rem;display:flex;gap:.5rem;">
+          <button type="button" class="secondary-btn" id="admin-devotion-bulk-preview">預覽</button>
+          <button type="button" class="primary-btn" id="admin-devotion-bulk-import" disabled>匯入</button>
+        </div>
+        <div id="admin-devotion-bulk-result" class="admin-devotion__hint"></div>
+      </details>
+
+      <div class="admin-devotion__list-wrap">
+        <table class="admin-devotion__table">
+          <thead><tr><th>天 / 日期</th><th>經文進度</th><th>思想條數</th><th>影片</th><th>狀態</th><th></th></tr></thead>
+          <tbody>${rowHtml || '<tr><td colspan="6" class="admin-user-directory__empty">尚無內容，請用上方「批次匯入」或下方「新增一天」。</td></tr>'}</tbody>
+        </table>
+      </div>
+      <button type="button" class="secondary-btn" id="admin-devotion-add" style="margin-top:.75rem;">＋ 新增一天</button>
+
+      <div id="admin-devotion-editor" class="admin-devotion__editor hidden"></div>
+    </div>`;
+
+  if (typeof hydrateIcons === 'function') hydrateIcons(root);
+
+  root.querySelector('#admin-devotion-plan-select')?.addEventListener('change', (e) => {
+    adminDevotionSelectedPlanId = String(e.target.value);
+    renderAdminDevotionPlan(root, true);
+  });
+
+  const feedback = root.querySelector('#admin-devotion-feedback');
+  const showFeedback = (msg, isError = true) => {
+    if (!feedback) return;
+    feedback.textContent = msg;
+    feedback.classList.toggle('hidden', !msg);
+    feedback.style.color = isError ? 'var(--color-danger)' : 'var(--text-secondary)';
+  };
+
+  const futureToggle = root.querySelector('#admin-devotion-future-toggle');
+  futureToggle?.addEventListener('click', async () => {
+    const cur = futureToggle.getAttribute('aria-checked') === 'true';
+    futureToggle.disabled = true;
+    const r = await db.setDevotionalPlanFutureOpen(planId, !cur);
+    futureToggle.disabled = false;
+    if (!r.success) { showFeedback(r.message || '切換失敗'); return; }
+    futureToggle.setAttribute('aria-checked', (!cur) ? 'true' : 'false');
+    // 讓 state.globalPlans 的 rules 也跟上（下次 render 才對）
+    const gp = (state.globalPlans || []).find(p => String(p.id) === String(planId));
+    if (gp) gp.devotionFutureOpen = !cur;
+    if (typeof showToast === 'function') showToast(!cur ? '已開放未來日期' : '未來日期已鎖回');
+  });
+
+  // 批次匯入
+  const bulkArea = root.querySelector('#admin-devotion-bulk');
+  const bulkPreviewBtn = root.querySelector('#admin-devotion-bulk-preview');
+  const bulkImportBtn = root.querySelector('#admin-devotion-bulk-import');
+  const bulkResult = root.querySelector('#admin-devotion-bulk-result');
+  let parsedRows = [];
+  bulkPreviewBtn?.addEventListener('click', () => {
+    parsedRows = parseDevotionBulkText(bulkArea.value);
+    if (!parsedRows.length) {
+      bulkResult.textContent = '解析不到任何一天。請確認每段第一行是「第N天 ｜ 經文」或「N. 經文」。';
+      bulkImportBtn.disabled = true;
+      return;
+    }
+    bulkResult.innerHTML = `解析到 <strong>${parsedRows.length}</strong> 天：`
+      + parsedRows.map(r => `第 ${r.dayIndex} 天（${escapeHTML(r.passageLabel)}・${r.reflections.length} 條）`).join('、');
+    bulkImportBtn.disabled = false;
+  });
+  bulkImportBtn?.addEventListener('click', async () => {
+    if (!parsedRows.length) return;
+    bulkImportBtn.disabled = true;
+    const r = await db.bulkUpsertDevotionDays(planId, parsedRows);
+    if (!r.success) { showFeedback(r.message || '匯入失敗'); bulkImportBtn.disabled = false; return; }
+    if (typeof showToast === 'function') showToast(`已匯入 / 更新 ${r.data?.upserted ?? parsedRows.length} 天`);
+    renderAdminDevotionPlan(root, true);
+  });
+
+  // 逐日編輯 / 刪除 / 新增
+  const openEditor = (day) => {
+    const editor = root.querySelector('#admin-devotion-editor');
+    if (!editor) return;
+    const d = day || { dayIndex: (days.at(-1)?.dayIndex || 0) + 1, passageLabel: '', reflections: [], videoUrl: '', videoTitle: '', isPublished: false };
+    editor.classList.remove('hidden');
+    editor.innerHTML = `
+      <h4>${day ? `編輯第 ${d.dayIndex} 天` : '新增一天'}</h4>
+      <label>第幾天<input type="number" min="1" id="dv-day-index" class="form-control" value="${d.dayIndex}" ${day ? 'readonly' : ''}></label>
+      <label>經文進度<input type="text" id="dv-passage" class="form-control" value="${escapeHTML(d.passageLabel || '')}" placeholder="使徒行傳 1:1-5"></label>
+      <label>思想經文（一行一條）<textarea id="dv-reflections" class="form-control" rows="6">${escapeHTML((d.reflections || []).join('\n'))}</textarea></label>
+      <label>靈修影片連結<input type="url" id="dv-video-url" class="form-control" value="${escapeHTML(d.videoUrl || '')}" placeholder="https://..."></label>
+      <label>影片標題<input type="text" id="dv-video-title" class="form-control" value="${escapeHTML(d.videoTitle || '')}"></label>
+      <label class="admin-devotion__pub"><input type="checkbox" id="dv-published" ${d.isPublished ? 'checked' : ''}> 發佈這一天（會友看得到）</label>
+      <div style="display:flex;gap:.5rem;margin-top:.5rem;">
+        <button type="button" class="primary-btn" id="dv-save">儲存</button>
+        <button type="button" class="pill-btn" id="dv-cancel">取消</button>
+      </div>`;
+    editor.querySelector('#dv-cancel').addEventListener('click', () => editor.classList.add('hidden'));
+    editor.querySelector('#dv-save').addEventListener('click', async () => {
+      const payload = {
+        globalPlanId: planId,
+        dayIndex: Number(editor.querySelector('#dv-day-index').value),
+        passageLabel: editor.querySelector('#dv-passage').value.trim(),
+        reflections: editor.querySelector('#dv-reflections').value.split('\n').map(s => s.trim()).filter(Boolean),
+        videoUrl: editor.querySelector('#dv-video-url').value.trim(),
+        videoTitle: editor.querySelector('#dv-video-title').value.trim(),
+        isPublished: editor.querySelector('#dv-published').checked
+      };
+      if (!payload.dayIndex || payload.dayIndex < 1) { showFeedback('「第幾天」要是 1 以上的數字'); return; }
+      const r = await db.upsertDevotionDay(payload);
+      if (!r.success) { showFeedback(r.message || '儲存失敗'); return; }
+      if (typeof showToast === 'function') showToast('已儲存');
+      renderAdminDevotionPlan(root, true);
+    });
+  };
+  root.querySelector('#admin-devotion-add')?.addEventListener('click', () => openEditor(null));
+  root.querySelectorAll('[data-devotion-edit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.closest('tr')?.dataset.devotionDayIndex);
+      openEditor(days.find(d => d.dayIndex === idx));
+    });
+  });
+  root.querySelectorAll('[data-devotion-delete]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.closest('tr')?.dataset.devotionDayId;
+      if (!id || !confirm('刪除這一天的靈修內容？')) return;
+      const r = await db.deleteDevotionDay(id);
+      if (!r.success) { showFeedback(r.message || '刪除失敗'); return; }
+      renderAdminDevotionPlan(root, true);
+    });
+  });
+}
+window.renderAdminDevotionPlan = renderAdminDevotionPlan;
+
 export async function renderAdminPlanManagement() {
   try {
     const role = (state.currentUser && getUserRoleCode(state.currentUser)) || 'member';
@@ -2575,6 +2888,7 @@ export async function renderAdminPlanManagement() {
     }
     mountPlanManagementSections();
     applyAdminExamVisibility(window.speedReadingExamFeatureEnabled === true);
+    applyAdminDevotionVisibility(window.dailyDevotionFeatureEnabled === true);
 
     // 還原統一功能清單的選擇；不再經過舊 system/plans tab 包裝層。
     let savedSection = null;

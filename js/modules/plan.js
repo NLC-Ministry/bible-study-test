@@ -2320,6 +2320,11 @@ function renderPresetPlansList() {
   if (!container) return;
   container.innerHTML = "";
 
+  // 每日靈修功能旗標還沒讀到 → 先讀，讀到「開啟」再重畫一次讓靈修計畫現身。
+  if (typeof window.dailyDevotionFeatureEnabled !== "boolean" && typeof isDailyDevotionFeatureEnabled === "function") {
+    isDailyDevotionFeatureEnabled().then(v => { if (v === true) renderPresetPlansList(); }).catch(() => {});
+  }
+
   const legacyCategoryIdPrefix = "00000000-0000-0000-a000-";
   const isObsoleteCategoryPlan = plan =>
     String(plan && (plan.id || plan.globalPlanId || "")).startsWith(legacyCategoryIdPrefix)
@@ -2370,6 +2375,8 @@ function renderPresetPlansList() {
     const isAlreadyJoined = joinedKeysValues.some(value => joinedKeys.has(value));
 
     if (isObsolete || isLegacy) return false;
+    // 每日靈修計畫：daily_devotion 功能關著時，只有 admin / pastor 看得到（先建內容用）。
+    if (!isDevotionalPlanVisibleToUser(plan)) return false;
     // 隱藏的計畫：一般會友看不到。例外：被鎖住的教會階段**且**標記為
     // discoverWhenLocked（月度期末賽）→ 顯示為 available-locked。第三階段之後
     // 沒帶這個旗標 → 完全隱藏，等管理員開放（is_hidden 轉 false）才現身。
@@ -3110,6 +3117,27 @@ async function isDailyQuizFeatureEnabled() {
   }
   return dailyQuizFeatureRequest;
 }
+
+let dailyDevotionFeatureRequest = null;
+async function isDailyDevotionFeatureEnabled() {
+  if (typeof window.dailyDevotionFeatureEnabled === "boolean") return window.dailyDevotionFeatureEnabled;
+  if (!dailyDevotionFeatureRequest) {
+    dailyDevotionFeatureRequest = db.getFeatureSetting("daily_devotion", false).then(result => {
+      window.dailyDevotionFeatureEnabled = !result.error && result.enabled === true;
+      return window.dailyDevotionFeatureEnabled;
+    }).catch(() => false).finally(() => { dailyDevotionFeatureRequest = null; });
+  }
+  return dailyDevotionFeatureRequest;
+}
+window.isDailyDevotionFeatureEnabled = isDailyDevotionFeatureEnabled;
+// 每日靈修計畫是否對這個使用者可見：功能開了、或本人是管理員（先建內容用）。
+function isDevotionalPlanVisibleToUser(plan) {
+  if (!plan || (plan.planKind || plan.plan_kind) !== "devotional") return true; // 非靈修計畫不受此限
+  if (window.dailyDevotionFeatureEnabled === true) return true;
+  const role = typeof getUserRoleCode === "function" ? getUserRoleCode(state.currentUser) : null;
+  return role === "admin" || role === "pastor";
+}
+window.isDevotionalPlanVisibleToUser = isDevotionalPlanVisibleToUser;
 
 window.addEventListener("daily-quiz-feature-changed", event => {
   window.dailyQuizFeatureEnabled = event.detail?.enabled === true;
@@ -8761,6 +8789,15 @@ async function enterPlanDetailState() {
     await enterPlanListState();
     return;
   }
+  // 每日靈修計畫：不跑讀經打卡機制，改渲染靈修 viewer。
+  if ((state.activePlan.planKind || state.activePlan.plan_kind) === "devotional") {
+    window.currentPlanViewState = PLAN_ROUTE.DETAIL;
+    state.planDetailOpen = true;
+    state.planActiveSubTab = "today";
+    setOnlyPlanRouteVisible(PLAN_ROUTE.DETAIL);
+    await renderDevotionViewer(state.activePlan);
+    return;
+  }
   calculatePlanProgress();
   window.currentPlanViewState = PLAN_ROUTE.DETAIL;
   state.planDetailOpen = true;
@@ -8848,6 +8885,127 @@ async function showDiscoverPlans() {
   await setPlanState(PLAN_ROUTE.LIST);
   document.querySelector('#plan-list-status-pills .pill-btn[data-filter="saved"]')?.click();
 }
+
+// ── 每日靈修 viewer（會友端；plan_kind='devotional'）─────────────────────────
+let devotionViewerDayIndex = null;
+let devotionViewerPlanId = null;
+
+function renderDevotionViewer(plan) {
+  const host = document.getElementById("plan-detail-subview");
+  if (!host) return Promise.resolve();
+  host.innerHTML = '<div class="devotion-view"><p class="devotion-view__loading">正在載入每日靈修…</p></div>';
+
+  const planId = plan.globalPlanId || plan.global_plan_id || plan.id;
+  if (devotionViewerPlanId !== planId) { devotionViewerPlanId = planId; devotionViewerDayIndex = null; }
+  return db.getDevotionalPlan(planId).then(res => {
+    if (!res.success) {
+      host.innerHTML = `<div class="devotion-view"><p class="devotion-view__loading">${escapeHTML(res.message || "無法載入每日靈修。")}</p></div>`;
+      return;
+    }
+    const d = res.data || {};
+    const days = (Array.isArray(d.days) ? d.days : []).slice().sort((a, b) => a.dayIndex - b.dayIndex);
+    if (!days.length) {
+      host.innerHTML = '<div class="devotion-view"><p class="devotion-view__loading">內容準備中，敬請期待。</p></div>';
+      return;
+    }
+    const total = days[days.length - 1].dayIndex;
+    // 預設落在「今天對應的那天」，夾在有內容的範圍
+    if (devotionViewerDayIndex == null) {
+      const todayRow = days.find(x => x.displayDate === d.today);
+      if (todayRow) devotionViewerDayIndex = todayRow.dayIndex;
+      else {
+        const past = days.filter(x => x.displayDate <= d.today);
+        devotionViewerDayIndex = past.length ? past[past.length - 1].dayIndex : days[0].dayIndex;
+      }
+    }
+    const clampToAvailable = (idx) => {
+      const exact = days.find(x => x.dayIndex === idx);
+      if (exact) return exact;
+      const le = days.filter(x => x.dayIndex <= idx);
+      return le.length ? le[le.length - 1] : days[0];
+    };
+    let cur = clampToAvailable(devotionViewerDayIndex);
+    devotionViewerDayIndex = cur.dayIndex;
+
+    const paint = () => {
+      cur = days.find(x => x.dayIndex === devotionViewerDayIndex) || cur;
+      const locked = cur.locked === true;
+      const idxPos = days.findIndex(x => x.dayIndex === cur.dayIndex);
+      const prev = idxPos > 0 ? days[idxPos - 1] : null;
+      const next = idxPos < days.length - 1 ? days[idxPos + 1] : null;
+      const refs = Array.isArray(cur.passageRefs) ? cur.passageRefs : [];
+      const firstRef = refs[0] || null;
+      const reflections = Array.isArray(cur.reflections) ? cur.reflections : [];
+      const lsBase = `devotion_thought_${planId}_${cur.dayIndex}_`;
+      const isChecked = (i) => { try { return localStorage.getItem(lsBase + i) === "1"; } catch (_) { return false; } };
+
+      host.innerHTML = `
+        <div class="devotion-view">
+          <div class="devotion-view__nav">
+            <button type="button" class="pill-btn" data-devo-prev ${prev ? "" : "disabled"}>◀ 前一天</button>
+            <div class="devotion-view__daylabel">
+              <strong>第 ${cur.dayIndex} 天</strong> / 共 ${total} 天
+              <span class="devotion-view__date">${escapeHTML(cur.displayDate || "")}</span>
+            </div>
+            <button type="button" class="pill-btn" data-devo-next ${next ? "" : "disabled"}>後一天 ▶</button>
+          </div>
+          ${locked ? `
+            <div class="devotion-view__locked">
+              <span class="nlc-icon nlc-icon--md" data-icon="lock" aria-hidden="true"></span>
+              <p>這一天 ${escapeHTML(cur.displayDate || "")} 開放</p>
+            </div>` : `
+            <section class="devotion-view__block">
+              <h4 class="devotion-view__h">經文進度</h4>
+              <p class="devotion-view__passage">${escapeHTML(cur.passageLabel || "（未設定）")}</p>
+              ${firstRef && firstRef.book ? `<button type="button" class="secondary-btn" data-devo-read>打開閱讀器</button>` : ""}
+            </section>
+            <section class="devotion-view__block">
+              <h4 class="devotion-view__h">思想經文</h4>
+              ${reflections.length ? `<ul class="devotion-view__reflections">${reflections.map((t, i) => `
+                <li>
+                  <label>
+                    <input type="checkbox" data-devo-think="${i}" ${isChecked(i) ? "checked" : ""}>
+                    <span>${escapeHTML(t)}</span>
+                  </label>
+                </li>`).join("")}</ul>` : `<p class="devotion-view__muted">（本日無思想題）</p>`}
+            </section>
+            ${cur.videoUrl ? `
+            <section class="devotion-view__block">
+              <h4 class="devotion-view__h">靈修影片</h4>
+              <a class="secondary-btn" href="${escapeHTML(cur.videoUrl)}" target="_blank" rel="noopener noreferrer">
+                ${escapeHTML(cur.videoTitle || "觀看影片")} ↗
+              </a>
+            </section>` : ""}
+            ${typeof window.openVerseNotesForPlanDay === "function" ? `
+            <section class="devotion-view__block">
+              <button type="button" class="pill-btn" data-devo-notes>我的靈修筆記</button>
+            </section>` : ""}
+          `}
+        </div>`;
+
+      if (typeof hydrateIcons === "function") hydrateIcons(host);
+      host.querySelector("[data-devo-prev]")?.addEventListener("click", () => { if (prev) { devotionViewerDayIndex = prev.dayIndex; paint(); } });
+      host.querySelector("[data-devo-next]")?.addEventListener("click", () => { if (next) { devotionViewerDayIndex = next.dayIndex; paint(); } });
+      host.querySelector("[data-devo-read]")?.addEventListener("click", () => {
+        if (firstRef && firstRef.book && typeof readChapterDirect === "function") {
+          readChapterDirect(firstRef.book, Number(firstRef.chapterFrom) || 1);
+        }
+      });
+      host.querySelectorAll("[data-devo-think]").forEach(cb => {
+        cb.addEventListener("change", () => {
+          try { localStorage.setItem(lsBase + cb.dataset.devoThink, cb.checked ? "1" : "0"); } catch (_) {}
+        });
+      });
+      host.querySelector("[data-devo-notes]")?.addEventListener("click", () => {
+        if (typeof window.openVerseNotesForPlanDay === "function") {
+          window.openVerseNotesForPlanDay(planId, cur.dayIndex, cur.passageLabel);
+        }
+      });
+    };
+    paint();
+  });
+}
+window.renderDevotionViewer = renderDevotionViewer;
 
 function planGoBack() {
   if (getCurrentPlanRoute() !== PLAN_ROUTE.LIST) setPlanState(PLAN_ROUTE.LIST);

@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260902_gate_flash_and_unjoined_rpc" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260902_devotional_plan" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -1966,6 +1966,17 @@
                 </button>
               </div>
               <p class="admin-feature-setting-feedback hidden" id="admin-exam-feature-feedback" role="status"></p>
+              <div class="admin-feature-setting-row">
+                <div class="admin-feature-setting-row__label">
+                  <strong>每日靈修</strong>
+                  <span id="admin-daily-devotion-feature-status">讀取設定中…</span>
+                </div>
+                <button type="button" class="feature-switch" id="admin-daily-devotion-feature-toggle"
+                  role="switch" aria-checked="false" aria-label="開放每日靈修" disabled>
+                  <span class="feature-switch__thumb" aria-hidden="true"></span>
+                </button>
+              </div>
+              <p class="admin-feature-setting-feedback hidden" id="admin-daily-devotion-feature-feedback" role="status"></p>
             </div>
           </div>
           </div>
@@ -2118,6 +2129,14 @@
             <section class="admin-management-section" aria-labelledby="admin-exam-title">
               <div id="admin-exam-root" aria-live="polite">
                 <div class="admin-user-directory__empty">切換到此分頁後載入大測驗設定。</div>
+              </div>
+            </section>
+          </div>
+          <div id="admin-section-devotions" class="admin-section-panel hidden"
+            aria-labelledby="admin-devotions-title">
+            <section class="admin-management-section" aria-labelledby="admin-devotions-title">
+              <div id="admin-devotion-root" aria-live="polite">
+                <div class="admin-user-directory__empty">切換到此分頁後載入每日靈修內容。</div>
               </div>
             </section>
           </div>
@@ -2727,7 +2746,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260902_gate_flash_and_unjoined_rpc"></script>
+  <script type="module" src="js/app.js?v=20260902_devotional_plan"></script>
 </body>
 
 </html>
