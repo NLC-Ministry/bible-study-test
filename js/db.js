@@ -3394,10 +3394,13 @@ const db = {
 
   // ── 速讀「大測驗」(migration 0096 + nlc-data EXAM_RPC_FUNCTIONS) ──
   _examErrorMessage(error) {
-    const raw = (error && (error.message || error.error_description || error.msg)) || String(error || "");
+    // nlc-data 的錯誤回應是 { error: "<code>" }（放在 .error，不是 .message）——
+    // 一定要把 .error 也算進來，否則會被 String() 成 "[object Object]" 而全部落到
+    // 最後的通用訊息（例：nlc-data 尚未重新部署 → forbidden_rpc 認不出來）。
+    const raw = String((error && (error.message || error.error || error.error_description || error.msg || error.details)) || error || "");
     const messages = {
       speed_reading_exam_feature_disabled: "大測驗功能目前未開放。",
-      forbidden_rpc: "沒有權限執行此操作。",
+      forbidden_rpc: "沒有權限，或後端尚未更新（nlc-data 可能需要重新部署）。",
       exam_admin_required: "只有系統管理員可以進行此操作。",
       exam_paper_not_found: "找不到這份試卷。",
       exam_paper_not_editable: "試卷已發佈，無法再編輯。",

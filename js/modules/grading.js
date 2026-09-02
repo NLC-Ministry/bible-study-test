@@ -59,8 +59,22 @@ class GradingWorkspace {
     this._mirrorTimer = null;
     this._draftTimer = null;
     this._retryTimer = null;
-    this._onHide = () => { this._flushDraft("hide"); };
+    // 切背景 / 關頁：先把當下輸入同步寫進 localStorage（不靠網路），再試著存伺服器草稿
+    this._onHide = () => { this._readInputs(); this._mirror(); this._flushDraft("hide"); };
     this._onBeforeUnload = () => { this._readInputs(); this._mirror(); };
+  }
+
+  // 掃 localStorage：這份試卷、名單內、還有本機鏡射的 attempt = 有「還沒送出的批改」。
+  // token 失效被登出 → 重新登入回來後，靠這個把未送出的卷標成 ⚠、算進「送出全部待送」。
+  _scanLocalDrafts() {
+    try {
+      const prefix = `${LS_PREFIX}${this.paperId}_`;
+      const ids = new Set(this.roster.map((r) => r.attemptId));
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(prefix) && ids.has(k.slice(prefix.length))) this.dirty.add(k.slice(prefix.length));
+      }
+    } catch (_) {}
   }
 
   async boot() {
@@ -77,6 +91,7 @@ class GradingWorkspace {
     this.paper = res.data.paper || {};
     this.roster = Array.isArray(res.data.roster) ? res.data.roster.slice() : [];
     this.roster.forEach((r) => { if (r.hasDraft) this.draftSavedAt.set(r.attemptId, 0); });
+    this._scanLocalDrafts();
 
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") this._onHide();
@@ -539,6 +554,19 @@ class GradingWorkspace {
     const items = [];
     let incomplete = 0;
     for (const id of ids) {
+      // 重新登入後，dirty 裡可能有這次還沒開過的卷（題目沒在 sheetCache）→ 先補抓一次
+      if (!this.sheetCache.has(id)) {
+        try {
+          const sr = await window.db.getGradingSheet(id);
+          if (sr && sr.success && sr.data) {
+            this.sheetCache.set(id, {
+              questions: sr.data.questions || [], examinee: sr.data.examinee || {},
+              attemptStatus: sr.data.attemptStatus, resultsPublished: !!sr.data.resultsPublished,
+              rev: Number(sr.data.rev) || 0
+            });
+          }
+        } catch (_) {}
+      }
       const g = this._gradesFor(id);
       if (!g) { incomplete++; continue; }
       const cached = this.sheetCache.get(id);

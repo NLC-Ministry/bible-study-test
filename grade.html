@@ -16,21 +16,34 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&family=Outfit:wght@300;400;500;600;700&display=swap"
     rel="stylesheet">
-  <style>
-    .hidden, [hidden] { display: none !important; }
-    html, body { margin: 0; padding: 0; min-height: 100%; background: var(--bg-page, #101214); }
-    #grade-boot { display: flex; align-items: center; justify-content: center; min-height: 100vh; min-height: 100dvh;
-      color: var(--text-secondary, #9aa0a6); font-family: "Noto Sans TC", system-ui, sans-serif; font-size: 0.95rem; }
-  </style>
   <!-- 只載入批改頁需要的核心：Supabase client + 專案 CSS。不載 app 的 Tailwind / Chart / html2canvas。 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" crossorigin="anonymous"></script>
-  <link rel="stylesheet" href="index.css?v=20260903_online_grading">
+  <link rel="stylesheet" href="index.css?v=20260903_exam_err_msg">
+  <style>
+    /* index.css 的全域 `html, body { height:100%; overflow:hidden }` 是給 SPA
+       外殼用的（app 內有自己的捲動容器）。這是一頁式文件，要讓 body 自己捲。 */
+    html, body {
+      margin: 0; padding: 0;
+      height: auto; min-height: 100%;
+      overflow-x: hidden; overflow-y: auto;
+      overscroll-behavior: auto; touch-action: auto;
+      background: var(--bg-page, #101214);
+    }
+    /* 唯讀作答框要能選取 / 複製（index.css 對 body * 關掉了 user-select） */
+    .grade-q__resp, .grade-q__resp * { user-select: text; -webkit-user-select: text; }
+    .hidden, [hidden] { display: none !important; }
+    #grade-boot {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; min-height: 100dvh;
+      color: var(--text-secondary, #9aa0a6); font-family: "Noto Sans TC", system-ui, sans-serif; font-size: 0.95rem;
+    }
+  </style>
 </head>
 
 <body class="light-theme">
   <div id="grade-boot">載入批改頁中…</div>
   <div id="grade-root"></div>
-  <script type="module" src="js/grade-entry.js?v=20260903_online_grading"></script>
+  <script type="module" src="js/grade-entry.js?v=20260903_exam_err_msg"></script>
 </body>
 
 </html>
