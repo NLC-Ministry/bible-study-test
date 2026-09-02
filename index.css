@@ -15453,6 +15453,22 @@ textarea::placeholder {
 .exam-admin__grade-inputs { display: flex; flex-direction: column; gap: 0.5rem; }
 .exam-admin__grade-inputs label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.875rem; color: var(--text-secondary); }
 .exam-admin__grade-card.is-dirty { border-color: var(--color-warning); }
+.exam-admin__grade-sheet {
+  border: 1px solid var(--border-card); border-radius: 10px;
+  background: var(--bg-card); padding: 0.5rem 0.85rem; margin-bottom: 0.75rem;
+}
+.exam-admin__grade-sheet > summary {
+  cursor: pointer; font-size: 0.9375rem; font-weight: var(--type-weight-strong, 500); color: var(--text-primary);
+}
+.exam-admin__grade-sheet .exam-admin__meta { line-height: 1.6; margin: 0.5rem 0; }
+.exam-admin__grade-sheet-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.4rem 0; }
+.exam-admin__grade-sheet-result { margin-top: 0.5rem; }
+.exam-admin__grade-sheet-result .primary-btn { margin-top: 0.4rem; }
+.exam-admin__sheet-problems {
+  margin: 0.4rem 0 0; padding-left: 1.2rem; font-size: 0.875rem; color: var(--text-secondary);
+  line-height: 1.6; max-height: 220px; overflow-y: auto;
+}
+
 .exam-admin__grade-batch-bar {
   position: sticky;
   bottom: 0.75rem;

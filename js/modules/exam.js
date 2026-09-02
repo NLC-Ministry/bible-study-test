@@ -1246,6 +1246,16 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
         ${["pending", "graded", "all"].map((f) => `<button type="button" data-gf="${f}" class="${examAdminGradeFilter === f ? "active" : ""}">${{ pending: "待批", graded: "已批", all: "全部" }[f]}</button>`).join("")}
       </span>
     </div>
+    <details class="exam-admin__grade-sheet">
+      <summary>用 Google 試算表批改（匯出 / 匯回）</summary>
+      <p class="exam-admin__meta">匯出 CSV → 匯入一份 Google Sheet 共編（設「知道連結的人可編輯」）→ 大家填「第N題得分」「整卷評語」「認領人」→ 改完「檔案 → 下載 → CSV」→ 回這裡「從 CSV 匯回」。<b>「作答ID」欄請勿更動</b>；成績公布後就不能再匯回。</p>
+      <div class="exam-admin__grade-sheet-btns">
+        <button type="button" class="secondary-btn" data-grade-sheet-export>匯出批改用 CSV</button>
+        <button type="button" class="secondary-btn" data-grade-sheet-import ${locked ? "disabled" : ""}>從 CSV 匯回…</button>
+        <input type="file" accept=".csv,text/csv" data-grade-sheet-file hidden>
+      </div>
+      <div class="exam-admin__grade-sheet-result" data-grade-sheet-result></div>
+    </details>
     <div class="exam-admin__grade-search">
       <input type="search" class="form-control" data-grade-search placeholder="搜尋作答者姓名…" value="${esc(examAdminGradeSearchQuery)}">
     </div>
@@ -1257,6 +1267,17 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
 
   host.querySelector("[data-grade-export-txt]")?.addEventListener("click", (e) =>
     exportExamShortAnswersTxt(paperId, paperTitle, e.currentTarget));
+
+  // ── Google 試算表批改：匯出 CSV / 從 CSV 匯回 ──
+  host.querySelector("[data-grade-sheet-export]")?.addEventListener("click", (e) =>
+    exportGradingCsv(paperId, paperTitle, e.currentTarget));
+  const sheetFile = host.querySelector("[data-grade-sheet-file]");
+  host.querySelector("[data-grade-sheet-import]")?.addEventListener("click", () => sheetFile && sheetFile.click());
+  sheetFile?.addEventListener("change", () => {
+    const f = sheetFile.files && sheetFile.files[0];
+    if (f) importGradingCsv(paperId, f, host.querySelector("[data-grade-sheet-result]"), () => renderExamGrading(host, paperId, locked, paperStatus, paperTitle));
+    sheetFile.value = "";
+  });
 
   host.querySelectorAll("[data-gf]").forEach((b) => b.addEventListener("click", () => {
     const dirty = host.querySelectorAll(".exam-admin__grade-card.is-dirty").length;
@@ -1441,6 +1462,132 @@ async function renderExamPracticeRecords(host, paperId) {
       <p>作答：${describeExamValue(a.section, a.payload, a.response)}</p>
     </div>`).join("") || '<p class="exam-admin__meta">尚無作答內容。</p>';
   }));
+}
+
+// ── Google 試算表批改：CSV 往返 ─────────────────────────────────────────────
+// RFC4180 風格的極簡 CSV 解析（處理引號、""跳脫、\r\n；Google Sheets 匯出就是這種）
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = "", i = 0, inQ = false;
+  const s = String(text || "").replace(/^﻿/, "");
+  while (i < s.length) {
+    const c = s[i];
+    if (inQ) {
+      if (c === '"') {
+        if (s[i + 1] === '"') { field += '"'; i += 2; continue; }
+        inQ = false; i++; continue;
+      }
+      field += c; i++; continue;
+    }
+    if (c === '"') { inQ = true; i++; continue; }
+    if (c === ",") { row.push(field); field = ""; i++; continue; }
+    if (c === "\r") { i++; continue; }
+    if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
+    field += c; i++;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows.filter((r) => r.some((v) => String(v).trim() !== ""));
+}
+function csvCell(v) {
+  const s = String(v ?? "");
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+// 匯出：一位作答者一列，帶齊每道簡答題（題目 / 作答 / 參考答案 / 得分欄）
+async function exportGradingCsv(paperId, paperTitle, btn) {
+  const restore = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "匯出中…"; }
+  try {
+    const r = await db.getGradingSheetRows(paperId);
+    if (!r.success || !Array.isArray(r.data)) { toast(r.message || "匯出失敗"); return; }
+    const people = r.data;
+    if (!people.length) { toast("這份試卷沒有可批改的簡答作答"); return; }
+    const maxQ = people.reduce((m, p) => Math.max(m, (p.questions || []).length), 0);
+    const head = ["作答ID", "姓名", "牧區", "小組", "送出時間"];
+    for (let n = 1; n <= maxQ; n++) head.push(`第${n}題題目`, `第${n}題作答`, `參考答案${n}`, `第${n}題得分`, `第${n}題配分`);
+    head.push("整卷評語", "認領人");
+    const lines = [head.map(csvCell).join(",")];
+    people.forEach((p) => {
+      const cells = [p.attemptId, p.name || "", p.pastoralZone || "", p.smallGroup || "",
+        p.submittedAt ? new Date(p.submittedAt).toLocaleString("zh-TW", { hour12: false }) : ""];
+      const qs = (p.questions || []).slice().sort((a, b) => (a.position || 0) - (b.position || 0));
+      for (let n = 0; n < maxQ; n++) {
+        const q = qs[n];
+        if (!q) { cells.push("", "", "", "", ""); continue; }
+        cells.push(q.stem || "", q.response || "（未作答）", q.referenceAnswer || "",
+          q.awardedPoints == null ? "" : q.awardedPoints, q.points);
+      }
+      cells.push(p.overallComment || "", "");
+      lines.push(cells.map(csvCell).join(","));
+    });
+    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `批改_${paperTitle || "測驗"}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = restore || "匯出批改用 CSV"; }
+  }
+}
+
+// 匯回：解析 CSV → 預覽（幾筆可寫、哪些有問題）→ 確定 → exam_apply_sheet_grades
+async function importGradingCsv(paperId, file, resultBox, onDone) {
+  const show = (html) => { if (resultBox) resultBox.innerHTML = html; };
+  let text;
+  try { text = await file.text(); } catch (_) { show('<p class="exam-admin__meta">讀不到這個檔案。</p>'); return; }
+  const grid = parseCsv(text);
+  if (grid.length < 2) { show('<p class="exam-admin__meta">CSV 沒有資料列。</p>'); return; }
+
+  const header = grid[0].map((h) => String(h).trim());
+  const idxId = header.indexOf("作答ID");
+  const idxOverall = header.indexOf("整卷評語");
+  const scoreCols = [];   // { col, position }
+  header.forEach((h, c) => { const m = h.match(/^第(\d+)題得分$/); if (m) scoreCols.push({ col: c, position: Number(m[1]) }); });
+  if (idxId < 0 || !scoreCols.length) {
+    show('<p class="exam-admin__meta">找不到「作答ID」或「第N題得分」欄，請確認這是匯出的那份 CSV。</p>');
+    return;
+  }
+
+  const rows = [];
+  const problems = [];
+  for (let r = 1; r < grid.length; r++) {
+    const line = grid[r];
+    const aid = String(line[idxId] || "").trim();
+    const name = String(line[1] || "").trim();
+    if (!/^[0-9a-f-]{36}$/i.test(aid)) { problems.push(`第 ${r + 1} 列（${name || "?"}）：作答ID 無效`); continue; }
+    const grades = [];
+    let bad = "";
+    for (const sc of scoreCols) {
+      const raw = String(line[sc.col] ?? "").trim();
+      if (raw === "") { bad = `第 ${sc.position} 題未給分`; break; }
+      const v = Number(raw);
+      if (!Number.isFinite(v) || v < 0) { bad = `第 ${sc.position} 題分數「${raw}」不是有效數字`; break; }
+      grades.push({ position: sc.position, points: v });
+    }
+    if (bad) { problems.push(`第 ${r + 1} 列（${name || aid.slice(0, 8)}）：${bad}`); continue; }
+    rows.push({ attemptId: aid, grades, overall: idxOverall >= 0 ? String(line[idxOverall] || "") : "" });
+  }
+
+  show(`
+    <p class="exam-admin__meta">解析完成：<b>${rows.length}</b> 位可寫入${problems.length ? `，<b>${problems.length}</b> 列有問題（不會寫入）` : ""}。</p>
+    ${problems.length ? `<ul class="exam-admin__sheet-problems">${problems.slice(0, 30).map((p) => `<li>${esc(p)}</li>`).join("")}${problems.length > 30 ? `<li>…還有 ${problems.length - 30} 列</li>` : ""}</ul>` : ""}
+    ${rows.length ? '<button type="button" class="primary-btn" data-sheet-commit>確定匯回這 ' + rows.length + ' 位</button>' : ""}
+  `);
+  resultBox?.querySelector("[data-sheet-commit]")?.addEventListener("click", async (e) => {
+    e.currentTarget.disabled = true;
+    e.currentTarget.textContent = "寫入中…";
+    const rr = await db.applySheetGrades(paperId, rows);
+    if (!rr.success || !rr.data) { show(`<p class="exam-admin__meta">匯回失敗：${esc(rr.message || "")}</p>`); return; }
+    const d = rr.data;
+    const skipped = Array.isArray(d.skipped) ? d.skipped : [];
+    show(`
+      <p class="exam-admin__meta">已寫入 <b>${d.written}</b> 位${skipped.length ? `，<b>${skipped.length}</b> 位沒寫入` : ""}。</p>
+      ${skipped.length ? `<ul class="exam-admin__sheet-problems">${skipped.slice(0, 30).map((s) => `<li>${esc(String(s.attemptId || "").slice(0, 8))}…：${esc(s.error || "")}</li>`).join("")}</ul>` : ""}
+    `);
+    toast(`匯回完成，寫入 ${d.written} 位`);
+    if (typeof onDone === "function") setTimeout(onDone, 1200);
+  });
 }
 
 // 批改清單依「題號」分組：每題一個可收合區塊，待批的預設展開、批完的收起，
