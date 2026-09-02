@@ -3796,17 +3796,20 @@ window.toggleYouVersionChapter = function (checkboxEl, book, chapter, taskRound 
 
 function readChapterDirect(bookName, chapter) {
   const book = BIBLE_BOOKS.find(b => b.name === bookName);
-  if (book) {
-    state.readerState.bookId = book.id;
-    state.readerState.chapter = chapter;
+  if (!book) return;
+  state.readerState.bookId = book.id;
+  state.readerState.chapter = chapter;
 
-    document.getElementById("reader-testament-select").value = "all";
-    populateBookSelector("all");
-    populateChapterSelector();
-    saveReaderPreferences();
+  // 這幾個 DOM / 函式在部分情境（例如從靈修 viewer 呼叫、reader-view 尚未掛載）
+  // 不存在；缺了也沒關係，switchTab('reader-view') → renderReaderText() 會依
+  // state.readerState 重畫、renderReaderPicker() 會同步選單。
+  const tSel = document.getElementById("reader-testament-select");
+  if (tSel) tSel.value = "all";
+  try { if (typeof populateBookSelector === "function") populateBookSelector("all"); } catch (_) {}
+  try { if (typeof populateChapterSelector === "function") populateChapterSelector(); } catch (_) {}
+  try { if (typeof saveReaderPreferences === "function") saveReaderPreferences(); } catch (_) {}
 
-    appRouter.switchTab("reader-view");
-  }
+  appRouter.switchTab("reader-view");
 }
 
 // 靈修「打開閱讀器」：進入聖經讀經、整章顯示，直接跳到該經文的起始節。
@@ -3815,8 +3818,13 @@ function openReaderPassage(ref) {
   if (!ref || !ref.book) return;
   const book = BIBLE_BOOKS.find(b => b.name === ref.book);
   if (!book) return;
+  state.readerState.bookId = book.id;
+  state.readerState.chapter = Number(ref.chapterFrom) || 1;
   state.readerState.pendingScrollVerse = Number(ref.verseFrom) || 1;
-  readChapterDirect(ref.book, Number(ref.chapterFrom) || 1);
+  try { if (typeof saveReaderPreferences === "function") saveReaderPreferences(); } catch (_) {}
+  if (typeof appRouter !== "undefined" && typeof appRouter.switchTab === "function") {
+    appRouter.switchTab("reader-view");
+  }
 }
 window.openReaderPassage = openReaderPassage;
 
@@ -8826,6 +8834,7 @@ function renderProfileReadingStats(container) {
 }
 
 async function enterPlanListState() {
+  exitDevotionViewer();
   window.currentPlanViewState = PLAN_ROUTE.LIST;
   state.planDetailOpen = false;
   state.planActiveSubTab = "today";
@@ -8842,7 +8851,7 @@ async function enterPlanDetailState() {
     await enterPlanListState();
     return;
   }
-  // 每日靈修計畫：不跑讀經打卡機制，改渲染靈修 viewer。
+  // 每日靈修計畫：不跑讀經打卡機制，改渲染靈修 viewer（獨立容器，不碰一般詳情結構）。
   if ((state.activePlan.planKind || state.activePlan.plan_kind) === "devotional") {
     window.currentPlanViewState = PLAN_ROUTE.DETAIL;
     state.planDetailOpen = true;
@@ -8851,6 +8860,7 @@ async function enterPlanDetailState() {
     await renderDevotionViewer(state.activePlan);
     return;
   }
+  exitDevotionViewer();
   calculatePlanProgress();
   window.currentPlanViewState = PLAN_ROUTE.DETAIL;
   state.planDetailOpen = true;
@@ -8881,6 +8891,7 @@ async function enterGroupProgressState() {
     await enterPlanListState();
     return;
   }
+  exitDevotionViewer();
   window.currentPlanViewState = PLAN_ROUTE.GROUP;
   state.planDetailOpen = true;
 
@@ -8943,8 +8954,35 @@ async function showDiscoverPlans() {
 let devotionViewerDayIndex = null;
 let devotionViewerPlanId = null;
 
+// 靈修 viewer 用「獨立容器」#devotion-view-root（不碰 #plan-detail-subview，
+// 那是一般計畫詳情的大結構，被 innerHTML 洗掉就回不來了）。
+function showDevotionViewerRoot() {
+  const detailView = document.getElementById("plan-detail-view");
+  const legacy = document.getElementById("plan-detail-subview");
+  let root = document.getElementById("devotion-view-root");
+  if (!root && detailView) {
+    root = document.createElement("div");
+    root.id = "devotion-view-root";
+    detailView.appendChild(root);
+  }
+  // #plan-detail-subview 在 index.html 帶 inline `display:flex`，光加 .hidden 蓋不掉。
+  if (legacy) { legacy.classList.add("hidden"); legacy.style.display = "none"; }
+  if (root) { root.classList.remove("hidden"); root.style.display = "block"; }
+  return root;
+}
+function exitDevotionViewer() {
+  const root = document.getElementById("devotion-view-root");
+  if (root) { root.innerHTML = ""; root.classList.add("hidden"); root.style.display = "none"; }
+  const legacy = document.getElementById("plan-detail-subview");
+  if (legacy) {
+    legacy.classList.remove("hidden");
+    legacy.style.display = "flex"; // 還原 index.html 原本的 inline；之後 setOnlyPlanRouteVisible 會再依路由調整
+  }
+}
+window.exitDevotionViewer = exitDevotionViewer;
+
 function renderDevotionViewer(plan) {
-  const host = document.getElementById("plan-detail-subview");
+  const host = showDevotionViewerRoot();
   if (!host) return Promise.resolve();
   host.innerHTML = '<div class="devotion-view"><p class="devotion-view__loading">正在載入每日靈修…</p></div>';
 
