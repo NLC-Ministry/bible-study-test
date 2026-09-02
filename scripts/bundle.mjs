@@ -254,35 +254,6 @@ export function emitBundle({ root, outDir }) {
     writeFileSync(join(outDir, "exam.html"), outExamHtml, "utf8");
     console.log("DEBUG: exam.html + " + examJsFile + " written!");
   }
-
-  // ── 線上簡答批改獨立頁：grade.html + esbuild(js/grade-entry.js) ──
-  const gradeHtmlPath = join(root, "grade.html");
-  const gradeEntryPath = join(root, "js", "grade-entry.js");
-  if (existsSync(gradeHtmlPath) && existsSync(gradeEntryPath)) {
-    console.log("DEBUG: Bundling grade.html entry...");
-    const gradeTmpDir = mkdtempSync(join(tmpdir(), "bible-grade-"));
-    const gradeTmpFile = join(gradeTmpDir, "grade.bundle.js");
-    let gradeJs;
-    try {
-      execSync(
-        `${esbuildCmd} "${gradeEntryPath}" --bundle --minify --target=es2020 --format=esm --alias:@=. --outfile="${gradeTmpFile}"`,
-        { encoding: "utf8", cwd: root, stdio: ["ignore", "pipe", "pipe"] }
-      );
-      gradeJs = readFileSync(gradeTmpFile, "utf8").replace(/__BUILD_VERSION__/g, buildVer);
-    } catch (err) {
-      console.error("esbuild(grade) failed stderr:", err.stderr || err.message);
-      throw new Error(`esbuild grade entry failed: ${err.message}`);
-    } finally {
-      rmDirRecursive(gradeTmpDir);
-    }
-    const gradeJsFile = `grade.${contentHash(gradeJs)}.js`;
-    writeFileSync(join(outDir, gradeJsFile), gradeJs, "utf8");
-    const outGradeHtml = readFileSync(gradeHtmlPath, "utf8")
-      .replace(SCRIPT_RE, `<script type="module" src="/${gradeJsFile}"></script>`)
-      .replace(CSS_RE, `<link rel="stylesheet" href="/${cssFile}">`);
-    writeFileSync(join(outDir, "grade.html"), outGradeHtml, "utf8");
-    console.log("DEBUG: grade.html + " + gradeJsFile + " written!");
-  }
   console.log("DEBUG: emitBundle complete!");
 
   return { jsFile, cssFile };

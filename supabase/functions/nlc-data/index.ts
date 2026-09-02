@@ -122,16 +122,6 @@ const EXAM_RPC_FUNCTIONS = new Set([
   "exam_grade_answers_batch",
   "exam_get_stats",
   "exam_export_answers",
-  // 線上簡答批改頁（grade.html，migration 0146）。指派兩支要 admin；
-  // 批改五支的閘門是「這個 attempt/paper 指派給我」，在 SQL 端做，不需 admin 角色。
-  "exam_list_gradable_attempts",
-  "exam_search_grader_candidates",
-  "exam_assign_attempts",
-  "exam_get_grading_workspace",
-  "exam_get_grading_sheet",
-  "exam_save_grading_draft",
-  "exam_grade_attempt",
-  "exam_grade_attempts_bulk",
   "get_exam_notifications",
   "mark_exam_notifications_read"
 ]);
@@ -159,15 +149,9 @@ const EXAM_ADMIN_RPC_FUNCTIONS = new Set([
   "exam_finalize_expired",
   "exam_get_grading_queue",
   "exam_grade_answer",
-  "exam_grade_answers_batch",
-  // 線上簡答批改：指派清單／搜尋批改人員／指派動作要 admin/pastor（0146）
-  "exam_list_gradable_attempts",
-  "exam_search_grader_candidates",
-  "exam_assign_attempts"
+  "exam_grade_answers_batch"
   // exam_get_stats 不在此：它自己做角色 + 委派範圍檢查（migration 0121），
   // 開放給 great_zone_leader / zone_leader / group_leader 看自己範圍的統計。
-  // exam_get_grading_workspace / _sheet / _save_grading_draft / _grade_attempt /
-  // _grade_attempts_bulk 也不在此：閘門是「指派給我」，批改人員不必是 admin。
 ]);
 const PROFILE_SELECT = "id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, name_review_approved, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_contract_version, member_context_membership_lifecycle_state, member_context_placement_state, member_context_placement_workflow_state, member_context_has_required_placement, member_context_required_action, member_context_required_action_url, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments, role_definition:role_definitions(id, code, label, sort_order, is_assignable, can_manage_plans, can_manage_permissions, scope_type)";
 // Same as PROFILE_SELECT minus name_review_approved (migration 0069) — used

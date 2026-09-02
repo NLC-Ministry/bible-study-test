@@ -212,7 +212,6 @@ export async function renderExamPanel(root) {
   // 「填答案」：題目鎖定但要能補正解（正式版；或已有作答的測試版）——考完才給答案的情境
   const canFillAnswers = !canEditPaper || attemptCount > 0;
   if (examAdminSubview === "grade" && !hasShortSection) examAdminSubview = "bank";
-  if (examAdminSubview === "assign" && !hasShortSection) examAdminSubview = "bank";
   if (examAdminSubview === "practice" && !isLive) examAdminSubview = "bank";
   if (!canEditPaper && (examAdminSubview === "bank" || examAdminSubview === "meta")) examAdminSubview = canFillAnswers ? "answers" : "notice";
   if (!hasNotice && examAdminSubview === "notice") examAdminSubview = canEditPaper ? "bank" : "answers";
@@ -331,8 +330,7 @@ export async function renderExamPanel(root) {
       ${canEditPaper ? `<button type="button" data-exam-sub="bank" class="${examAdminSubview === "bank" ? "active" : ""}">題庫編輯</button>
       <button type="button" data-exam-sub="meta" class="${examAdminSubview === "meta" ? "active" : ""}">試卷設定</button>` : ""}
       ${canFillAnswers ? `<button type="button" data-exam-sub="answers" class="${examAdminSubview === "answers" ? "active" : ""}">填答案</button>` : ""}
-      ${hasShortSection ? `<button type="button" data-exam-sub="grade" class="${examAdminSubview === "grade" ? "active" : ""}">簡答批改</button>
-      <button type="button" data-exam-sub="assign" class="${examAdminSubview === "assign" ? "active" : ""}">簡答指派</button>` : ""}
+      ${hasShortSection ? `<button type="button" data-exam-sub="grade" class="${examAdminSubview === "grade" ? "active" : ""}">簡答批改</button>` : ""}
       ${isLive ? `<button type="button" data-exam-sub="practice" class="${examAdminSubview === "practice" ? "active" : ""}">複習紀錄${practiceAttemptCount ? `（${practiceAttemptCount}）` : ""}</button>` : ""}
       <button type="button" data-exam-sub="stats" class="${examAdminSubview === "stats" ? "active" : ""}">統計</button>
     </nav>
@@ -388,7 +386,6 @@ export async function renderExamPanel(root) {
     if (examAdminSubview === "notice") renderExamNoticeForm(sub, paper, rerender);
     else if (examAdminSubview === "answers") renderExamAnswerKeys(sub, paper, questions, rerender);
     else if (examAdminSubview === "grade") { sub.innerHTML = '<div class="admin-user-directory__empty">載入批改清單…</div>'; await sweepExpired(); renderExamGrading(sub, paper.id, resultsPublished || paper.status !== "closed", paper.status, paper.title); }
-    else if (examAdminSubview === "assign") { sub.innerHTML = '<div class="admin-user-directory__empty">載入指派清單…</div>'; await sweepExpired(); renderExamAssign(sub, paper.id, resultsPublished); }
     else if (examAdminSubview === "practice") renderExamPracticeRecords(sub, paper.id);
     else if (examAdminSubview === "stats") { sub.innerHTML = '<div class="admin-user-directory__empty">載入統計…</div>'; await sweepExpired(); renderExamStats(sub, paper.id, hasShortSection); }
     else if (!canEditPaper) sub.innerHTML = '<div class="admin-user-directory__empty">正式版的題目與試卷設定不提供編輯，一律由對應的測試版按「推上正式版」維護。要查看題目請用上方「預覽試卷」。</div>';
@@ -1444,161 +1441,6 @@ async function renderExamPracticeRecords(host, paperId) {
       <p>作答：${describeExamValue(a.section, a.payload, a.response)}</p>
     </div>`).join("") || '<p class="exam-admin__meta">尚無作答內容。</p>';
   }));
-}
-
-// ── 簡答指派（把 attempt 分給批改人員；批改本身在獨立頁 grade.html）──────────
-let examAssignState = { graderId: null, graderName: "", selected: new Set() };
-async function renderExamAssign(host, paperId, locked = false) {
-  examAssignState.selected = new Set();
-  const gradeLink = `${location.origin}/grade?paper=${paperId}`;
-  const zoneFilterEl = () => host.querySelector("[data-ea-zone]");
-  const statusFilterEl = () => host.querySelector("[data-ea-status]");
-  const assignFilterEl = () => host.querySelector("[data-ea-assigned]");
-
-  const load = async () => {
-    const listBox = host.querySelector("[data-ea-list]");
-    if (listBox) listBox.innerHTML = '<div class="admin-user-directory__empty">載入中…</div>';
-    const filter = {
-      zone: zoneFilterEl()?.value || "",
-      status: statusFilterEl()?.value || "all",
-      assigned: assignFilterEl()?.value || "all"
-    };
-    const r = await db.listGradableAttempts(paperId, filter);
-    if (!r.success || !Array.isArray(r.data)) {
-      if (listBox) listBox.innerHTML = `<div class="admin-user-directory__empty">${esc(r.message || "載入失敗")}</div>`;
-      return;
-    }
-    const rows = r.data;
-    examAssignState.selected = new Set();
-    // 牧區下拉選項（第一次載入後補齊）
-    const zsel = zoneFilterEl();
-    if (zsel && zsel.dataset.filled !== "1") {
-      const zones = [...new Set(rows.map((x) => x.pastoralZone).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "zh-Hant"));
-      zsel.innerHTML = '<option value="">全部牧區</option>' + zones.map((z) => `<option value="${esc(z)}">${esc(z)}</option>`).join("");
-      zsel.dataset.filled = "1";
-    }
-    if (listBox) listBox.innerHTML = `
-      <p class="exam-assign__meta">共 ${rows.length} 位。勾選後指派給下方選定的批改人員。</p>
-      <div class="exam-assign__list-wrap"><table class="exam-assign__table">
-        <thead><tr>
-          <th><input type="checkbox" data-ea-all aria-label="全選"></th>
-          <th>姓名</th><th>牧區</th><th>小組</th><th>狀態</th><th>目前指派</th>
-        </tr></thead>
-        <tbody>${rows.map((x) => `<tr>
-          <td><input type="checkbox" data-ea-pick="${esc(x.attemptId)}"></td>
-          <td>${esc(x.name || "")}</td>
-          <td>${esc(x.pastoralZone || "—")}</td>
-          <td>${esc(x.smallGroup || "—")}</td>
-          <td>${x.status === "graded" ? "已批改" : "待批"}（${x.shortGraded || 0}/${x.shortTotal || 0}）</td>
-          <td>${x.assignedGraderName ? esc(x.assignedGraderName) : '<span class="exam-assign__meta">未指派</span>'}</td>
-        </tr>`).join("")}</tbody>
-      </table></div>`;
-    listBox.querySelector("[data-ea-all]")?.addEventListener("change", (e) => {
-      listBox.querySelectorAll("[data-ea-pick]").forEach((cb) => {
-        cb.checked = e.target.checked;
-        if (e.target.checked) examAssignState.selected.add(cb.dataset.eaPick);
-        else examAssignState.selected.delete(cb.dataset.eaPick);
-      });
-      syncAssignBtn();
-    });
-    listBox.querySelectorAll("[data-ea-pick]").forEach((cb) => cb.addEventListener("change", () => {
-      if (cb.checked) examAssignState.selected.add(cb.dataset.eaPick);
-      else examAssignState.selected.delete(cb.dataset.eaPick);
-      syncAssignBtn();
-    }));
-    examAssignState._rows = rows;
-    syncAssignBtn();
-  };
-
-  const syncAssignBtn = () => {
-    const btn = host.querySelector("[data-ea-assign]");
-    if (!btn) return;
-    const n = examAssignState.selected.size;
-    btn.disabled = n === 0 || !examAssignState.graderId || locked;
-    btn.textContent = examAssignState.graderId
-      ? `指派選取的 ${n} 張給 ${examAssignState.graderName}`
-      : `指派選取的 ${n} 張（先選批改人員）`;
-  };
-
-  host.innerHTML = `
-    <div class="exam-assign">
-      ${locked ? '<p class="exam-admin__meta">成績已公布並鎖定，指派為唯讀。</p>' : ""}
-      <div class="exam-assign__meta">批改連結（群發給批改人員，點進去 SSO 登入後只看到指派給自己的）：<br>
-        <code>${esc(gradeLink)}</code>
-        <button type="button" class="secondary-btn" data-ea-copy>複製連結</button>
-      </div>
-      <div class="exam-assign__bar">
-        <label>牧區<select data-ea-zone></select></label>
-        <label>狀態<select data-ea-status>
-          <option value="all">全部</option><option value="pending">待批</option><option value="graded">已批改</option>
-        </select></label>
-        <label>指派<select data-ea-assigned>
-          <option value="all">全部</option><option value="no">未指派</option><option value="yes">已指派</option>
-        </select></label>
-        <button type="button" class="secondary-btn" data-ea-reload>套用篩選</button>
-      </div>
-      <div class="exam-assign__grader">
-        <label>批改人員（搜尋姓名 / email）
-          <input type="search" data-ea-search placeholder="輸入至少 1 個字" ${locked ? "disabled" : ""}>
-        </label>
-        <div class="exam-assign__cands" data-ea-cands></div>
-        <button type="button" class="primary-btn" data-ea-assign disabled>指派選取的 0 張</button>
-      </div>
-      <div data-ea-list></div>
-    </div>`;
-
-  host.querySelector("[data-ea-copy]")?.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(gradeLink); toast("已複製批改連結"); }
-    catch (_) { toast("複製失敗，請手動選取"); }
-  });
-  host.querySelector("[data-ea-reload]")?.addEventListener("click", load);
-  [statusFilterEl(), assignFilterEl(), zoneFilterEl()].forEach((el) => el && el.addEventListener("change", load));
-
-  let searchTimer = null;
-  host.querySelector("[data-ea-search]")?.addEventListener("input", (e) => {
-    const q = e.target.value.trim();
-    if (searchTimer) clearTimeout(searchTimer);
-    const cands = host.querySelector("[data-ea-cands]");
-    if (q.length < 1) { if (cands) cands.innerHTML = ""; return; }
-    searchTimer = setTimeout(async () => {
-      const r = await db.searchGraderCandidates(q);
-      if (!cands) return;
-      const list = (r.success && Array.isArray(r.data)) ? r.data : [];
-      cands.innerHTML = list.length
-        ? list.map((c) => `<button type="button" class="exam-assign__cand${c.id === examAssignState.graderId ? " exam-assign__cand--on" : ""}" data-ea-cand="${esc(c.id)}" data-ea-cand-name="${esc(c.name || "")}">
-            ${esc(c.name || "（未命名）")}　<span class="exam-assign__meta">${esc(c.pastoralZone || "")}　${esc(c.email || "")}</span></button>`).join("")
-        : '<p class="exam-assign__meta">找不到符合的人。</p>';
-      cands.querySelectorAll("[data-ea-cand]").forEach((b) => b.addEventListener("click", () => {
-        examAssignState.graderId = b.dataset.eaCand;
-        examAssignState.graderName = b.dataset.eaCandName || "";
-        cands.querySelectorAll("[data-ea-cand]").forEach((x) => x.classList.toggle("exam-assign__cand--on", x === b));
-        syncAssignBtn();
-      }));
-    }, 300);
-  });
-
-  host.querySelector("[data-ea-assign]")?.addEventListener("click", async (e) => {
-    const ids = [...examAssignState.selected];
-    if (!ids.length || !examAssignState.graderId) return;
-    const rows = examAssignState._rows || [];
-    const gradedSel = ids.filter((id) => (rows.find((x) => x.attemptId === id) || {}).status === "graded");
-    let force = false;
-    if (gradedSel.length) {
-      if (!confirm(`選取的 ${ids.length} 張裡有 ${gradedSel.length} 張已改完。已改完的預設不改派；要一併強制改派嗎？（確定＝強制改派，取消＝只派還沒改完的）`)) {
-        force = false;
-      } else { force = true; }
-    }
-    e.target.disabled = true;
-    const r = await db.assignExamAttempts(paperId, ids, examAssignState.graderId, force);
-    e.target.disabled = false;
-    if (!r.success) { toast(r.message || "指派失敗"); return; }
-    const a = (r.data && r.data.assigned) || [];
-    const s = (r.data && r.data.skipped) || [];
-    toast(`已指派 ${a.length} 張給 ${examAssignState.graderName}${s.length ? `，略過 ${s.length} 張` : ""}`);
-    load();
-  });
-
-  await load();
 }
 
 // 批改清單依「題號」分組：每題一個可收合區塊，待批的預設展開、批完的收起，

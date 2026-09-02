@@ -3443,15 +3443,7 @@ const db = {
       exam_batch_invalid: "批改資料格式不正確，這一批沒有寫入。",
       exam_batch_duplicate_answer: "同一題在這一批中重複出現，這一批沒有寫入。",
       exam_batch_validation_failed: "部分題目或分數不符合目前試卷，這一批沒有寫入。",
-      exam_batch_too_large: "單次最多儲存 500 筆批改，請分段送出。",
-      exam_grading_not_assigned: "這份考卷沒有指派給你批改。",
-      exam_grader_not_found: "找不到這位批改人員。",
-      exam_grading_stale: "這張考卷剛剛被別人改過。請重新載入這一張，再繼續。",
-      exam_grading_incomplete: "還有簡答題沒給分，無法送出這一張。",
-      exam_grading_out_of_range: "有題目的分數超出配分範圍。",
-      exam_grading_invalid: "評分資料格式不正確，這一張沒有寫入。",
-      exam_grading_attempt_not_gradable: "這份作答不在可批改狀態。",
-      exam_grading_batch_too_large: "單次最多送出 200 張，請分批。"
+      exam_batch_too_large: "單次最多儲存 500 筆批改，請分段送出。"
     };
     const key = Object.keys(messages).find(code => raw.includes(code));
     return key ? messages[key] : "目前無法載入大測驗資料，請稍後再試。";
@@ -3635,59 +3627,6 @@ const db = {
       p_grades: Array.isArray(grades) ? grades : []
     });
   },
-  // ── 線上簡答批改（grade.html，migration 0146）──────────────────────────
-  // 後台：可指派的作答者清單（admin/pastor）
-  async listGradableAttempts(paperId, filter = {}) {
-    return this._callExamRpc("exam_list_gradable_attempts", {
-      p_paper_id: paperId,
-      p_filter: filter && typeof filter === "object" ? filter : {}
-    });
-  },
-  // 後台：搜尋要指派的批改人員
-  async searchGraderCandidates(query) {
-    return this._callExamRpc("exam_search_grader_candidates", { p_query: String(query || "") });
-  },
-  // 後台：指派 / 改派
-  async assignExamAttempts(paperId, attemptIds = [], graderProfileId, force = false) {
-    return this._callExamRpc("exam_assign_attempts", {
-      p_paper_id: paperId,
-      p_attempt_ids: Array.isArray(attemptIds) ? attemptIds : [],
-      p_grader_profile_id: graderProfileId || null,
-      p_force: !!force
-    });
-  },
-  // 批改頁：我的名單
-  async getGradingWorkspace(paperId) {
-    return this._callExamRpc("exam_get_grading_workspace", { p_paper_id: paperId });
-  },
-  // 批改頁：單卷
-  async getGradingSheet(attemptId) {
-    return this._callExamRpc("exam_get_grading_sheet", { p_attempt_id: attemptId });
-  },
-  // 批改頁：L2 存草稿
-  async saveGradingDraft(attemptId, payload = {}, baseRev = 0) {
-    return this._callExamRpc("exam_save_grading_draft", {
-      p_attempt_id: attemptId,
-      p_payload: payload && typeof payload === "object" ? payload : {},
-      p_base_rev: Number(baseRev) || 0
-    });
-  },
-  // 批改頁：L3 單張送出
-  async gradeExamAttempt(attemptId, grades = [], overallComment = "", baseRev = 0) {
-    return this._callExamRpc("exam_grade_attempt", {
-      p_attempt_id: attemptId,
-      p_grades: Array.isArray(grades) ? grades : [],
-      p_overall_comment: overallComment || null,
-      p_base_rev: Number(baseRev) || 0
-    });
-  },
-  // 批改頁：L3 批次送出（items = [{attemptId, grades, overallComment, baseRev}]）
-  async gradeExamAttemptsBulk(items = []) {
-    return this._callExamRpc("exam_grade_attempts_bulk", {
-      p_items: Array.isArray(items) ? items : []
-    });
-  },
-
   async getExamPracticeRecords(paperId) {
     return this._callExamRpc("exam_get_practice_records", { p_paper_id: paperId });
   },

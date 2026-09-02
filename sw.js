@@ -47,11 +47,7 @@ function shouldBypassCache(request) {
   const isExamPage = url.origin === self.location.origin
     && (url.pathname === "/exam" || url.pathname === "/exam.html" || url.pathname === "/exam/");
 
-  // 線上簡答批改頁（grade.html）同理：獨立一頁，永遠走網路。
-  const isGradePage = url.origin === self.location.origin
-    && (url.pathname === "/grade" || url.pathname === "/grade.html" || url.pathname === "/grade/");
-
-  return isRepairPage || isExamPage || isGradePage || isSupabaseApiRequest(request) || hostname.includes("logto") || hostname.includes("sso.newlife.org.tw") ||
+  return isRepairPage || isExamPage || isSupabaseApiRequest(request) || hostname.includes("logto") || hostname.includes("sso.newlife.org.tw") ||
     hasAuthBridgeSignal || hasOauthCallbackSignal || url.pathname.includes("/auth/") || url.pathname.includes("/functions/v1/nlc-");
 }
 
