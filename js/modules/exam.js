@@ -2862,10 +2862,37 @@ function examResultRow(a, graded) {
 }
 
 // 成績檢討的連連看：把 data-resp / data-key 畫成線（綠＝你連的、紅虛線＝正解更正）
+const _matchBoardsObserved = typeof WeakSet === "function" ? new WeakSet() : null;
+
+// 連連看畫線：立刻畫一次，再等「下一個 frame」「字型載入完」各補畫一次
+// （fit-content 的方框寬度會隨中文字型載入而縮 → 圈圈位置會變 → 線要重畫），
+// 之後靠 ResizeObserver 只要方框尺寸變就自動重畫。
 function drawResultMatchLines(root) {
   if (!root) return;
+  _paintResultMatchLines(root);
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => _paintResultMatchLines(root));
+  try { document.fonts?.ready?.then(() => _paintResultMatchLines(root)); } catch (_) {}
+  if (_matchBoardsObserved && typeof ResizeObserver === "function") {
+    root.querySelectorAll(".exam-result__match-board").forEach((board) => {
+      if (_matchBoardsObserved.has(board)) return;
+      _matchBoardsObserved.add(board);
+      let raf = 0;
+      const ro = new ResizeObserver(() => {
+        if (raf) cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => _paintResultMatchLines(board));
+      });
+      ro.observe(board);
+    });
+  }
+}
+
+function _paintResultMatchLines(root) {
+  if (!root) return;
   const NS = "http://www.w3.org/2000/svg";
-  root.querySelectorAll(".exam-result__match-board").forEach((board) => {
+  const boards = [];
+  if (root.classList && root.classList.contains("exam-result__match-board")) boards.push(root);
+  root.querySelectorAll && root.querySelectorAll(".exam-result__match-board").forEach((b) => boards.push(b));
+  boards.forEach((board) => {
     let resp = {};
     let key = null;
     try { resp = JSON.parse(board.dataset.resp || "{}") || {}; } catch (_) { resp = {}; }

@@ -192,11 +192,14 @@ class GradingWorkspace {
       working = { scores: { ...serverScores, ...(draft.payload.scores || {}) }, overall: draft.payload.overall || "" };
       src = "draft";
     }
-    // 正規化：只留這張卷有的題
+    // 正規化：只留這張卷有的題。未作答的題預設 0 分（可再改），這樣整卷只剩
+    // 「有作答」的要人工給分。
     const scores = {};
     questions.forEach((q) => {
       const v = working.scores ? working.scores[q.questionId] : null;
-      scores[q.questionId] = (v === "" || v == null || Number.isNaN(Number(v))) ? null : Number(v);
+      const num = (v === "" || v == null || Number.isNaN(Number(v))) ? null : Number(v);
+      const unanswered = !(typeof q.response === "string" && q.response.trim() !== "");
+      scores[q.questionId] = num == null && unanswered ? 0 : num;
     });
     this.working = { scores, overall: working.overall || "" };
     this._mergeSource = src;
