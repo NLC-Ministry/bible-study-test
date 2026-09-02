@@ -25,6 +25,27 @@ describe("我的螢光＆筆記 review page", () => {
     }
   });
 
+  // Regression: the four profile subpages were later relocated out of
+  // #profile-view to the document's top level (a position:fixed containing-
+  // block bug caused by .view-pane's fadeIn transform), but the back-button
+  // wiring still scoped its selector to "#profile-view [data-profile-close]"
+  // — matching nothing, so all four subpages' back buttons silently did
+  // nothing. wireHighlightsNotesControls's own dirs stay unaffected since
+  // they don't scope by #profile-view.
+  it("wires [data-profile-close] without scoping the selector to #profile-view (subpages live outside it now)", () => {
+    expect(profile).toContain('document.querySelectorAll("[data-profile-close]")');
+    expect(profile).not.toContain('document.querySelectorAll("#profile-view [data-profile-close]")');
+  });
+
+  it("index.html documents that the subpages are deliberately outside #profile-view", () => {
+    const profileViewOpen = html.indexOf('id="profile-view"');
+    const profileViewClose = html.indexOf("</section>", profileViewOpen);
+    for (const key of ["exams", "preferences", "badges", "highlights-notes"]) {
+      const idx = html.indexOf(`id="profile-tab-content-${key}"`);
+      expect(idx, key).toBeGreaterThan(profileViewClose);
+    }
+  });
+
   it("removes the old segmented tab-strip in favor of list-style root rows", () => {
     expect(html).not.toContain("profile-tabs-list");
     expect(html).not.toContain("profile-tab-trigger");

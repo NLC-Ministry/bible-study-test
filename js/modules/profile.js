@@ -926,7 +926,11 @@ export function init() {
       openProfileDetail(row.getAttribute("data-profile-open"));
     };
   });
-  document.querySelectorAll("#profile-view [data-profile-close]").forEach(btn => {
+  // 這幾個子頁面 (profile-subpage) 現在刻意放在 #profile-view 外層（見
+  // index.html 上方那段註解：view-pane 的 fadeIn 動畫留下的 transform 會讓
+  // position:fixed 的子頁面定位錯誤，只能搬到最外層），選取器不能再限定在
+  // #profile-view 底下，不然一個都選不到、返回鈕全部沒作用。
+  document.querySelectorAll("[data-profile-close]").forEach(btn => {
     btn.onclick = (e) => {
       e.preventDefault();
       closeProfileDetail();
