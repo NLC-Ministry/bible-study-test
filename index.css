@@ -13871,8 +13871,10 @@ select,
     overflow: hidden;
   }
 
-  /* 內容區當全螢幕子頁：從 app 頂 bar 下緣開始（頂 bar 保留給返回鍵），
-     不蓋到底部導覽列。返回鍵由 #global-back-btn 提供（見 updateNavigationChrome）。 */
+  /* 內容區當全螢幕子頁：從 app 頂 bar 下緣開始（頂 bar 保留給返回鍵）到視窗底。
+     底部導覽列 fixed 蓋在上面（z-index 更高），所以捲動內容的 padding-bottom
+     必須留出「底部導覽列高 + 安全區 + 餘裕」，否則最後一段內容被導覽列蓋掉。
+     返回鍵由 #global-back-btn 提供（見 updateNavigationChrome）。 */
   body.admin-section-open #admin-view > #admin-section-content {
     position: fixed;
     top: calc(var(--app-top-bar-height, 56px) + var(--app-safe-top, 0px));
@@ -13882,8 +13884,9 @@ select,
     z-index: 200; /* < --z-header (300)，讓頂 bar 的返回鍵在上面可點 */
     background: var(--bg-app);
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-    padding: 1rem 1rem 3rem;
+    padding: 1rem 1rem calc(var(--app-bottom-nav-height, 72px) + var(--app-safe-bottom, 0px) + 2rem);
   }
 }
 
@@ -15532,3 +15535,21 @@ textarea::placeholder {
 }
 .admin-devotion__editor label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.875rem; color: var(--text-secondary); }
 .admin-devotion__pub { flex-direction: row !important; align-items: center; gap: 0.5rem !important; }
+
+/* 每日靈修「開發中、只有管理員看得到」標記 */
+.plan-card__dev-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: var(--type-weight-strong, 500);
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 14%, var(--bg-card));
+  border: 1px solid color-mix(in srgb, var(--color-warning) 30%, var(--border-card));
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.plan-card--dev {
+  border-color: color-mix(in srgb, var(--color-warning) 40%, var(--border-card));
+}

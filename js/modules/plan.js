@@ -2418,9 +2418,13 @@ function renderPresetPlansList() {
     const key = plan.id || plan.presetKey;
     const isCampaignStage = window.isCampaignStagePlan(plan);
     const isLockedStage = window.isCampaignStageLocked(plan);
+    const isDevotional = (plan.planKind || plan.plan_kind) === "devotional";
+    const devDevMode = isDevotional && window.isDevotionalPlanDevMode(plan);
     const isFixed = plan.isFixed !== false && plan.is_fixed !== false;
     const scheduleLabel = isCampaignStage
       ? `第 ${Number(plan.stageNo || plan.campaignDefinition && plan.campaignDefinition.stageNo)} 階段・第 ${Number(plan.roundNo || plan.campaignDefinition && plan.campaignDefinition.roundNo)} 輪`
+      : isDevotional
+      ? `每日靈修・${getDurationLabel(plan.startDate, plan.endDate)}`
       : (isFixed ? getDurationLabel(plan.startDate, plan.endDate) : `彈性開始・${getDurationLabel(plan.startDate, plan.endDate)}`);
     const description = plan.description || "";
     const awardName = plan.awardName || plan.campaignDefinition && plan.campaignDefinition.awardName || "";
@@ -2430,12 +2434,12 @@ function renderPresetPlansList() {
       : "";
 
     const card = document.createElement("div");
-    card.className = "plan-card joined-plan-item-card";
+    card.className = "plan-card joined-plan-item-card" + (devDevMode ? " plan-card--dev" : "");
     card.innerHTML = renderPlanCardShell({
       plan,
       variant: isLockedStage ? "available-locked" : (isUpcomingFixed ? "available-upcoming" : "available"),
       header: renderPlanCardHeader({
-        title: escapeHTML(plan.name),
+        title: escapeHTML(plan.name) + (devDevMode ? ' <span class="plan-card__dev-badge">開發中・會友看不到</span>' : ""),
         meta: `
           <span class="nlc-icon nlc-icon--sm" data-icon="calendarThirty" aria-hidden="true"></span>
           <span>${escapeHTML(scheduleLabel)}</span>
@@ -2454,6 +2458,12 @@ function renderPresetPlansList() {
           value: "\u5c1a\u672a\u958b\u653e",
           tone: "warning"
         },
+        devDevMode && {
+          icon: "lock",
+          label: "\u958b\u653e\u72c0\u614b",
+          value: "\u958b\u767c\u4e2d\uff0c\u5c1a\u672a\u5c0d\u6703\u53cb\u958b\u653e\uff08\u53ea\u6709\u4f60\u770b\u5f97\u5230\uff09",
+          tone: "warning"
+        },
         upcomingNotice && {
           icon: "hourglass",
           label: "開放狀態",
@@ -2461,13 +2471,19 @@ function renderPresetPlansList() {
           tone: "warning"
         }
       ]),
-      actions: isLockedStage ? "" : renderPlanCardActions([
+      actions: (isLockedStage || isDevotional) ? "" : renderPlanCardActions([
         { kind: "primary", icon: "bookOpen", label: "自己加入", action: "solo-join" },
         { kind: "secondary", icon: "people", label: "建立團隊", action: "team-create" }
       ])
     });
 
     const openDetails = () => {
+      if (isDevotional) {
+        if (typeof window.previewDevotionalPlanAsMember === "function") {
+          window.previewDevotionalPlanAsMember(plan.globalPlanId || plan.id);
+        }
+        return;
+      }
       if (isLockedStage) {
         openPlanDetailsDialog(plan);
         return;
@@ -3130,7 +3146,9 @@ async function isDailyDevotionFeatureEnabled() {
   return dailyDevotionFeatureRequest;
 }
 window.isDailyDevotionFeatureEnabled = isDailyDevotionFeatureEnabled;
-// 每日靈修計畫是否對這個使用者可見：功能開了、或本人是管理員（先建內容用）。
+// 每日靈修計畫是否出現在「探索計畫」清單：
+//  · daily_devotion 功能開 → 所有人看得到
+//  · 功能關 → 只有 admin / pastor 看得到（卡片會標「開發中・會友看不到」），一般會友完全看不到
 function isDevotionalPlanVisibleToUser(plan) {
   if (!plan || (plan.planKind || plan.plan_kind) !== "devotional") return true; // 非靈修計畫不受此限
   if (window.dailyDevotionFeatureEnabled === true) return true;
@@ -3138,6 +3156,30 @@ function isDevotionalPlanVisibleToUser(plan) {
   return role === "admin" || role === "pastor";
 }
 window.isDevotionalPlanVisibleToUser = isDevotionalPlanVisibleToUser;
+// 目前這份靈修計畫是「開發中、只有管理員看得到」的狀態嗎？
+function isDevotionalPlanDevMode(plan) {
+  return (plan && (plan.planKind || plan.plan_kind) === "devotional")
+    && window.dailyDevotionFeatureEnabled !== true;
+}
+window.isDevotionalPlanDevMode = isDevotionalPlanDevMode;
+
+// 管理員預覽：直接把某靈修計畫設為 activePlan 並切到「計畫」分頁的詳情
+// （enterPlanDetailState 的 devotional 分支會渲染 renderDevotionViewer）。
+function previewDevotionalPlanAsMember(globalPlanId) {
+  const gp = (state.globalPlans || []).find(p => String(p.id) === String(globalPlanId)
+    || String(p.globalPlanId) === String(globalPlanId));
+  if (!gp) return;
+  state.activePlan = gp;
+  state.planDetailOpen = true;
+  state.planActiveSubTab = "today";
+  const onPlanTab = typeof window.appRouter !== "undefined" && window.appRouter.currentTab === "plan-view";
+  if (onPlanTab && typeof setPlanState === "function") {
+    setPlanState(PLAN_ROUTE.DETAIL);
+  } else if (typeof window.appRouter !== "undefined" && typeof window.appRouter.switchTab === "function") {
+    window.appRouter.switchTab("plan-view", { keepPlanDetail: true });
+  }
+}
+window.previewDevotionalPlanAsMember = previewDevotionalPlanAsMember;
 
 window.addEventListener("daily-quiz-feature-changed", event => {
   window.dailyQuizFeatureEnabled = event.detail?.enabled === true;

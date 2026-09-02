@@ -2743,7 +2743,9 @@ async function renderAdminDevotionPlan(root, forceRefresh = false) {
             <span class="feature-switch__thumb" aria-hidden="true"></span>
           </button>
         </label>
+        <button type="button" class="secondary-btn" id="admin-devotion-preview">預覽會友畫面</button>
       </div>
+      <p class="admin-devotion__hint">「每日靈修」功能未開放時，會友和探索計畫都看不到這份計畫；要檢視會友端畫面請用上方「預覽會友畫面」。</p>
       <p class="admin-feature-setting-feedback hidden" id="admin-devotion-feedback" role="status"></p>
 
       <details class="admin-devotion__import">
@@ -2773,6 +2775,14 @@ async function renderAdminDevotionPlan(root, forceRefresh = false) {
   root.querySelector('#admin-devotion-plan-select')?.addEventListener('change', (e) => {
     adminDevotionSelectedPlanId = String(e.target.value);
     renderAdminDevotionPlan(root, true);
+  });
+
+  root.querySelector('#admin-devotion-preview')?.addEventListener('click', () => {
+    if (typeof window.previewDevotionalPlanAsMember === 'function') {
+      window.previewDevotionalPlanAsMember(planId);
+    } else if (typeof showToast === 'function') {
+      showToast('預覽功能載入中，請切到「計畫」分頁再試一次。');
+    }
   });
 
   const feedback = root.querySelector('#admin-devotion-feedback');
