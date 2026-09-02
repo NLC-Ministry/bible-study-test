@@ -8980,27 +8980,77 @@ function renderDevotionViewer(plan) {
     let cur = clampToAvailable(devotionViewerDayIndex);
     devotionViewerDayIndex = cur.dayIndex;
 
+    // ── 本地「已讀 / 已思想」（不入庫）──
+    const readKey = (di) => `devotion_read_${planId}_${di}`;
+    const thinkKey = (di, i) => `devotion_thought_${planId}_${di}_${i}`;
+    const lsGet = (k) => { try { return localStorage.getItem(k) === "1"; } catch (_) { return false; } };
+    const lsSet = (k, v) => { try { localStorage.setItem(k, v ? "1" : "0"); } catch (_) {} };
+    const dayDone = (row) => {
+      if (row.locked) return false;
+      if (!lsGet(readKey(row.dayIndex))) return false;
+      const rs = Array.isArray(row.reflections) ? row.reflections : [];
+      return rs.every((_, i) => lsGet(thinkKey(row.dayIndex, i)));
+    };
+
+    const todayStr = d.today || "";
+    const checkIcon = typeof renderIcon === "function" ? renderIcon("check", { size: "sm", className: "nlc-icon" }) : "✓";
+
+    // ── 日曆（沿用計畫的 .plan-calendar 樣式）──
+    const buildCalendar = () => {
+      const dts = days.map(x => new Date(`${x.displayDate}T00:00:00`)).filter(x => !Number.isNaN(x.getTime()));
+      if (!dts.length) return "";
+      const min = new Date(Math.min(...dts)), max = new Date(Math.max(...dts));
+      const start = new Date(min.getFullYear(), min.getMonth(), 1);
+      start.setDate(start.getDate() - start.getDay()); // 回到週日
+      const end = new Date(max.getFullYear(), max.getMonth() + 1, 0);
+      end.setDate(end.getDate() + (6 - end.getDay()));
+      const byDate = new Map(days.map(x => [x.displayDate, x]));
+      let cells = "";
+      for (let t = new Date(start); t <= end; t.setDate(t.getDate() + 1)) {
+        const iso = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+        const row = byDate.get(iso);
+        const label = t.getDate() === 1 ? `${t.getMonth() + 1}/1` : `${t.getDate()}`;
+        if (!row) { cells += `<div class="plan-day-cell plan-day-cell--empty" aria-hidden="true"></div>`; continue; }
+        const cls = ["plan-day-cell"];
+        if (row.dayIndex === cur.dayIndex) cls.push("active");
+        if (iso === todayStr) cls.push("today");
+        if (dayDone(row)) cls.push("completed");
+        else if (iso < todayStr && !row.locked) cls.push("past-unread");
+        cells += `<button type="button" class="${cls.join(" ")}" data-devo-day="${row.dayIndex}"${iso === todayStr ? ' aria-current="date"' : ""}><span class="day-number">${label}</span></button>`;
+      }
+      return `<div class="calendar-component plan-calendar devotion-view__calendar">
+        <div class="calendar-weekdays">${["週日","週一","週二","週三","週四","週五","週六"].map(w => `<div>${w}</div>`).join("")}</div>
+        <div class="calendar-scroll-container scrollbar-none"><div class="calendar-grid">${cells}</div></div>
+      </div>`;
+    };
+
     const paint = () => {
       cur = days.find(x => x.dayIndex === devotionViewerDayIndex) || cur;
       const locked = cur.locked === true;
-      const idxPos = days.findIndex(x => x.dayIndex === cur.dayIndex);
-      const prev = idxPos > 0 ? days[idxPos - 1] : null;
-      const next = idxPos < days.length - 1 ? days[idxPos + 1] : null;
+      const reflections = Array.isArray(cur.reflections) ? cur.reflections : [];
       const refs = Array.isArray(cur.passageRefs) ? cur.passageRefs : [];
       const firstRef = refs[0] || null;
-      const reflections = Array.isArray(cur.reflections) ? cur.reflections : [];
-      const lsBase = `devotion_thought_${planId}_${cur.dayIndex}_`;
-      const isChecked = (i) => { try { return localStorage.getItem(lsBase + i) === "1"; } catch (_) { return false; } };
+      const passageRead = lsGet(readKey(cur.dayIndex));
+
+      const taskRow = ({ checked, title, opens, arrow, dataAttr }) => `
+        <div class="plan-task-item" ${dataAttr || ""}>
+          <button type="button" class="task-read-toggle" data-devo-toggle
+            aria-pressed="${checked ? "true" : "false"}" aria-label="${checked ? "取消已讀" : "標記已讀"}">
+            <span class="task-checkbox ${checked ? "checked" : ""}" aria-hidden="true">${checked ? checkIcon : ""}</span>
+          </button>
+          ${opens
+            ? `<button type="button" class="task-open-button" data-devo-open>
+                 <span class="task-title">${title}</span>
+                 ${arrow ? `<span class="task-arrow" aria-hidden="true">${typeof renderIcon === "function" ? renderIcon("chevronRight", { size: "sm", className: "nlc-icon" }) : "›"}</span>` : ""}
+               </button>`
+            : `<div class="task-open-button task-open-button--static"><span class="task-title">${title}</span></div>`}
+        </div>`;
 
       host.innerHTML = `
         <div class="devotion-view">
-          <div class="devotion-view__nav">
-            <button type="button" class="pill-btn" data-devo-prev ${prev ? "" : "disabled"}>◀ 前一天</button>
-            <div class="devotion-view__daylabel">
-              <strong>第 ${cur.dayIndex} 天</strong> / 共 ${total} 天
-              <span class="devotion-view__date">${escapeHTML(cur.displayDate || "")}</span>
-            </div>
-            <button type="button" class="pill-btn" data-devo-next ${next ? "" : "disabled"}>後一天 ▶</button>
+          ${buildCalendar()}
+          <div class="devotion-view__daylabel">
+            <strong>第 ${cur.dayIndex} 天</strong> / 共 ${total} 天　<span class="devotion-view__date">${escapeHTML(cur.displayDate || "")}</span>
           </div>
           ${locked ? `
             <div class="devotion-view__locked">
@@ -9009,18 +9059,17 @@ function renderDevotionViewer(plan) {
             </div>` : `
             <section class="devotion-view__block">
               <h4 class="devotion-view__h">經文進度</h4>
-              <p class="devotion-view__passage">${escapeHTML(cur.passageLabel || "（未設定）")}</p>
-              ${firstRef && firstRef.book ? `<button type="button" class="secondary-btn" data-devo-read>打開閱讀器</button>` : ""}
+              <div class="plan-task-list">
+                ${taskRow({ checked: passageRead, title: escapeHTML(cur.passageLabel || "（未設定）"),
+                  opens: !!(firstRef && firstRef.book), arrow: true, dataAttr: 'data-devo-kind="passage"' })}
+              </div>
             </section>
             <section class="devotion-view__block">
               <h4 class="devotion-view__h">思想經文</h4>
-              ${reflections.length ? `<ul class="devotion-view__reflections">${reflections.map((t, i) => `
-                <li>
-                  <label>
-                    <input type="checkbox" data-devo-think="${i}" ${isChecked(i) ? "checked" : ""}>
-                    <span>${escapeHTML(t)}</span>
-                  </label>
-                </li>`).join("")}</ul>` : `<p class="devotion-view__muted">（本日無思想題）</p>`}
+              ${reflections.length ? `<div class="plan-task-list">${reflections.map((t, i) =>
+                taskRow({ checked: lsGet(thinkKey(cur.dayIndex, i)), title: escapeHTML(t),
+                  opens: false, dataAttr: `data-devo-kind="think" data-devo-i="${i}"` })).join("")}</div>`
+                : `<p class="devotion-view__muted">（本日無思想題）</p>`}
             </section>
             ${cur.videoUrl ? `
             <section class="devotion-view__block">
@@ -9029,32 +9078,33 @@ function renderDevotionViewer(plan) {
                 ${escapeHTML(cur.videoTitle || "觀看影片")} ↗
               </a>
             </section>` : ""}
-            ${typeof window.openVerseNotesForPlanDay === "function" ? `
-            <section class="devotion-view__block">
-              <button type="button" class="pill-btn" data-devo-notes>我的靈修筆記</button>
-            </section>` : ""}
           `}
         </div>`;
 
       if (typeof hydrateIcons === "function") hydrateIcons(host);
-      host.querySelector("[data-devo-prev]")?.addEventListener("click", () => { if (prev) { devotionViewerDayIndex = prev.dayIndex; paint(); } });
-      host.querySelector("[data-devo-next]")?.addEventListener("click", () => { if (next) { devotionViewerDayIndex = next.dayIndex; paint(); } });
-      host.querySelector("[data-devo-read]")?.addEventListener("click", () => {
-        if (firstRef && firstRef.book && typeof openReaderPassage === "function") {
-          openReaderPassage(firstRef);
-        } else if (firstRef && firstRef.book && typeof readChapterDirect === "function") {
-          readChapterDirect(firstRef.book, Number(firstRef.chapterFrom) || 1);
-        }
-      });
-      host.querySelectorAll("[data-devo-think]").forEach(cb => {
-        cb.addEventListener("change", () => {
-          try { localStorage.setItem(lsBase + cb.dataset.devoThink, cb.checked ? "1" : "0"); } catch (_) {}
+
+      host.querySelectorAll("[data-devo-day]").forEach(btn => btn.addEventListener("click", () => {
+        devotionViewerDayIndex = Number(btn.dataset.devoDay);
+        const sc = host.querySelector(".calendar-scroll-container");
+        const st = sc ? sc.scrollTop : 0;
+        paint();
+        const sc2 = host.querySelector(".calendar-scroll-container");
+        if (sc2) sc2.scrollTop = st;
+      }));
+
+      host.querySelectorAll(".plan-task-item").forEach(item => {
+        const kind = item.dataset.devoKind;
+        const i = item.dataset.devoI;
+        const key = kind === "think" ? thinkKey(cur.dayIndex, Number(i)) : readKey(cur.dayIndex);
+        item.querySelector("[data-devo-toggle]")?.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          lsSet(key, !lsGet(key));
+          paint();
         });
-      });
-      host.querySelector("[data-devo-notes]")?.addEventListener("click", () => {
-        if (typeof window.openVerseNotesForPlanDay === "function") {
-          window.openVerseNotesForPlanDay(planId, cur.dayIndex, cur.passageLabel);
-        }
+        item.querySelector("[data-devo-open]")?.addEventListener("click", () => {
+          if (firstRef && firstRef.book && typeof openReaderPassage === "function") openReaderPassage(firstRef);
+          else if (firstRef && firstRef.book && typeof readChapterDirect === "function") readChapterDirect(firstRef.book, Number(firstRef.chapterFrom) || 1);
+        });
       });
     };
     paint();

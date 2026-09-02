@@ -15485,17 +15485,19 @@ textarea::placeholder {
 .exam-stats__toolbar { margin: 0.6rem 0; }
 .exam-stats__roster { max-height: 420px; overflow: auto; }
 
-/* ── 每日靈修（devotional plan）──────────────────────────────────────────── */
-.devotion-view { display: flex; flex-direction: column; gap: 1.1rem; padding: 0.25rem 0 2rem; }
+/* ── 每日靈修（devotional plan）——沿用計畫的日曆 + 打勾任務列樣式 ────────── */
+.devotion-view { display: flex; flex-direction: column; gap: 1rem; padding: 0.25rem 0 2rem; }
 .devotion-view__loading, .devotion-view__muted { color: var(--text-muted); font-size: 0.9375rem; }
-.devotion-view__nav {
-  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
-  border: 1px solid var(--border-card); border-radius: var(--radius-md);
-  background: var(--bg-card); padding: 0.6rem 0.75rem;
+.devotion-view__calendar { margin: 0; }
+.devotion-view__calendar .plan-day-cell--empty {
+  background: transparent; border: none; box-shadow: none; pointer-events: none;
 }
-.devotion-view__daylabel { text-align: center; font-size: 0.9375rem; color: var(--text-secondary); }
+.devotion-view__daylabel {
+  text-align: center; font-size: 0.9375rem; color: var(--text-secondary);
+  padding: 0.25rem 0;
+}
 .devotion-view__daylabel strong { color: var(--text-primary); }
-.devotion-view__date { display: block; font-size: 0.875rem; color: var(--text-muted); margin-top: 0.15rem; }
+.devotion-view__date { color: var(--text-muted); }
 .devotion-view__block {
   border: 1px solid var(--border-card); border-radius: var(--radius-md);
   background: var(--bg-card); padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.6rem;
@@ -15503,11 +15505,14 @@ textarea::placeholder {
 .devotion-view__h {
   margin: 0; font-size: 0.9375rem; font-weight: var(--type-weight-strong, 500); color: var(--color-brand);
 }
-.devotion-view__passage { margin: 0; font-size: 1.0625rem; color: var(--text-primary); }
-.devotion-view__reflections { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.65rem; }
-.devotion-view__reflections li label { display: flex; gap: 0.6rem; align-items: flex-start; cursor: pointer; }
-.devotion-view__reflections li span { font-size: 0.9375rem; line-height: 1.6; color: var(--text-primary); }
-.devotion-view__reflections input:checked + span { color: var(--text-muted); text-decoration: line-through; }
+/* 思想經文列：沿用 .plan-task-item，但標題允許換行、對齊頂端 */
+.devotion-view__block .plan-task-item .task-title { white-space: normal; line-height: 1.6; }
+.devotion-view__block .plan-task-item[data-devo-kind="think"] { align-items: flex-start; }
+.devotion-view__block .task-open-button--static { cursor: default; }
+.devotion-view__block .task-read-toggle[aria-pressed="true"] ~ .task-open-button .task-title,
+.devotion-view__block .task-read-toggle[aria-pressed="true"] ~ .task-open-button--static .task-title {
+  color: var(--text-muted);
+}
 .devotion-view__locked {
   border: 1px dashed var(--border-card); border-radius: var(--radius-md);
   padding: 1.75rem 1rem; text-align: center; color: var(--text-muted); display: flex;
