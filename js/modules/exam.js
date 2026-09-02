@@ -1175,11 +1175,32 @@ async function exportExamShortAnswersTxt(paperId, paperTitle, btn) {
       }
       people.get(key).rows.push(row);
     });
-    const sorted = [...people.values()].sort((a, b) => String(a.name).localeCompare(String(b.name), "zh-Hant"));
+    // 完全沒作答（每題都空白）的人沉到最下面；其餘依 牧區 → 小組 → 姓名 排序。
+    const hasAns = (p) => p.rows.some((row) => typeof row.response === "string" && row.response.trim());
+    const zoneKey = (p) => p.pastoralZone || "￿";   // 沒填牧區的排在同一區塊最後
+    const groupKey = (p) => p.smallGroup || "￿";
+    const sorted = [...people.values()].sort((a, b) => {
+      const aAns = hasAns(a), bAns = hasAns(b);
+      if (aAns !== bAns) return aAns ? -1 : 1;
+      return zoneKey(a).localeCompare(zoneKey(b), "zh-Hant")
+        || groupKey(a).localeCompare(groupKey(b), "zh-Hant")
+        || String(a.name).localeCompare(String(b.name), "zh-Hant");
+    });
+    const answeredCount = sorted.filter(hasAns).length;
     const bar = "━".repeat(28);
     const title = paperTitle || "速讀測驗";
-    const out = [`《${title}》簡答題作答`, `匯出 ${fmtTime(Date.now())}　共 ${sorted.length} 位`, ""];
+    const out = [
+      `《${title}》簡答題作答`,
+      `匯出 ${fmtTime(Date.now())}　共 ${sorted.length} 位（已作答 ${answeredCount}、未作答 ${sorted.length - answeredCount}）`,
+      ""
+    ];
+    let unansweredMarked = false;
     sorted.forEach((p) => {
+      if (!hasAns(p) && !unansweredMarked) {
+        unansweredMarked = true;
+        out.push("");
+        out.push(`※※※ 以下為未作答（每題皆空白），共 ${sorted.length - answeredCount} 位 ※※※`);
+      }
       out.push(bar);
       out.push(`姓名：${p.name}`);
       out.push(`${p.greatRegion ? "大區：" + p.greatRegion + "　" : ""}牧區：${p.pastoralZone || "—"}　小組：${p.smallGroup || "—"}`);
