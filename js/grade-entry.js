@@ -21,7 +21,7 @@ import './auth-launch.mjs';
 import './db.js?v=20260903_exam_grading_fixes';
 import './utils.js?v=20260903_score_input_validation';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
-import { mountGradingWorkspace } from './modules/grading.js?v=20260903_login_continuation_return_fix';
+import { mountGradingWorkspace } from './modules/grading.js?v=20260903_phantom_dirty_fix';
 
 const boot = document.getElementById('grade-boot');
 const setBoot = (msg) => { if (boot) boot.textContent = msg; };

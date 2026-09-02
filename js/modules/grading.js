@@ -134,6 +134,12 @@ class GradingWorkspace {
   }
   _mirror() {
     if (!this.currentId || !this.working) return;
+    // 只有真的編輯過(dirty)才寫本機鏡射。切換/離開頁面時原本每次都會無條件
+    // 蓋一次新的 __savedAt——就算完全沒動過分數也一樣，害下次打開這張卷時
+    // 「本機比伺服器新」的比較永遠贏，被錯誤標成「⚠ 有未存修改」，而且這份
+    // 沒人編輯過的本機快照還可能蓋掉伺服器上其實更完整、更新的草稿，讓已經
+    // 打好的分數看起來又變空白、送出鈕也跟著被擋下來。
+    if (!this.dirty.has(this.currentId)) return;
     try {
       localStorage.setItem(this._lsKey(this.currentId), JSON.stringify({
         scores: this.working.scores || {},
