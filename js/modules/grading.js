@@ -60,6 +60,7 @@ class GradingWorkspace {
     this._draftTimer = null;
     this._retryTimer = null;
     this._authExpiredShown = false;
+    this._openToken = 0; // 見 openAttempt()：擋掉連續快速切換造成的競態，只認最後一次點擊的結果
     // 切背景 / 關頁：先把當下輸入同步寫進 localStorage（不靠網路），再試著存伺服器草稿
     this._onHide = () => { this._readInputs(); this._mirror(); this._flushDraft("hide"); };
     this._onBeforeUnload = () => { this._readInputs(); this._mirror(); };
@@ -154,17 +155,27 @@ class GradingWorkspace {
   }
 
   // ── 開一張卷 ─────────────────────────────────────────────────────────
+  // 連續快速切換（上一位/下一位連點、名單裡連續點好幾張）會讓好幾個
+  // openAttempt() 同時飛在網路上；沒有防護的話，先點的那次如果比較慢回來，
+  // 會在畫面已經換到後面那張之後才把結果蓋回去——分數欄位、送出鈕、重批鈕
+  // 全部依賴 this._readonly / this.working / this.sheetCache，一旦被舊回應
+  // 蓋過去，就會整組卡住，操作幾次之後看起來像「壞掉了」。用跟朗讀那邊
+  // （currentAudioSessionId）一樣的作法：每次呼叫都領一個新token，await
+  // 回來後如果不是最新的那個就直接放棄，不去動任何畫面狀態。
   async openAttempt(id, opts = {}) {
+    const myToken = ++this._openToken;
     if (this.currentId && this.currentId !== id) {
       this._readInputs();
       this._mirror();
       await this._flushDraft("switch");
+      if (myToken !== this._openToken) return;
     }
     if (this._draftTimer) { clearTimeout(this._draftTimer); this._draftTimer = null; }
 
     this.currentId = id;
     this.root.innerHTML = '<div class="grade-loading">正在載入這一張…</div>';
     const res = await window.db.getGradingSheet(id);
+    if (myToken !== this._openToken) return;
     if (!res.success) {
       if (res.authExpired) { this._showAuthExpiredBanner(); this.root.innerHTML = ""; return; }
       this.root.innerHTML = `<div class="grade-error"><p>${esc(res.message || "載入失敗")}</p>
@@ -412,9 +423,11 @@ class GradingWorkspace {
     r.querySelector("[data-g-draft]")?.addEventListener("click", async (e) => {
       this._readInputs(); this._mirror();
       e.currentTarget.disabled = true;
-      await this._flushDraft("button", { force: true });
+      const saved = await this._flushDraft("button", { force: true });
       e.currentTarget.disabled = this._readonly;
-      toast("已儲存草稿");
+      // 失敗時 _flushDraft 自己已經跳過對應的錯誤訊息（草稿存檔失敗／衝突／
+      // 登入過期），這裡只在真的存成功時才說「已儲存草稿」。
+      if (saved) toast("已儲存草稿");
     });
     r.querySelector("[data-g-submit]")?.addEventListener("click", () => this._submitOne());
     r.querySelector("[data-g-batch]")?.addEventListener("click", () => this._submitBatch());
@@ -534,11 +547,14 @@ class GradingWorkspace {
   }
 
   // ── L2 草稿 ─────────────────────────────────────────────────────────
+  // 回傳這次是否真的存成功——按鈕那邊靠這個決定要不要顯示「已儲存草稿」，
+  // 不要不管結果都宣稱成功（之前不管存草稿實際上有沒有失敗，都會在這句
+  // 之後又補一個「已儲存草稿」，把失敗訊息蓋過去，看起來像存了、其實沒存）。
   async _flushDraft(reason, opts = {}) {
     if (this._draftTimer) { clearTimeout(this._draftTimer); this._draftTimer = null; }
     const id = this.currentId;
-    if (!id || this._readonly) return;
-    if (!opts.force && !this.dirty.has(id)) return;
+    if (!id || this._readonly) return false;
+    if (!opts.force && !this.dirty.has(id)) return false;
     this._readInputs();
     const payload = { scores: this.working.scores || {}, overall: this.working.overall || "" };
     let res;
@@ -551,13 +567,18 @@ class GradingWorkspace {
       this.draftSavedAt.set(id, Date.now());
       if (res.data && res.data.rev) this.baseRev = Number(res.data.rev) || this.baseRev;
       if (id === this.currentId) this._refreshStatusLine();
+      return true;
     } else if (res && res.authExpired) {
       this._showAuthExpiredBanner();
+      return false;
     } else if (res && /exam_grading_stale/.test((res.error && (res.error.message || res.error)) || res.message || "")) {
       if (id === this.currentId) this._showConflict("draft");
+      return false;
     } else if (reason === "button") {
       toast((res && res.message) || "草稿存檔失敗，稍後會再試");
+      return false;
     }
+    return false;
   }
 
   // ── 衝突 ────────────────────────────────────────────────────────────
