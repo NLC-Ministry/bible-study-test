@@ -630,6 +630,7 @@ async function renderExamStats(host, paperId, hasShort = true) {
       <div class="exam-stats__toolbar">
         <button type="button" class="secondary-btn" id="exam-stats-csv">匯出分數 CSV</button>
         <button type="button" class="secondary-btn" id="exam-answers-csv">匯出完整作答 CSV</button>
+        ${hasShort ? '<button type="button" class="secondary-btn" id="exam-short-txt">匯出簡答題（文字檔）</button>' : ""}
       </div>
       <div class="exam-stats__roster">${tbl(d.roster || [], [
         { h: "姓名", f: (r) => esc(r.name) },
@@ -709,6 +710,72 @@ async function renderExamStats(host, paperId, hasShort = true) {
     a2.download = `exam_${(d.paper && d.paper.title) || "results"}_作答明細.csv`;
     a2.click();
     setTimeout(() => URL.revokeObjectURL(a2.href), 1000);
+  });
+
+  // 匯出簡答題（純文字檔）：每人一段，含姓名 / 牧區 / 小組 + 逐題 題目 / 作答全文 / 得分。
+  host.querySelector("#exam-short-txt")?.addEventListener("click", async (e) => {
+    e.target.disabled = true;
+    const label = e.target.textContent;
+    e.target.textContent = "匯出中…";
+    const r = await db.exportExamAnswers(paperId);
+    e.target.disabled = false;
+    e.target.textContent = label;
+    if (!r.success || !Array.isArray(r.data)) { toast(r.message || "匯出失敗"); return; }
+
+    const shorts = r.data.filter((row) => row.section === "shortanswer");
+    if (!shorts.length) { toast("這份試卷沒有簡答題作答資料"); return; }
+
+    const fmtTime = (v) => {
+      if (!v) return "";
+      const dt = new Date(v);
+      return Number.isNaN(dt.getTime()) ? String(v) : dt.toLocaleString("zh-TW", { hour12: false });
+    };
+    // 依「人」分組：同一人的多題排在一起
+    const people = new Map();
+    shorts.forEach((row) => {
+      const key = `${row.name || ""} ${row.pastoralZone || ""} ${row.smallGroup || ""} ${row.submittedAt || ""}`;
+      if (!people.has(key)) {
+        people.set(key, {
+          name: row.name || "（未填姓名）",
+          greatRegion: row.greatRegion || "",
+          pastoralZone: row.pastoralZone || "",
+          smallGroup: row.smallGroup || "",
+          status: row.status,
+          submittedAt: row.submittedAt,
+          rows: []
+        });
+      }
+      people.get(key).rows.push(row);
+    });
+    const sorted = [...people.values()].sort((a, b) => String(a.name).localeCompare(String(b.name), "zh-Hant"));
+
+    const bar = "━".repeat(28);
+    const title = (d.paper && d.paper.title) || "速讀測驗";
+    const out = [`《${title}》簡答題作答`, `匯出 ${fmtTime(Date.now())}　共 ${sorted.length} 位`, ""];
+    sorted.forEach((p) => {
+      out.push(bar);
+      out.push(`姓名：${p.name}`);
+      out.push(`${p.greatRegion ? "大區：" + p.greatRegion + "　" : ""}牧區：${p.pastoralZone || "—"}　小組：${p.smallGroup || "—"}`);
+      out.push(`狀態：${p.status === "graded" ? "已批改" : "待批改"}　送出 ${fmtTime(p.submittedAt)}`);
+      p.rows.sort((a, b) => (a.position || 0) - (b.position || 0)).forEach((row) => {
+        const stem = (row.payload && row.payload.stem) || "";
+        const ans = typeof row.response === "string" ? row.response.trim() : "";
+        const score = row.awardedPoints == null ? "未批改" : `${row.awardedPoints}`;
+        out.push("");
+        out.push(`第${row.position}題（${row.points ?? "?"}分）　得分：${score}`);
+        if (stem) out.push(`題目：${stem}`);
+        out.push("作答：");
+        out.push(ans || "（未作答）");
+      });
+      out.push("");
+    });
+
+    const blob = new Blob([out.join("\r\n")], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${title}_簡答題.txt`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   });
 }
 
