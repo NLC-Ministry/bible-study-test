@@ -633,9 +633,18 @@ const auth = {
       }
 
       this._saveTokens(data);
+      // \u767b\u5165\u6210\u529f\u5f8c\u8df3\u56de\u539f\u672c\u90a3\u4e00\u9801\uff08\u4f8b\u5982\u6279\u6539\u9801 /grade.html?paper=\u2026&attempt=\u2026\uff09\uff0c
+      // \u800c\u4e0d\u662f\u6c38\u9060\u505c\u5728\u9996\u9801\u2014\u2014continuation \u5728 startInteractiveLogin() \u5b58\u7684
+      // returnTo \u5c31\u662f\u70ba\u4e86\u9019\u4e00\u523b\uff0c\u5148\u524d\u9019\u88e1\u5f9e\u6c92\u8b80\u51fa\u4f86\u7528\u904e\u3002
+      const continuation = parseAuthContinuation(this._getFlowItem(this.keys.continuation));
+      const returnTo = continuation && continuation.returnTo;
       this._cleanCallbackUrl();
       this._applyTokenProfileFallback();
       this._showMessage("\u6559\u6703\u7cfb\u7d71\u767b\u5165\u6210\u529f\u3002");
+      if (returnTo && returnTo !== "/" && returnTo !== window.location.pathname + window.location.search) {
+        window.location.replace(returnTo);
+        return true;
+      }
       return true;
     } catch (err) {
       return this._failCallback("\u6559\u6703\u7cfb\u7d71\u767b\u5165\u5931\u6557\uff0c\u8acb\u91cd\u65b0\u767b\u5165\u3002", err);

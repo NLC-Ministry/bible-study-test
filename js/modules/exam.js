@@ -1350,6 +1350,10 @@ async function renderExamGrading(host, paperId, locked = false, paperStatus = "c
     card.querySelectorAll('[data-g="points"], [data-g="comment"]').forEach((input) => {
       input.addEventListener("input", () => { card.classList.add("is-dirty"); syncDirtyState(); });
     });
+    // 離開分數欄時把超出配分/負數收斂到有效範圍，不留下無效分數（見 utils.js）
+    card.querySelector('[data-g="points"]')?.addEventListener("blur", (e) => {
+      if (typeof window.clampScoreInput === "function") window.clampScoreInput(e.currentTarget);
+    });
   });
   saveButton?.addEventListener("click", async () => {
     const cards = [...host.querySelectorAll(".exam-admin__grade-card.is-dirty")];
