@@ -59,6 +59,7 @@ class GradingWorkspace {
     this._mirrorTimer = null;
     this._draftTimer = null;
     this._retryTimer = null;
+    this._authExpiredShown = false;
     // 切背景 / 關頁：先把當下輸入同步寫進 localStorage（不靠網路），再試著存伺服器草稿
     this._onHide = () => { this._readInputs(); this._mirror(); this._flushDraft("hide"); };
     this._onBeforeUnload = () => { this._readInputs(); this._mirror(); };
@@ -82,6 +83,7 @@ class GradingWorkspace {
     this.root.innerHTML = '<div class="grade-loading">正在載入批改名單…</div>';
     const res = await window.db.getGradingWorkspace(this.paperId);
     if (!res.success) {
+      if (res.authExpired) { this._showAuthExpiredBanner(); this.root.innerHTML = ""; return; }
       this.root.innerHTML = `<div class="grade-error">
         <p>${esc(res.message || "無法載入批改頁。")}</p>
         <p class="grade-error__hint">若你確定有被指派批改，請重新整理；或向管理員確認指派。</p>
@@ -158,6 +160,7 @@ class GradingWorkspace {
     this.root.innerHTML = '<div class="grade-loading">正在載入這一張…</div>';
     const res = await window.db.getGradingSheet(id);
     if (!res.success) {
+      if (res.authExpired) { this._showAuthExpiredBanner(); this.root.innerHTML = ""; return; }
       this.root.innerHTML = `<div class="grade-error"><p>${esc(res.message || "載入失敗")}</p>
         <button type="button" class="secondary-btn" data-g-retry-open>重新載入</button></div>`;
       this.root.querySelector("[data-g-retry-open]")?.addEventListener("click", () => this.openAttempt(id));
@@ -317,6 +320,8 @@ class GradingWorkspace {
         <footer class="grade-foot">
           <div class="grade-foot__status" data-g-status>${this._statusLine()}</div>
           <div class="grade-foot__btns">
+            ${(row.shortGraded > 0 || row.attemptStatus === "graded") && !this._readonly
+              ? '<button type="button" class="secondary-btn grade-danger" data-g-reset>重設為待批</button>' : ""}
             <button type="button" class="secondary-btn" data-g-draft ${this._readonly ? "disabled" : ""}>儲存此張草稿</button>
             <button type="button" class="primary-btn" data-g-submit ${canSubmit ? "" : "disabled"}>送出這一張</button>
           </div>
@@ -403,6 +408,47 @@ class GradingWorkspace {
     });
     r.querySelector("[data-g-submit]")?.addEventListener("click", () => this._submitOne());
     r.querySelector("[data-g-batch]")?.addEventListener("click", () => this._submitBatch());
+    r.querySelector("[data-g-reset]")?.addEventListener("click", () => this._resetCurrent());
+  }
+
+  // ── 重設為待批：清空這張卷的評分，退回「已送出、尚未批改」──────────────
+  async _resetCurrent() {
+    if (this.submitting) return;
+    const ex = (this.sheetCache.get(this.currentId) || {}).examinee || {};
+    const confirmed = typeof window.showConfirmDialog === "function"
+      ? await window.showConfirmDialog({
+          title: `確定要把「${ex.name || "這位作答者"}」的批改重設為待批嗎？`,
+          message: "這張卷目前已經打的分數與整卷評語都會被清空，且無法復原。",
+          confirmText: "重設為待批",
+          cancelText: "取消",
+          isDestructive: true
+        })
+      : window.confirm("確定要重設為待批嗎？目前的分數與評語都會被清空，且無法復原。");
+    if (!confirmed) return;
+    this.submitting = true;
+    this._refreshTotalsAndButtons();
+    let res;
+    try {
+      res = await window.db.resetAttemptGrading(this.currentId);
+    } catch (e) {
+      res = { success: false, message: "重設失敗（網路）" };
+    }
+    this.submitting = false;
+    if (res && res.authExpired) { this._showAuthExpiredBanner(); this._refreshTotalsAndButtons(); return; }
+    if (!res || !res.success) {
+      toast((res && res.message) || "重設失敗，請稍後再試");
+      this._refreshTotalsAndButtons();
+      return;
+    }
+    // 伺服器已清空分數；本機鏡射跟草稿快取也要一起清掉，不然重開這張時
+    // 又會被本機殘留的舊分數蓋回去。
+    this._clearLocal(this.currentId);
+    this.dirty.delete(this.currentId);
+    this.draftSavedAt.delete(this.currentId);
+    const row = this._row(this.currentId);
+    if (row) { row.shortGraded = 0; row.attemptStatus = "submitted"; }
+    toast("已重設為待批");
+    await this.openAttempt(this.currentId, { discardLocal: true });
   }
 
   _refreshStatusLine() {
@@ -451,6 +497,29 @@ class GradingWorkspace {
     await this.openAttempt(this.roster[ni].attemptId);
   }
 
+  // ── 登入已過期（連續期都被拒） ──────────────────────────────────────
+  // 跟一般錯誤（分數超出配分、網路暫時不通）不同：重試沒有用，唯一的出路是
+  // 重新登入。這裡直接給一個按鈕，點下去才跳頁——不是叫使用者自己重新整理
+  // 或去別的地方找登入頁。網址帶 return，登入完會自動跳回同一張卷；本機
+  // localStorage 鏡射跟登入狀態無關，跳頁前後都還在，不用重打。
+  _showAuthExpiredBanner() {
+    if (this._authExpiredShown) return;
+    this._authExpiredShown = true;
+    this._readInputs();
+    this._mirror();
+    const box = document.createElement("div");
+    box.className = "grade-auth-expired";
+    box.innerHTML = `<p>登入已過期，需要重新登入才能繼續批改。你目前的分數已經存在這台裝置上，重新登入後會自動回到這一張。</p>
+      <button type="button" class="primary-btn" data-g-relogin>重新登入</button>`;
+    box.querySelector("[data-g-relogin]").addEventListener("click", () => {
+      this._readInputs();
+      this._mirror();
+      const back = encodeURIComponent(location.pathname + location.search);
+      location.href = "/?return=" + back;
+    });
+    document.body.appendChild(box);
+  }
+
   // ── L2 草稿 ─────────────────────────────────────────────────────────
   async _flushDraft(reason, opts = {}) {
     if (this._draftTimer) { clearTimeout(this._draftTimer); this._draftTimer = null; }
@@ -469,6 +538,8 @@ class GradingWorkspace {
       this.draftSavedAt.set(id, Date.now());
       if (res.data && res.data.rev) this.baseRev = Number(res.data.rev) || this.baseRev;
       if (id === this.currentId) this._refreshStatusLine();
+    } else if (res && res.authExpired) {
+      this._showAuthExpiredBanner();
     } else if (res && /exam_grading_stale/.test((res.error && (res.error.message || res.error)) || res.message || "")) {
       if (id === this.currentId) this._showConflict("draft");
     } else if (reason === "button") {
@@ -548,6 +619,7 @@ class GradingWorkspace {
       else this.render();
       return;
     }
+    if (res && res.authExpired) { this._showAuthExpiredBanner(); this._refreshTotalsAndButtons(); return; }
     const emsg = (res && ((res.error && (res.error.message || res.error)) || res.message)) || "";
     if (/exam_grading_stale/.test(emsg)) { this._showConflict("submit"); this._refreshTotalsAndButtons(); return; }
     if (res && res._network && attempt < 4) {
@@ -596,6 +668,7 @@ class GradingWorkspace {
       res = { success: false, message: "批次送出失敗（網路）" };
     }
     this.submitting = false;
+    if (res && res.authExpired) { this._showAuthExpiredBanner(); this._refreshTotalsAndButtons(); return; }
     if (!res || !res.success || !res.data || !Array.isArray(res.data.results)) {
       toast((res && res.message) || "批次送出失敗，內容都還在本機");
       this._refreshTotalsAndButtons();

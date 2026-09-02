@@ -15700,6 +15700,20 @@ textarea::placeholder {
   gap: 0.4rem; align-items: center;
 }
 
+/* 登入已過期：固定在畫面最上方，蓋過整個批改工作區——這不是可以忽略、
+   等一下再處理的一般錯誤，重試也沒有用，只能點下面的按鈕重新登入。 */
+.grade-auth-expired {
+  position: fixed; top: 0; left: 0; right: 0; z-index: var(--z-modal);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: 0.75rem; padding: 0.85rem 1rem;
+  background: color-mix(in srgb, var(--color-danger) 14%, var(--bg-card));
+  border-bottom: 1px solid color-mix(in srgb, var(--color-danger) 35%, var(--border-card));
+  box-shadow: var(--shadow-sm);
+}
+.grade-auth-expired p {
+  margin: 0; font-size: 0.9375rem; color: var(--text-primary); line-height: 1.6; text-align: center;
+}
+
 .grade-body { padding: 0.75rem 1rem 0; display: flex; flex-direction: column; gap: 0.9rem; }
 .grade-q {
   border: 1px solid var(--border-card); border-radius: var(--radius-md);

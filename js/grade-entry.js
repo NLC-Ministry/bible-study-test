@@ -18,10 +18,10 @@ import './design/icons.js';
 import './state.js?v=20260901_highlights_notes_review';
 import './auth.js?v=20260831_perf_b7';
 import './auth-launch.mjs';
-import './db.js?v=20260903_group_meeting_plan';
+import './db.js?v=20260903_exam_grading_fixes';
 import './utils.js?v=20260901_highlights_notes_review';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
-import { mountGradingWorkspace } from './modules/grading.js?v=20260903_group_meeting_plan';
+import { mountGradingWorkspace } from './modules/grading.js?v=20260903_exam_grading_fixes';
 
 const boot = document.getElementById('grade-boot');
 const setBoot = (msg) => { if (boot) boot.textContent = msg; };
