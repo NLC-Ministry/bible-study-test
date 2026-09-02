@@ -75,15 +75,15 @@ function updateDevotionFeatureControl(enabled, options = {}) {
     : "已關閉：會友端隱藏所有靈修計畫；管理端仍可先編輯內容，既有內容都保留。";
 }
 
-// 「每日靈修」計劃管理分頁：系統管理員 / 牧者 + daily_devotion 功能開啟時才顯示。
-function applyAdminDevotionVisibility(enabled) {
+// 「每日靈修」計劃管理分頁：admin / pastor 一律看得到（功能對會友暫不開放時
+// 也要能先建內容）。參數保留以相容既有呼叫，但不再拿來 gate。
+function applyAdminDevotionVisibility(_enabled) {
   const roleCode = state.currentUser && typeof getUserRoleCode === "function"
     ? getUserRoleCode(state.currentUser) : null;
   const canSee = ["admin", "pastor"].includes(roleCode);
-  const show = canSee && enabled === true;
   const panel = document.getElementById("admin-section-devotions");
-  if (!show && activeAdminSection === "devotions") setAdminSection("join-status");
-  if (!show && panel) panel.classList.add("hidden");
+  if (!canSee && activeAdminSection === "devotions") setAdminSection("join-status");
+  if (!canSee && panel) panel.classList.add("hidden");
   if (typeof renderAdminSectionNav === "function") renderAdminSectionNav();
 }
 
@@ -1662,9 +1662,11 @@ function isAdminSectionAvailable(section) {
     return canSee && window.speedReadingExamFeatureEnabled === true;
   }
   if (section.flag === 'devotion') {
+    // 每日靈修：admin / pastor 一律看得到管理頁——功能對會友「暫不開放」時
+    // 也要能先進來建內容（跟大測驗建題庫同理）。flag 只控制會友端顯示。
     const roleCode = state.currentUser && typeof getUserRoleCode === 'function'
       ? getUserRoleCode(state.currentUser) : null;
-    return ['admin', 'pastor'].includes(roleCode) && window.dailyDevotionFeatureEnabled === true;
+    return ['admin', 'pastor'].includes(roleCode);
   }
   return true;
 }
