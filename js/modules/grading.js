@@ -18,6 +18,7 @@ const LS_PREFIX = "exam_grade_";
 const STALE_MS = 21 * 24 * 60 * 60 * 1000;
 const DRAFT_DEBOUNCE_MS = 20000;
 const MIRROR_DEBOUNCE_MS = 600;
+const SUBMIT_SUCCESS_FLASH_MS = 650; // 送出成功後，讓打勾狀態停留這麼久再自動跳下一位
 
 function pruneStaleMirrors() {
   try {
@@ -616,6 +617,17 @@ class GradingWorkspace {
     return { grades, overall: src.overall || "" };
   }
 
+  // 送出成功後，把送出鈕短暫換成「✓ 已送出」——這是使用者剛剛按下去的那個
+  // 按鈕本身變成打勾，視覺上直接跟這次動作綁在一起，比單靠 toast 更容易被
+  // 注意到。
+  _flashSubmitSuccess() {
+    const btn = this.root.querySelector("[data-g-submit]");
+    if (!btn) return;
+    btn.disabled = true;
+    btn.classList.add("grade-submit--success");
+    btn.innerHTML = `${icon("check")}已送出`;
+  }
+
   async _submitOne(attempt = 0) {
     if (this.submitting) return;
     this._readInputs(); this._mirror();
@@ -648,6 +660,11 @@ class GradingWorkspace {
         if (c) c.rev = this.baseRev;
       }
       toast("已送出這一張");
+      // 送出跟跳下一位中間留一個看得到的「已送出」打勾狀態——不然畫面立刻被
+      // 「正在載入這一張…」蓋掉，跟 toast 搶注意力，很容易來不及意識到剛剛
+      //那筆到底成功了沒。
+      this._flashSubmitSuccess();
+      await new Promise((resolve) => setTimeout(resolve, SUBMIT_SUCCESS_FLASH_MS));
       const i = this._index();
       if (i < this.roster.length - 1) await this.openAttempt(this.roster[i + 1].attemptId);
       else this.render();

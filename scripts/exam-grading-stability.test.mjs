@@ -24,6 +24,16 @@ describe("grading.js: 'save draft' only claims success when it actually saved", 
   });
 });
 
+describe("grading.js: submitting one paper gives a perceivable success moment before auto-advancing", () => {
+  it("flashes the submit button to a success state and pauses before moving to the next attempt", () => {
+    const idx = grading.indexOf('toast("已送出這一張");');
+    expect(idx).toBeGreaterThan(-1);
+    const body = grading.slice(idx, idx + 400);
+    expect(body).toContain("this._flashSubmitSuccess();");
+    expect(body).toContain("setTimeout(resolve, SUBMIT_SUCCESS_FLASH_MS)");
+  });
+});
+
 describe("grading.js: openAttempt() ignores stale results from superseded navigation", () => {
   it("stamps a token per call and drops results once a newer call has started", () => {
     const idx = grading.indexOf("async openAttempt(id, opts = {})");
