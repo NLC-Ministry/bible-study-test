@@ -2325,6 +2325,10 @@ function renderPresetPlansList() {
   if (typeof window.dailyDevotionFeatureEnabled !== "boolean" && typeof isDailyDevotionFeatureEnabled === "function") {
     isDailyDevotionFeatureEnabled().then(v => { if (v === true) renderPresetPlansList(); }).catch(() => {});
   }
+  // 小組聚會週計畫功能旗標同理。
+  if (typeof window.groupMeetingPlanFeatureEnabled !== "boolean" && typeof isGroupMeetingFeatureEnabled === "function") {
+    isGroupMeetingFeatureEnabled().then(v => { if (v === true) renderPresetPlansList(); }).catch(() => {});
+  }
 
   const legacyCategoryIdPrefix = "00000000-0000-0000-a000-";
   const isObsoleteCategoryPlan = plan =>
@@ -2378,6 +2382,7 @@ function renderPresetPlansList() {
     if (isObsolete || isLegacy) return false;
     // 每日靈修計畫：daily_devotion 功能關著時，只有 admin / pastor 看得到（先建內容用）。
     if (!isDevotionalPlanVisibleToUser(plan)) return false;
+    if (typeof isGroupMeetingPlanVisibleToUser === "function" && !isGroupMeetingPlanVisibleToUser(plan)) return false;
     // 隱藏的計畫：一般會友看不到。例外：被鎖住的教會階段**且**標記為
     // discoverWhenLocked（月度期末賽）→ 顯示為 available-locked。第三階段之後
     // 沒帶這個旗標 → 完全隱藏，等管理員開放（is_hidden 轉 false）才現身。
@@ -2420,12 +2425,18 @@ function renderPresetPlansList() {
     const isCampaignStage = window.isCampaignStagePlan(plan);
     const isLockedStage = window.isCampaignStageLocked(plan);
     const isDevotional = (plan.planKind || plan.plan_kind) === "devotional";
+    const isGroupMeeting = (plan.planKind || plan.plan_kind) === "group_meeting";
+    const isViewerPlan = isDevotional || isGroupMeeting;   // 只看內容、不打卡、不組隊的計畫
     const devDevMode = isDevotional && window.isDevotionalPlanDevMode(plan);
+    const gmDevMode = isGroupMeeting && typeof window.isGroupMeetingPlanDevMode === "function" && window.isGroupMeetingPlanDevMode(plan);
+    const viewerDevMode = devDevMode || gmDevMode;
     const isFixed = plan.isFixed !== false && plan.is_fixed !== false;
     const scheduleLabel = isCampaignStage
       ? `第 ${Number(plan.stageNo || plan.campaignDefinition && plan.campaignDefinition.stageNo)} 階段・第 ${Number(plan.roundNo || plan.campaignDefinition && plan.campaignDefinition.roundNo)} 輪`
       : isDevotional
       ? `每日靈修・${getDurationLabel(plan.startDate, plan.endDate)}`
+      : isGroupMeeting
+      ? "小組聚會・週計畫"
       : (isFixed ? getDurationLabel(plan.startDate, plan.endDate) : `彈性開始・${getDurationLabel(plan.startDate, plan.endDate)}`);
     const description = plan.description || "";
     const awardName = plan.awardName || plan.campaignDefinition && plan.campaignDefinition.awardName || "";
@@ -2435,12 +2446,12 @@ function renderPresetPlansList() {
       : "";
 
     const card = document.createElement("div");
-    card.className = "plan-card joined-plan-item-card" + (devDevMode ? " plan-card--dev" : "");
+    card.className = "plan-card joined-plan-item-card" + (viewerDevMode ? " plan-card--dev" : "");
     card.innerHTML = renderPlanCardShell({
       plan,
       variant: isLockedStage ? "available-locked" : (isUpcomingFixed ? "available-upcoming" : "available"),
       header: renderPlanCardHeader({
-        title: escapeHTML(plan.name) + (devDevMode ? ' <span class="plan-card__dev-badge">開發中・會友看不到</span>' : ""),
+        title: escapeHTML(plan.name) + (viewerDevMode ? ' <span class="plan-card__dev-badge">開發中・會友看不到</span>' : ""),
         meta: `
           <span class="nlc-icon nlc-icon--sm" data-icon="calendarThirty" aria-hidden="true"></span>
           <span>${escapeHTML(scheduleLabel)}</span>
@@ -2459,7 +2470,7 @@ function renderPresetPlansList() {
           value: "\u5c1a\u672a\u958b\u653e",
           tone: "warning"
         },
-        devDevMode && {
+        viewerDevMode && {
           icon: "lock",
           label: "\u958b\u653e\u72c0\u614b",
           value: "\u958b\u767c\u4e2d\uff0c\u5c1a\u672a\u5c0d\u6703\u53cb\u958b\u653e\uff08\u53ea\u6709\u4f60\u770b\u5f97\u5230\uff09",
@@ -2472,7 +2483,7 @@ function renderPresetPlansList() {
           tone: "warning"
         }
       ]),
-      actions: (isLockedStage || isDevotional) ? "" : renderPlanCardActions([
+      actions: (isLockedStage || isViewerPlan) ? "" : renderPlanCardActions([
         { kind: "primary", icon: "bookOpen", label: "自己加入", action: "solo-join" },
         { kind: "secondary", icon: "people", label: "建立團隊", action: "team-create" }
       ])
@@ -2482,6 +2493,12 @@ function renderPresetPlansList() {
       if (isDevotional) {
         if (typeof window.previewDevotionalPlanAsMember === "function") {
           window.previewDevotionalPlanAsMember(plan.globalPlanId || plan.id);
+        }
+        return;
+      }
+      if (isGroupMeeting) {
+        if (typeof window.previewGroupMeetingPlanAsMember === "function") {
+          window.previewGroupMeetingPlanAsMember(plan.globalPlanId || plan.id);
         }
         return;
       }
@@ -3181,6 +3198,47 @@ function previewDevotionalPlanAsMember(globalPlanId) {
   }
 }
 window.previewDevotionalPlanAsMember = previewDevotionalPlanAsMember;
+
+// ── 小組聚會週計畫（plan_kind='group_meeting'，migration 0148）──────────────
+let groupMeetingPlanFeatureRequest = null;
+async function isGroupMeetingFeatureEnabled() {
+  if (typeof window.groupMeetingPlanFeatureEnabled === "boolean") return window.groupMeetingPlanFeatureEnabled;
+  if (!groupMeetingPlanFeatureRequest) {
+    groupMeetingPlanFeatureRequest = db.getFeatureSetting("group_meeting_plan", false).then(result => {
+      window.groupMeetingPlanFeatureEnabled = !result.error && result.enabled === true;
+      return window.groupMeetingPlanFeatureEnabled;
+    }).catch(() => false).finally(() => { groupMeetingPlanFeatureRequest = null; });
+  }
+  return groupMeetingPlanFeatureRequest;
+}
+window.isGroupMeetingFeatureEnabled = isGroupMeetingFeatureEnabled;
+function isGroupMeetingPlanVisibleToUser(plan) {
+  if (!plan || (plan.planKind || plan.plan_kind) !== "group_meeting") return true;
+  if (window.groupMeetingPlanFeatureEnabled === true) return true;
+  const role = typeof getUserRoleCode === "function" ? getUserRoleCode(state.currentUser) : null;
+  return role === "admin" || role === "pastor";
+}
+window.isGroupMeetingPlanVisibleToUser = isGroupMeetingPlanVisibleToUser;
+function isGroupMeetingPlanDevMode(plan) {
+  return (plan && (plan.planKind || plan.plan_kind) === "group_meeting")
+    && window.groupMeetingPlanFeatureEnabled !== true;
+}
+window.isGroupMeetingPlanDevMode = isGroupMeetingPlanDevMode;
+function previewGroupMeetingPlanAsMember(globalPlanId) {
+  const gp = (state.globalPlans || []).find(p => String(p.id) === String(globalPlanId)
+    || String(p.globalPlanId) === String(globalPlanId));
+  if (!gp) return;
+  state.activePlan = gp;
+  state.planDetailOpen = true;
+  state.planActiveSubTab = "today";
+  const onPlanTab = typeof window.appRouter !== "undefined" && window.appRouter.currentTab === "plan-view";
+  if (onPlanTab && typeof setPlanState === "function") {
+    setPlanState(PLAN_ROUTE.DETAIL);
+  } else if (typeof window.appRouter !== "undefined" && typeof window.appRouter.switchTab === "function") {
+    window.appRouter.switchTab("plan-view", { keepPlanDetail: true });
+  }
+}
+window.previewGroupMeetingPlanAsMember = previewGroupMeetingPlanAsMember;
 
 window.addEventListener("daily-quiz-feature-changed", event => {
   window.dailyQuizFeatureEnabled = event.detail?.enabled === true;
@@ -8913,6 +8971,7 @@ function renderProfileReadingStats(container) {
 
 async function enterPlanListState() {
   exitDevotionViewer();
+  exitGroupMeetingViewer();
   window.currentPlanViewState = PLAN_ROUTE.LIST;
   state.planDetailOpen = false;
   state.planActiveSubTab = "today";
@@ -8938,7 +8997,17 @@ async function enterPlanDetailState() {
     await renderDevotionViewer(state.activePlan);
     return;
   }
+  // 小組聚會週計畫：同樣走獨立 viewer。
+  if ((state.activePlan.planKind || state.activePlan.plan_kind) === "group_meeting") {
+    window.currentPlanViewState = PLAN_ROUTE.DETAIL;
+    state.planDetailOpen = true;
+    state.planActiveSubTab = "today";
+    setOnlyPlanRouteVisible(PLAN_ROUTE.DETAIL);
+    await renderGroupMeetingViewer(state.activePlan);
+    return;
+  }
   exitDevotionViewer();
+  exitGroupMeetingViewer();
   calculatePlanProgress();
   window.currentPlanViewState = PLAN_ROUTE.DETAIL;
   state.planDetailOpen = true;
@@ -8970,6 +9039,7 @@ async function enterGroupProgressState() {
     return;
   }
   exitDevotionViewer();
+  exitGroupMeetingViewer();
   window.currentPlanViewState = PLAN_ROUTE.GROUP;
   state.planDetailOpen = true;
 
@@ -9276,6 +9346,182 @@ function renderDevotionViewer(plan) {
   });
 }
 window.renderDevotionViewer = renderDevotionViewer;
+
+// ── 小組聚會週計畫 viewer（會友端；plan_kind='group_meeting'）──────────────────
+let groupMeetingViewerWeekIndex = null;
+let groupMeetingViewerPlanId = null;
+
+function showGroupMeetingViewerRoot() {
+  const detailView = document.getElementById("plan-detail-view");
+  const legacy = document.getElementById("plan-detail-subview");
+  const devRoot = document.getElementById("devotion-view-root");
+  let root = document.getElementById("group-meeting-view-root");
+  if (!root && detailView) {
+    root = document.createElement("div");
+    root.id = "group-meeting-view-root";
+    detailView.appendChild(root);
+  }
+  if (legacy) { legacy.classList.add("hidden"); legacy.style.display = "none"; }
+  if (devRoot) { devRoot.classList.add("hidden"); devRoot.style.display = "none"; }
+  if (root) { root.classList.remove("hidden"); root.style.display = "block"; }
+  return root;
+}
+function exitGroupMeetingViewer() {
+  const root = document.getElementById("group-meeting-view-root");
+  if (root) { root.innerHTML = ""; root.classList.add("hidden"); root.style.display = "none"; }
+  const legacy = document.getElementById("plan-detail-subview");
+  if (legacy) { legacy.classList.remove("hidden"); legacy.style.display = "flex"; }
+}
+window.exitGroupMeetingViewer = exitGroupMeetingViewer;
+
+function renderGroupMeetingViewer(plan) {
+  const host = showGroupMeetingViewerRoot();
+  if (!host) return Promise.resolve();
+  host.innerHTML = '<div class="group-meeting-view"><p class="group-meeting-view__loading">正在載入小組聚會計畫…</p></div>';
+
+  const planId = plan.globalPlanId || plan.global_plan_id || plan.id;
+  if (groupMeetingViewerPlanId !== planId) { groupMeetingViewerPlanId = planId; groupMeetingViewerWeekIndex = null; }
+
+  return db.getGroupMeetingPlan(planId).then(res => {
+    if (!res.success) {
+      host.innerHTML = `<div class="group-meeting-view"><p class="group-meeting-view__loading">${escapeHTML(res.message || "無法載入小組聚會計畫。")}</p></div>`;
+      return;
+    }
+    const d = res.data || {};
+    const weeks = (Array.isArray(d.weeks) ? d.weeks : []).slice().sort((a, b) => a.weekIndex - b.weekIndex);
+    if (!weeks.length) {
+      host.innerHTML = '<div class="group-meeting-view"><p class="group-meeting-view__loading">內容準備中，敬請期待。</p></div>';
+      return;
+    }
+    // 預設落在「本週」，否則最後一個已過的週，否則第 1 週
+    if (groupMeetingViewerWeekIndex == null) {
+      const thisW = weeks.find(w => w.isThisWeek);
+      if (thisW) groupMeetingViewerWeekIndex = thisW.weekIndex;
+      else {
+        const past = weeks.filter(w => w.isPast);
+        groupMeetingViewerWeekIndex = past.length ? past[past.length - 1].weekIndex : weeks[0].weekIndex;
+      }
+    }
+    const clamp = (idx) => weeks.find(w => w.weekIndex === idx)
+      || weeks.filter(w => w.weekIndex <= idx).slice(-1)[0] || weeks[0];
+    let cur = clamp(groupMeetingViewerWeekIndex);
+    groupMeetingViewerWeekIndex = cur.weekIndex;
+
+    let passageView = null; // { ref, label }
+
+    const chevron = typeof renderIcon === "function" ? renderIcon("chevronRight", { size: "sm", className: "nlc-icon" }) : "›";
+
+    const passageRow = (label, refs, kind) => {
+      const first = Array.isArray(refs) && refs[0] && refs[0].book ? refs[0] : null;
+      if (first) {
+        return `<div class="plan-task-item" data-gm-open data-gm-kind="${kind}">
+          <button type="button" class="task-open-button">
+            <span class="task-title">${escapeHTML(label || "（未設定）")}</span>
+            <span class="task-arrow" aria-hidden="true">${chevron}</span>
+          </button>
+        </div>`;
+      }
+      return `<div class="plan-task-item"><div class="task-open-button task-open-button--static"><span class="task-title">${escapeHTML(label || "（未設定）")}</span></div></div>`;
+    };
+
+    const buildStrip = () => {
+      const chips = weeks.map(w => {
+        const cls = ["gm-week-chip"];
+        if (w.weekIndex === cur.weekIndex) cls.push("active");
+        if (w.isThisWeek) cls.push("this-week");
+        else if (w.isPast) cls.push("past");
+        if (w.locked) cls.push("locked");
+        return `<button type="button" class="${cls.join(" ")}" data-gm-week="${w.weekIndex}">
+          <span class="gm-week-chip__n">第 ${w.weekIndex} 週</span>
+          <span class="gm-week-chip__d">${escapeHTML(w.dateLabel || "")}</span>
+        </button>`;
+      }).join("");
+      return `<div class="group-meeting-view__strip scrollbar-none">${chips}</div>`;
+    };
+
+    const paint = () => {
+      cur = weeks.find(w => w.weekIndex === groupMeetingViewerWeekIndex) || cur;
+
+      if (passageView) {
+        renderDevotionPassageInline(host, passageView.ref, passageView.label, () => { passageView = null; paint(); });
+        return;
+      }
+
+      const songs = Array.isArray(cur.songs) ? cur.songs : [];
+      const hasOffering = (cur.offeringPassageLabel && cur.offeringPassageLabel.trim())
+        || (Array.isArray(cur.offeringPassageRefs) && cur.offeringPassageRefs.length);
+      // 只有備註、沒有經文也沒有詩歌（例：Pastor Greg 特會週）→ 只顯示備註
+      const noteOnly = !cur.locked && !songs.length
+        && !(cur.messagePassageLabel && cur.messagePassageLabel.trim()) && !hasOffering
+        && cur.note;
+
+      host.innerHTML = `
+        <div class="group-meeting-view">
+          ${buildStrip()}
+          ${cur.monthTheme ? `<p class="group-meeting-view__theme">月主題　${escapeHTML(cur.monthTheme)}</p>` : ""}
+          <div class="group-meeting-view__weeklabel">
+            <strong>第 ${cur.weekIndex} 週</strong>　<span>${escapeHTML(cur.dateLabel || "")}</span>
+          </div>
+          ${cur.locked ? `
+            <div class="group-meeting-view__locked">
+              <span class="nlc-icon nlc-icon--md" data-icon="lock" aria-hidden="true"></span>
+              <p>這一週（${escapeHTML(cur.dateLabel || "")}）開放</p>
+            </div>` : noteOnly ? `
+            <div class="group-meeting-view__note">${escapeHTML(cur.note)}</div>` : `
+            <section class="group-meeting-view__block">
+              <h4 class="group-meeting-view__h">信息經文</h4>
+              ${cur.messageTopic ? `<p class="group-meeting-view__topic">${escapeHTML(cur.messageTopic)}</p>` : ""}
+              <div class="plan-task-list">${passageRow(cur.messagePassageLabel, cur.messagePassageRefs, "message")}</div>
+            </section>
+            ${hasOffering ? `
+            <section class="group-meeting-view__block">
+              <h4 class="group-meeting-view__h">奉獻經文</h4>
+              ${cur.offeringTopic ? `<p class="group-meeting-view__topic">${escapeHTML(cur.offeringTopic)}</p>` : ""}
+              <div class="plan-task-list">${passageRow(cur.offeringPassageLabel, cur.offeringPassageRefs, "offering")}</div>
+            </section>` : ""}
+            <section class="group-meeting-view__block">
+              <h4 class="group-meeting-view__h">敬拜讚美詩歌</h4>
+              ${songs.length
+                ? `<ul class="group-meeting-view__songs">${songs.map(s => `<li><span class="group-meeting-view__songcode">${escapeHTML(String(s.code || ""))}</span>${escapeHTML(String(s.title || ""))}</li>`).join("")}</ul>`
+                : `<p class="group-meeting-view__muted">（本週無詩歌單）</p>`}
+            </section>
+            ${cur.note ? `<div class="group-meeting-view__note">${escapeHTML(cur.note)}</div>` : ""}
+          `}
+        </div>`;
+
+      if (typeof hydrateIcons === "function") hydrateIcons(host);
+
+      // 週切換：保留 strip 捲動位置
+      host.querySelectorAll("[data-gm-week]").forEach(btn => btn.addEventListener("click", () => {
+        const strip = host.querySelector(".group-meeting-view__strip");
+        const sl = strip ? strip.scrollLeft : 0;
+        groupMeetingViewerWeekIndex = Number(btn.dataset.gmWeek);
+        paint();
+        const s2 = host.querySelector(".group-meeting-view__strip");
+        if (s2) s2.scrollLeft = sl;
+      }));
+
+      // 進入某週後把選中的 chip 捲進可視範圍
+      const activeChip = host.querySelector(".gm-week-chip.active");
+      if (activeChip && typeof activeChip.scrollIntoView === "function") {
+        try { activeChip.scrollIntoView({ block: "nearest", inline: "center" }); } catch (_) {}
+      }
+
+      host.querySelectorAll("[data-gm-open]").forEach(item => {
+        item.addEventListener("click", () => {
+          const kind = item.dataset.gmKind;
+          const refs = kind === "offering" ? cur.offeringPassageRefs : cur.messagePassageRefs;
+          const label = kind === "offering" ? cur.offeringPassageLabel : cur.messagePassageLabel;
+          const first = Array.isArray(refs) && refs[0] && refs[0].book ? refs[0] : null;
+          if (first) { passageView = { ref: first, label }; paint(); }
+        });
+      });
+    };
+
+    paint();
+  });
+}
+window.renderGroupMeetingViewer = renderGroupMeetingViewer;
 
 function planGoBack() {
   if (getCurrentPlanRoute() !== PLAN_ROUTE.LIST) setPlanState(PLAN_ROUTE.LIST);

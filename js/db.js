@@ -298,6 +298,8 @@ function mapGlobalPlanRecord(dbPlan) {
     discoverWhenLocked: Boolean(dbPlan.rules && dbPlan.rules.discoverWhenLocked),
     // 每日靈修計畫（plan_kind='devotional'）：是否開放未來日期（migration 0145）。
     devotionFutureOpen: Boolean(dbPlan.rules && dbPlan.rules.devotionFutureOpen),
+    // 小組聚會週計畫（plan_kind='group_meeting'）：是否開放未來週次（migration 0148）。
+    groupMeetingFutureOpen: Boolean(dbPlan.rules && dbPlan.rules.groupMeetingFutureOpen),
     ruleVersion: Number(dbPlan.rule_version || (campaignDefinition && campaignDefinition.version) || 1),
     publishedAt: dbPlan.published_at || null,
     campaignDefinition
@@ -5375,8 +5377,62 @@ const db = {
     });
   },
 
+  // ── 小組聚會週計畫（group_meeting plan，migration 0148）──────────────────
+  _groupMeetingErrorMessage(error) {
+    const raw = (error && (error.message || error.error || error.error_description || error.msg)) || String(error || "");
+    const map = {
+      group_meeting_feature_disabled: "小組聚會週計畫目前未開放。",
+      group_meeting_plan_not_found: "找不到這份小組聚會計畫。",
+      group_meeting_admin_required: "只有系統管理員 / 牧者可以編輯小組聚會內容。",
+      group_meeting_payload_invalid: "資料格式不正確，未寫入。",
+      forbidden_rpc: "沒有權限，或後端尚未更新（nlc-data 可能需要重新部署）。"
+    };
+    const key = Object.keys(map).find(code => raw.includes(code));
+    return key ? map[key] : "目前無法載入小組聚會計畫，請稍後再試。";
+  },
+  async _callGroupMeetingRpc(functionName, args = {}) {
+    if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) {
+      return { success: false, message: "小組聚會計畫需要登入正式帳號。" };
+    }
+    try {
+      const { data, error } = await state.supabase.rpc(functionName, args);
+      if (error) {
+        console.warn(`[GroupMeeting] ${functionName} failed: ${JSON.stringify({ message: error.message, code: error.code })}`);
+        return { success: false, error, message: this._groupMeetingErrorMessage(error) };
+      }
+      return { success: true, data };
+    } catch (error) {
+      console.warn(`[GroupMeeting] ${functionName} failed: ${String(error)}`);
+      return { success: false, error, message: this._groupMeetingErrorMessage(error) };
+    }
+  },
+  async getGroupMeetingPlan(globalPlanId) {
+    return this._callGroupMeetingRpc("get_group_meeting_plan", { p_global_plan_id: globalPlanId });
+  },
+  async listGroupMeetingWeeks(globalPlanId) {
+    return this._callGroupMeetingRpc("list_group_meeting_weeks", { p_global_plan_id: globalPlanId });
+  },
+  async upsertGroupMeetingWeek(payload) {
+    return this._callGroupMeetingRpc("upsert_group_meeting_week", { p_payload: payload || {} });
+  },
+  async deleteGroupMeetingWeek(id) {
+    return this._callGroupMeetingRpc("delete_group_meeting_week", { p_id: id });
+  },
+  async bulkUpsertGroupMeetingWeeks(globalPlanId, rows) {
+    return this._callGroupMeetingRpc("bulk_upsert_group_meeting_weeks", {
+      p_global_plan_id: globalPlanId,
+      p_rows: Array.isArray(rows) ? rows : []
+    });
+  },
+  async setGroupMeetingPlanFutureOpen(globalPlanId, open) {
+    return this._callGroupMeetingRpc("set_group_meeting_plan_future_open", {
+      p_global_plan_id: globalPlanId,
+      p_open: open === true
+    });
+  },
+
   async getFeatureSetting(key, fallback = false) {
-    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz", "speed_reading_exam", "daily_devotion"]);
+    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz", "speed_reading_exam", "daily_devotion", "group_meeting_plan"]);
     if (!allowedKeys.has(key)) {
       return { enabled: Boolean(fallback), error: new Error("unknown_feature_setting") };
     }
@@ -5403,7 +5459,7 @@ const db = {
   },
 
   async updateFeatureSetting(key, enabled) {
-    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz", "speed_reading_exam", "daily_devotion"]);
+    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz", "speed_reading_exam", "daily_devotion", "group_meeting_plan"]);
     if (!allowedKeys.has(key)) return { error: new Error("unknown_feature_setting") };
     if (!state.currentUser || getUserRoleCode(state.currentUser) !== "admin") {
       return { error: new Error("admin_required") };

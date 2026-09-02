@@ -185,6 +185,17 @@ const DEVOTION_RPC_FUNCTIONS = new Set([
   "bulk_upsert_devotion_days",
   "set_devotional_plan_future_open"
 ]);
+// 小組聚會週計畫（group_meeting plan，migration 0148）。write RPC 自己在 SQL 端
+// 用 _group_meeting_actor_can_manage() 檢查 admin/pastor；get_group_meeting_plan
+// 自己檢查 group_meeting_plan flag（管理者放行）。這裡只需注入 p_actor_id。
+const GROUP_MEETING_RPC_FUNCTIONS = new Set([
+  "get_group_meeting_plan",
+  "list_group_meeting_weeks",
+  "upsert_group_meeting_week",
+  "delete_group_meeting_week",
+  "bulk_upsert_group_meeting_weeks",
+  "set_group_meeting_plan_future_open"
+]);
 const RPC_FUNCTIONS = new Set([
   "increment_likes",
   "decrement_likes",
@@ -194,7 +205,8 @@ const RPC_FUNCTIONS = new Set([
   ...ADMIN_RPC_FUNCTIONS,
   ...QUIZ_RPC_FUNCTIONS,
   ...EXAM_RPC_FUNCTIONS,
-  ...DEVOTION_RPC_FUNCTIONS
+  ...DEVOTION_RPC_FUNCTIONS,
+  ...GROUP_MEETING_RPC_FUNCTIONS
 ]);
 
 function jsonResponse(body: unknown, status = 200) {
@@ -624,6 +636,7 @@ Deno.serve(async (req: Request) => {
         || QUIZ_RPC_FUNCTIONS.has(functionName)
         || EXAM_RPC_FUNCTIONS.has(functionName)
         || DEVOTION_RPC_FUNCTIONS.has(functionName)
+        || GROUP_MEETING_RPC_FUNCTIONS.has(functionName)
         || functionName === "get_admin_registration_statistics"
         || functionName === "create_region_stage_cohort")
         ? { ...(body.args || {}), p_actor_id: profile.id }

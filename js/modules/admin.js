@@ -20,7 +20,7 @@ import {
 } from "./export-time.mjs";
 // Keep the ?v= in sync with any change to exam.js so a deploy isn't masked by a
 // Service Worker that cached /modules/exam.js at its bare (unversioned) URL.
-import { renderExamPanel } from "./exam.js?v=20260903_join_team_guard";
+import { renderExamPanel } from "./exam.js?v=20260903_group_meeting_plan";
 
 function updatePastoralWallControl(enabled, options = {}) {
   const toggle = document.getElementById("admin-pastoral-wall-toggle");
@@ -87,6 +87,29 @@ function applyAdminDevotionVisibility(_enabled) {
   if (typeof renderAdminSectionNav === "function") renderAdminSectionNav();
 }
 
+function updateGroupMeetingFeatureControl(enabled, options = {}) {
+  const toggle = document.getElementById("admin-group-meeting-feature-toggle");
+  const status = document.getElementById("admin-group-meeting-feature-status");
+  if (!toggle || !status) return;
+  toggle.setAttribute("aria-checked", enabled ? "true" : "false");
+  toggle.setAttribute("aria-label", enabled ? "小組聚會週計畫功能已開啟" : "小組聚會週計畫功能已關閉");
+  toggle.disabled = options.disabled === true;
+  status.textContent = enabled
+    ? "已開啟：會友在「計畫」看得到小組聚會週計畫，可按週查看信息經文 / 奉獻經文 / 詩歌。"
+    : "已關閉：會友端隱藏小組聚會週計畫；管理端仍可先編輯內容，既有內容都保留。";
+}
+
+// 「小組聚會」計劃管理分頁：admin / pastor 一律看得到（比照每日靈修）。
+function applyAdminGroupMeetingVisibility(_enabled) {
+  const roleCode = state.currentUser && typeof getUserRoleCode === "function"
+    ? getUserRoleCode(state.currentUser) : null;
+  const canSee = ["admin", "pastor"].includes(roleCode);
+  const panel = document.getElementById("admin-section-group-meeting");
+  if (!canSee && activeAdminSection === "group-meeting") setAdminSection("join-status");
+  if (!canSee && panel) panel.classList.add("hidden");
+  if (typeof renderAdminSectionNav === "function") renderAdminSectionNav();
+}
+
 // 「大測驗」計劃管理分頁：系統管理員 + speed_reading_exam 功能開啟時才顯示。
 function applyAdminExamVisibility(enabled) {
   // 系統管理員：完整後台（出題 / 發佈 / 批改 / 統計）。
@@ -115,10 +138,11 @@ export async function renderAdminFeatureSettings() {
   const isAdmin = state.currentUser && getUserRoleCode(state.currentUser) === "admin";
   card.classList.toggle("hidden", !isAdmin);
   if (!isAdmin) {
-    const [quizResult, examResult, devotionResult] = await Promise.all([
+    const [quizResult, examResult, devotionResult, groupMeetingResult] = await Promise.all([
       db.getFeatureSetting("daily_quiz", false),
       db.getFeatureSetting("speed_reading_exam", false),
-      db.getFeatureSetting("daily_devotion", false)
+      db.getFeatureSetting("daily_devotion", false),
+      db.getFeatureSetting("group_meeting_plan", false)
     ]);
     const quizEnabled = !quizResult.error && quizResult.enabled === true;
     window.dailyQuizFeatureEnabled = quizEnabled;
@@ -129,6 +153,9 @@ export async function renderAdminFeatureSettings() {
     const devotionEnabled = !devotionResult.error && devotionResult.enabled === true;
     window.dailyDevotionFeatureEnabled = devotionEnabled;
     applyAdminDevotionVisibility(devotionEnabled);
+    const groupMeetingEnabled = !groupMeetingResult.error && groupMeetingResult.enabled === true;
+    window.groupMeetingPlanFeatureEnabled = groupMeetingEnabled;
+    applyAdminGroupMeetingVisibility(groupMeetingEnabled);
     return;
   }
 
@@ -143,12 +170,16 @@ export async function renderAdminFeatureSettings() {
   const devotionFeedback = document.getElementById("admin-daily-devotion-feature-feedback");
   if (devotionFeedback) { devotionFeedback.classList.add("hidden"); devotionFeedback.textContent = ""; }
   updateDevotionFeatureControl(false, { disabled: true });
+  const groupMeetingFeedback = document.getElementById("admin-group-meeting-feature-feedback");
+  if (groupMeetingFeedback) { groupMeetingFeedback.classList.add("hidden"); groupMeetingFeedback.textContent = ""; }
+  updateGroupMeetingFeatureControl(false, { disabled: true });
 
-  const [result, quizResult, examResult, devotionResult] = await Promise.all([
+  const [result, quizResult, examResult, devotionResult, groupMeetingResult] = await Promise.all([
     db.getFeatureSetting("pastoral_sharing_wall", false),
     db.getFeatureSetting("daily_quiz", false),
     db.getFeatureSetting("speed_reading_exam", false),
-    db.getFeatureSetting("daily_devotion", false)
+    db.getFeatureSetting("daily_devotion", false),
+    db.getFeatureSetting("group_meeting_plan", false)
   ]);
   if (result.error) {
     updatePastoralWallControl(false, { disabled: true });
@@ -190,6 +221,43 @@ export async function renderAdminFeatureSettings() {
     window.dailyDevotionFeatureEnabled = devotionEnabled;
     updateDevotionFeatureControl(devotionEnabled);
     applyAdminDevotionVisibility(devotionEnabled);
+  }
+  if (groupMeetingResult.error) {
+    updateGroupMeetingFeatureControl(false, { disabled: true });
+    if (groupMeetingFeedback) {
+      groupMeetingFeedback.textContent = "無法載入設定：從伺服器獲取小組聚會週計畫設定失敗。";
+      groupMeetingFeedback.classList.remove("hidden");
+    }
+  } else {
+    const groupMeetingEnabled = groupMeetingResult.enabled === true;
+    window.groupMeetingPlanFeatureEnabled = groupMeetingEnabled;
+    updateGroupMeetingFeatureControl(groupMeetingEnabled);
+    applyAdminGroupMeetingVisibility(groupMeetingEnabled);
+  }
+  const groupMeetingToggle = document.getElementById("admin-group-meeting-feature-toggle");
+  if (groupMeetingToggle && !groupMeetingToggle.dataset.featureSettingBound) {
+    groupMeetingToggle.dataset.featureSettingBound = "true";
+    groupMeetingToggle.addEventListener("click", async () => {
+      const currentEnabled = groupMeetingToggle.getAttribute("aria-checked") === "true";
+      const nextEnabled = !currentEnabled;
+      updateGroupMeetingFeatureControl(currentEnabled, { disabled: true });
+      groupMeetingFeedback?.classList.add("hidden");
+      const saveResult = await db.updateFeatureSetting("group_meeting_plan", nextEnabled);
+      if (saveResult.error) {
+        updateGroupMeetingFeatureControl(currentEnabled);
+        if (groupMeetingFeedback) {
+          groupMeetingFeedback.textContent = "更新設定失敗：無法將設定儲存至伺服器。";
+          groupMeetingFeedback.classList.remove("hidden");
+        }
+        return;
+      }
+      window.groupMeetingPlanFeatureEnabled = nextEnabled;
+      updateGroupMeetingFeatureControl(nextEnabled);
+      applyAdminGroupMeetingVisibility(nextEnabled);
+      if (typeof showToast === "function") {
+        showToast(nextEnabled ? "小組聚會週計畫功能已開啟！" : "小組聚會週計畫功能已關閉。內容都會保留。");
+      }
+    });
   }
   const devotionToggle = document.getElementById("admin-daily-devotion-feature-toggle");
   if (devotionToggle && !devotionToggle.dataset.featureSettingBound) {
@@ -1647,6 +1715,7 @@ const ADMIN_SECTIONS = [
   { id: 'quizzes',       group: '測驗',       label: '小測驗',         icon: 'checkCircle',   panel: 'plans',  sub: 'quizzes', flag: 'quiz' },
   { id: 'exam',          group: '測驗',       label: '大測驗',         icon: 'pencil',        panel: 'plans',  sub: 'exam',    flag: 'exam' },
   { id: 'devotions',     group: '內容管理',   label: '每日靈修',       icon: 'bookOpen',      panel: 'plans',  sub: 'devotions', flag: 'devotion' },
+  { id: 'group-meeting', group: '內容管理',   label: '小組聚會',       icon: 'peoples',       panel: 'plans',  sub: 'group-meeting', flag: 'groupMeeting' },
   { id: 'settings',      group: '設定',       label: '功能開放設定',   icon: 'setting',       panel: 'system', sub: 'settings' }
 ];
 
@@ -1661,9 +1730,9 @@ function isAdminSectionAvailable(section) {
     const canSee = ['admin', 'pastor', 'great_zone_leader', 'zone_leader', 'group_leader'].includes(roleCode);
     return canSee && window.speedReadingExamFeatureEnabled === true;
   }
-  if (section.flag === 'devotion') {
-    // 每日靈修：admin / pastor 一律看得到管理頁——功能對會友「暫不開放」時
-    // 也要能先進來建內容（跟大測驗建題庫同理）。flag 只控制會友端顯示。
+  if (section.flag === 'devotion' || section.flag === 'groupMeeting') {
+    // 每日靈修 / 小組聚會：admin / pastor 一律看得到管理頁——功能對會友「暫不開放」
+    // 時也要能先進來建內容。flag 只控制會友端顯示。
     const roleCode = state.currentUser && typeof getUserRoleCode === 'function'
       ? getUserRoleCode(state.currentUser) : null;
     return ['admin', 'pastor'].includes(roleCode);
@@ -2635,6 +2704,14 @@ async function loadActiveAdminPlanSubtab(forceRefresh = false) {
     return;
   }
 
+  if (activeAdminPlanSubtab === 'group-meeting') {
+    const root = document.getElementById('admin-group-meeting-root');
+    if (root) {
+      try { await renderAdminGroupMeetingPlan(root, forceRefresh); } catch (e) { console.warn('[Admin] renderAdminGroupMeetingPlan error caught:', e); }
+    }
+    return;
+  }
+
   if (activeAdminPlanSubtab === 'teams') {
     const results = await Promise.allSettled([
       renderAdminTeamPlacementLookup(state.activePlan, forceRefresh),
@@ -2941,6 +3018,182 @@ async function renderAdminDevotionPlan(root, forceRefresh = false) {
 }
 window.renderAdminDevotionPlan = renderAdminDevotionPlan;
 
+// ── 小組聚會週計畫（group_meeting plan）管理 ──────────────────────────────
+let adminGroupMeetingSelectedPlanId = null;
+function getGroupMeetingPlans() {
+  return (state.globalPlans || [])
+    .filter(p => p && (p.planKind === 'group_meeting' || p.plan_kind === 'group_meeting'));
+}
+function gmSongsToText(songs) {
+  return (Array.isArray(songs) ? songs : [])
+    .map(s => [s.code, s.title].filter(Boolean).join(' ')).join('\n');
+}
+function gmTextToSongs(text) {
+  return String(text || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    const m = l.match(/^(\S+)\s+(.+)$/);
+    return m ? { code: m[1], title: m[2] } : { code: l, title: '' };
+  });
+}
+function gmRefsFromLabel(label) {
+  try {
+    if (typeof window.parsePassageLabel === 'function') {
+      const r = window.parsePassageLabel(String(label || '').trim());
+      return r ? [r] : [];
+    }
+  } catch (_) {}
+  return [];
+}
+
+async function renderAdminGroupMeetingPlan(root, forceRefresh = false) {
+  if (!root) return;
+  const plans = getGroupMeetingPlans();
+  if (!plans.length) {
+    root.innerHTML = '<div class="admin-devotion__empty">目前沒有小組聚會計畫。請先在 Supabase 執行 '
+      + '<code>scratch/seed_group_meeting_plan_2026_h2.sql</code> 建立「小組聚會經營（2026 7-12月）」，再回到這裡編輯內容。</div>';
+    return;
+  }
+  if (!adminGroupMeetingSelectedPlanId || !plans.some(p => String(p.id) === String(adminGroupMeetingSelectedPlanId))) {
+    adminGroupMeetingSelectedPlanId = String(plans[0].id);
+  }
+  const planId = adminGroupMeetingSelectedPlanId;
+  const planOptions = plans.map(p =>
+    `<option value="${escapeHTML(String(p.id))}" ${String(p.id) === planId ? 'selected' : ''}>${escapeHTML(p.name || '(未命名)')}</option>`).join('');
+
+  const res = await db.listGroupMeetingWeeks(planId);
+  if (!res.success) { root.innerHTML = `<div class="admin-devotion__empty">${escapeHTML(res.message || '載入失敗')}</div>`; return; }
+  const data = res.data || {};
+  const weeks = Array.isArray(data.weeks) ? data.weeks.slice().sort((a, b) => a.weekIndex - b.weekIndex) : [];
+  const gp = (state.globalPlans || []).find(p => String(p.id) === String(planId));
+  const futureOpen = data.futureOpen === true;
+
+  const rows = weeks.map(w => `
+    <tr data-gm-week-id="${escapeHTML(String(w.id))}" data-gm-week-index="${w.weekIndex}">
+      <td>第 ${w.weekIndex} 週<br><span class="admin-devotion__date">${escapeHTML(w.dateLabel || '')}</span></td>
+      <td>${escapeHTML(w.messagePassageLabel || '—')}</td>
+      <td>${escapeHTML(w.offeringPassageLabel || '—')}</td>
+      <td>${(Array.isArray(w.songs) ? w.songs.length : 0)} 首</td>
+      <td>${w.isPublished ? '已發佈' : '未發佈'}</td>
+      <td>
+        <button type="button" class="secondary-btn" data-gm-edit>編輯</button>
+        <button type="button" class="danger-btn" data-gm-delete>刪除</button>
+      </td>
+    </tr>`).join('');
+
+  root.innerHTML = `
+    <div class="admin-devotion">
+      <div class="admin-devotion__toolbar">
+        <label>計畫
+          <select id="admin-gm-plan-select" class="form-control">${planOptions}</select>
+        </label>
+        <div class="admin-devotion__meta">起始 ${escapeHTML(data.startDate || '')}　共 ${weeks.length} 週</div>
+        <label class="admin-devotion__future">
+          <span>開放未來週次</span>
+          <button type="button" class="feature-switch" id="admin-gm-future-toggle"
+            role="switch" aria-checked="${futureOpen ? 'true' : 'false'}">${futureOpen ? '已開放' : '未開放'}</button>
+        </label>
+        <button type="button" class="secondary-btn" id="admin-gm-preview">預覽會友畫面</button>
+      </div>
+      <p class="admin-devotion__hint">「小組聚會週計畫」功能未開放時，會友和探索計畫都看不到；要檢視會友端畫面請用「預覽會友畫面」。經文欄請填完整書名（例：馬太福音 26:17-29），系統會據此讓會友點開段落預覽。</p>
+      <p class="admin-feature-setting-feedback hidden" id="admin-gm-feedback" role="status"></p>
+      <div class="admin-devotion__list-wrap">
+        <table class="admin-devotion__table">
+          <thead><tr><th>週次</th><th>信息經文</th><th>奉獻經文</th><th>詩歌</th><th>狀態</th><th></th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="6">尚無週次</td></tr>'}</tbody>
+        </table>
+      </div>
+      <button type="button" class="secondary-btn" id="admin-gm-add" style="margin-top:.75rem;">＋ 新增一週</button>
+      <div id="admin-gm-editor" class="admin-devotion__editor hidden"></div>
+    </div>`;
+
+  const showFeedback = (msg) => {
+    const el = root.querySelector('#admin-gm-feedback');
+    if (el) { el.textContent = msg; el.classList.remove('hidden'); }
+  };
+
+  root.querySelector('#admin-gm-plan-select')?.addEventListener('change', (e) => {
+    adminGroupMeetingSelectedPlanId = String(e.target.value);
+    renderAdminGroupMeetingPlan(root, true);
+  });
+  root.querySelector('#admin-gm-preview')?.addEventListener('click', () => {
+    if (typeof window.previewGroupMeetingPlanAsMember === 'function') window.previewGroupMeetingPlanAsMember(planId);
+  });
+  const futureToggle = root.querySelector('#admin-gm-future-toggle');
+  futureToggle?.addEventListener('click', async () => {
+    const cur = futureToggle.getAttribute('aria-checked') === 'true';
+    futureToggle.disabled = true;
+    const r = await db.setGroupMeetingPlanFutureOpen(planId, !cur);
+    futureToggle.disabled = false;
+    if (!r.success) { showFeedback(r.message || '切換失敗'); return; }
+    if (gp) gp.groupMeetingFutureOpen = !cur;
+    renderAdminGroupMeetingPlan(root, true);
+  });
+
+  const openEditor = (week) => {
+    const editor = root.querySelector('#admin-gm-editor');
+    if (!editor) return;
+    const w = week || {
+      weekIndex: (weeks.at(-1)?.weekIndex || 0) + 1, dateLabel: '', monthTheme: '',
+      messageTopic: '', messagePassageLabel: '', offeringTopic: '', offeringPassageLabel: '',
+      songs: [], note: '', isPublished: false
+    };
+    editor.classList.remove('hidden');
+    editor.innerHTML = `
+      <h4>${week ? `編輯第 ${w.weekIndex} 週` : '新增一週'}</h4>
+      <label>第幾週<input type="number" min="1" id="gm-week-index" class="form-control" value="${w.weekIndex}" ${week ? 'readonly' : ''}></label>
+      <label>日期標籤（顯示用）<input type="text" id="gm-date-label" class="form-control" value="${escapeHTML(w.dateLabel || '')}" placeholder="7/1–7/2"></label>
+      <label>月主題<input type="text" id="gm-month-theme" class="form-control" value="${escapeHTML(w.monthTheme || '')}" placeholder="耶穌被賣的那一夜"></label>
+      <label>信息經文小標<input type="text" id="gm-msg-topic" class="form-control" value="${escapeHTML(w.messageTopic || '')}" placeholder="設立主聖餐"></label>
+      <label>信息經文<input type="text" id="gm-msg-passage" class="form-control" value="${escapeHTML(w.messagePassageLabel || '')}" placeholder="馬太福音 26:17-29"></label>
+      <label>奉獻經文小標<input type="text" id="gm-off-topic" class="form-control" value="${escapeHTML(w.offeringTopic || '')}" placeholder="擘餅與分杯（可留空）"></label>
+      <label>奉獻經文<input type="text" id="gm-off-passage" class="form-control" value="${escapeHTML(w.offeringPassageLabel || '')}" placeholder="馬太福音 26:26-28（可留空）"></label>
+      <label>敬拜讚美詩歌（一行一首，「代碼 歌名」）<textarea id="gm-songs" class="form-control" rows="4">${escapeHTML(gmSongsToText(w.songs))}</textarea></label>
+      <label>備註<input type="text" id="gm-note" class="form-control" value="${escapeHTML(w.note || '')}" placeholder="Pastor Greg 特會（可留空）"></label>
+      <label class="admin-devotion__pub"><input type="checkbox" id="gm-published" ${w.isPublished ? 'checked' : ''}> 發佈這一週（會友看得到）</label>
+      <div style="display:flex;gap:.5rem;margin-top:.5rem;">
+        <button type="button" class="primary-btn" id="gm-save">儲存</button>
+        <button type="button" class="pill-btn" id="gm-cancel">取消</button>
+      </div>`;
+    editor.querySelector('#gm-cancel').addEventListener('click', () => editor.classList.add('hidden'));
+    editor.querySelector('#gm-save').addEventListener('click', async () => {
+      const msgLabel = editor.querySelector('#gm-msg-passage').value.trim();
+      const offLabel = editor.querySelector('#gm-off-passage').value.trim();
+      const payload = {
+        globalPlanId: planId,
+        weekIndex: Number(editor.querySelector('#gm-week-index').value),
+        dateLabel: editor.querySelector('#gm-date-label').value.trim(),
+        monthTheme: editor.querySelector('#gm-month-theme').value.trim(),
+        messageTopic: editor.querySelector('#gm-msg-topic').value.trim(),
+        messagePassageLabel: msgLabel,
+        messagePassageRefs: gmRefsFromLabel(msgLabel),
+        offeringTopic: editor.querySelector('#gm-off-topic').value.trim(),
+        offeringPassageLabel: offLabel,
+        offeringPassageRefs: gmRefsFromLabel(offLabel),
+        songs: gmTextToSongs(editor.querySelector('#gm-songs').value),
+        note: editor.querySelector('#gm-note').value.trim(),
+        isPublished: editor.querySelector('#gm-published').checked
+      };
+      if (!payload.weekIndex || payload.weekIndex < 1) { showFeedback('「第幾週」要是 1 以上的數字'); return; }
+      const r = await db.upsertGroupMeetingWeek(payload);
+      if (!r.success) { showFeedback(r.message || '儲存失敗'); return; }
+      if (typeof showToast === 'function') showToast('已儲存');
+      renderAdminGroupMeetingPlan(root, true);
+    });
+  };
+  root.querySelector('#admin-gm-add')?.addEventListener('click', () => openEditor(null));
+  root.querySelectorAll('[data-gm-edit]').forEach(btn => btn.addEventListener('click', () => {
+    const idx = Number(btn.closest('tr')?.dataset.gmWeekIndex);
+    openEditor(weeks.find(w => w.weekIndex === idx));
+  }));
+  root.querySelectorAll('[data-gm-delete]').forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.closest('tr')?.dataset.gmWeekId;
+    if (!id || !confirm('刪除這一週的內容？')) return;
+    const r = await db.deleteGroupMeetingWeek(id);
+    if (!r.success) { showFeedback(r.message || '刪除失敗'); return; }
+    renderAdminGroupMeetingPlan(root, true);
+  }));
+}
+window.renderAdminGroupMeetingPlan = renderAdminGroupMeetingPlan;
+
 export async function renderAdminPlanManagement() {
   try {
     const role = (state.currentUser && getUserRoleCode(state.currentUser)) || 'member';
@@ -2952,6 +3205,7 @@ export async function renderAdminPlanManagement() {
     mountPlanManagementSections();
     applyAdminExamVisibility(window.speedReadingExamFeatureEnabled === true);
     applyAdminDevotionVisibility(window.dailyDevotionFeatureEnabled === true);
+    applyAdminGroupMeetingVisibility(window.groupMeetingPlanFeatureEnabled === true);
 
     // 還原統一功能清單的選擇；不再經過舊 system/plans tab 包裝層。
     let savedSection = null;

@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260903_join_team_guard" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260903_group_meeting_plan" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -1977,6 +1977,17 @@
                 </button>
               </div>
               <p class="admin-feature-setting-feedback hidden" id="admin-daily-devotion-feature-feedback" role="status"></p>
+              <div class="admin-feature-setting-row">
+                <div class="admin-feature-setting-row__label">
+                  <strong>小組聚會週計畫</strong>
+                  <span id="admin-group-meeting-feature-status">讀取設定中…</span>
+                </div>
+                <button type="button" class="feature-switch" id="admin-group-meeting-feature-toggle"
+                  role="switch" aria-checked="false" aria-label="開放小組聚會週計畫" disabled>
+                  <span class="feature-switch__thumb" aria-hidden="true"></span>
+                </button>
+              </div>
+              <p class="admin-feature-setting-feedback hidden" id="admin-group-meeting-feature-feedback" role="status"></p>
             </div>
           </div>
           </div>
@@ -2137,6 +2148,14 @@
             <section class="admin-management-section" aria-labelledby="admin-devotions-title">
               <div id="admin-devotion-root" aria-live="polite">
                 <div class="admin-user-directory__empty">切換到此分頁後載入每日靈修內容。</div>
+              </div>
+            </section>
+          </div>
+          <div id="admin-section-group-meeting" class="admin-section-panel hidden"
+            aria-labelledby="admin-group-meeting-title">
+            <section class="admin-management-section" aria-labelledby="admin-group-meeting-title">
+              <div id="admin-group-meeting-root" aria-live="polite">
+                <div class="admin-user-directory__empty">切換到此分頁後載入小組聚會內容。</div>
               </div>
             </section>
           </div>
@@ -2746,7 +2765,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260903_join_team_guard"></script>
+  <script type="module" src="js/app.js?v=20260903_group_meeting_plan"></script>
 </body>
 
 </html>

@@ -15517,6 +15517,62 @@ textarea::placeholder {
 }
 .devotion-view__locked p { margin: 0; font-size: 0.9375rem; }
 
+/* ── 小組聚會週計畫 viewer（plan_kind='group_meeting'）—— 沿用靈修的區塊樣式 ── */
+.group-meeting-view { display: flex; flex-direction: column; gap: 1rem; padding: 0.25rem 0 2rem; }
+.group-meeting-view__loading, .group-meeting-view__muted { color: var(--text-muted); font-size: 0.9375rem; }
+.group-meeting-view__strip {
+  display: flex; gap: 0.5rem; overflow-x: auto; padding: 0.25rem 0 0.5rem;
+  scroll-snap-type: x proximity;
+}
+.gm-week-chip {
+  flex: 0 0 auto; scroll-snap-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 0.1rem;
+  min-width: 5.2rem; padding: 0.45rem 0.7rem; font: inherit; cursor: pointer;
+  border: 1px solid var(--border-card); border-radius: var(--radius-sm);
+  background: var(--bg-card); color: var(--text-secondary);
+}
+.gm-week-chip__n { font-size: 0.875rem; font-weight: var(--type-weight-strong, 500); color: var(--text-primary); }
+.gm-week-chip__d { font-size: 0.875rem; color: var(--text-muted); white-space: nowrap; }
+.gm-week-chip.past { opacity: 0.65; }
+.gm-week-chip.this-week { border-color: var(--color-brand); }
+.gm-week-chip.active {
+  border-color: var(--color-brand);
+  background: color-mix(in srgb, var(--color-brand) 12%, var(--bg-card));
+}
+.gm-week-chip.active .gm-week-chip__d { color: var(--text-secondary); }
+.gm-week-chip.locked { border-style: dashed; }
+.group-meeting-view__theme {
+  margin: 0; font-size: 0.9375rem; color: var(--color-brand); font-weight: var(--type-weight-strong, 500);
+}
+.group-meeting-view__weeklabel { text-align: center; font-size: 0.9375rem; color: var(--text-secondary); padding: 0.1rem 0; }
+.group-meeting-view__weeklabel strong { color: var(--text-primary); }
+.group-meeting-view__block {
+  border: 1px solid var(--border-card); border-radius: var(--radius-md);
+  background: var(--bg-card); padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.55rem;
+}
+.group-meeting-view__h {
+  margin: 0; font-size: 0.9375rem; font-weight: var(--type-weight-strong, 500); color: var(--color-brand);
+}
+.group-meeting-view__topic { margin: 0; font-size: 0.9375rem; color: var(--text-primary); }
+.group-meeting-view__block .plan-task-item .task-title { white-space: normal; line-height: 1.6; }
+.group-meeting-view__block .task-open-button--static { cursor: default; }
+.group-meeting-view__songs { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.35rem; }
+.group-meeting-view__songs li { font-size: 0.9375rem; color: var(--text-primary); line-height: 1.5; }
+.group-meeting-view__songcode {
+  display: inline-block; min-width: 2.6rem; margin-right: 0.4rem;
+  font-family: 'Outfit', sans-serif; color: var(--color-brand); font-weight: var(--type-weight-strong, 500);
+}
+.group-meeting-view__note {
+  border: 1px dashed var(--border-card); border-radius: var(--radius-md);
+  padding: 0.75rem 1rem; font-size: 0.9375rem; color: var(--text-secondary);
+}
+.group-meeting-view__locked {
+  border: 1px dashed var(--border-card); border-radius: var(--radius-md);
+  padding: 1.75rem 1rem; text-align: center; color: var(--text-muted); display: flex;
+  flex-direction: column; align-items: center; gap: 0.5rem;
+}
+.group-meeting-view__locked p { margin: 0; font-size: 0.9375rem; }
+
 /* 靈修「經文進度」點開 → 站內只顯示該段經文，風格沿用讀經系統的 .bible-verse */
 .devotion-passage {
   border: 1px solid var(--border-card); border-radius: var(--radius-md);
