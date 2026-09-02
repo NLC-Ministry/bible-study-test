@@ -2658,32 +2658,83 @@ function getDevotionalPlans() {
     .filter(p => p && (p.planKind === 'devotional' || p.plan_kind === 'devotional'));
 }
 
-// 貼上的文字 → [{dayIndex, passageLabel, reflections:[]}]
-// 支援標頭：「第N天 ｜ 使徒行傳 1:1-5」或「N. 使徒行傳 1:1-5」或「N、使徒行傳…」。
-// 標頭之後的非空行都當一條思想經文，去掉前面的 -、•、1.、（1）、① 等標記。
-function parseDevotionBulkText(text) {
+// 貼上的文字 → [{dayIndex, passageLabel, passageRefs, reflections:[]}]
+// 直接吃「從 PDF 複製出來的原文」也吃整理過的格式。每一天的起點靠：
+//   ·「8/22（六） 徒1:1~5 標題」這種日期 + 經文標頭（day_index 由計畫起始日推算），或
+//   ·「第1天 ｜ 使徒行傳 1:1-5」／「1. 使徒行傳 1:1-5」這種明確編號。
+// 標頭之後到下一個標頭之間的文字，用「1. 2. 3.…」的題號切成一條條思想經文
+// （會避開 v.8、16:8、40天、參太3:2 這類數字，不誤切）。
+// 前面的簡介 / 目錄（沒有題號、也不是標頭）自然被略過。
+function parseDevotionBulkText(text, startDateStr) {
+  const src = String(text || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/新生命小組教會\s*版權所有/g, ' ')   // 頁首/頁尾雜訊
+    .replace(/[ \t　]+/g, ' ');
+
+  const bookRe = '(?:徒|使徒行傳|羅|羅馬書|創|創世記|出|出埃及記|利|利未記|民|民數記|申|申命記)';
+  const headRe = new RegExp(
+    '(?:第\\s*(\\d+)\\s*天\\s*[｜|]|(\\d{1,2})\\/(\\d{1,2})\\s*(?:（[^）]{0,6}）)?|(?:^|\\s)(\\d{1,2})\\s*[.、]\\s*(?=' + bookRe + '))'
+    + '\\s*' + bookRe + '?\\s*(\\d+)\\s*[:：]\\s*(\\d+)\\s*[~～\\-–—]\\s*(\\d+)',
+    'g'
+  );
+
+  const bookFull = { '徒': '使徒行傳', '羅': '羅馬書', '創': '創世記', '出': '出埃及記', '利': '利未記', '民': '民數記', '申': '申命記' };
+  const normalizeLabel = (raw, c, v1, v2) => {
+    let m = raw.match(new RegExp('(' + bookRe + ')'));
+    let book = m ? (bookFull[m[1]] || m[1]) : '使徒行傳';
+    return { label: `${book} ${c}:${v1}-${v2}`, refs: [{ book, chapterFrom: Number(c), verseFrom: Number(v1), chapterTo: Number(c), verseTo: Number(v2) }] };
+  };
+
+  const start = startDateStr ? new Date(`${String(startDateStr).slice(0, 10)}T00:00:00`) : null;
+  const dayIndexFromDate = (mm, dd) => {
+    if (!start || !Number.isFinite(start.getTime())) return null;
+    let y = start.getFullYear();
+    let d = new Date(y, mm - 1, dd);
+    if (d < new Date(y, start.getMonth(), start.getDate())) d = new Date(y + 1, mm - 1, dd);
+    const diff = Math.round((d - new Date(y, start.getMonth(), start.getDate())) / 86400000);
+    return diff >= 0 ? diff + 1 : null;
+  };
+
+  // 收集所有標頭出現位置
+  const heads = [];
+  let mm;
+  while ((mm = headRe.exec(src)) !== null) {
+    const [, dNum, mo, day, nDot, chap, vs1, vs2] = mm;
+    let dayIndex = null;
+    if (dNum) dayIndex = Number(dNum);
+    else if (nDot) dayIndex = Number(nDot);
+    else if (mo && day) dayIndex = dayIndexFromDate(Number(mo), Number(day));
+    if (!Number.isFinite(dayIndex) || dayIndex < 1) continue;
+    heads.push({ at: mm.index, end: headRe.lastIndex, dayIndex, raw: mm[0], chap, vs1, vs2 });
+  }
+  if (!heads.length) return [];
+
+  const splitQuestions = (body) => {
+    // 在「題號」前切：1-2 位數 + . 或 、，前面不能是數字 / . / : / v（避開 v.8、16:8、3.2）
+    const parts = body.split(/(?<![0-9.:：vV])(?=(?:[1-9]|1[0-9])\s*[．.、]\s*\S)/);
+    return parts
+      .map(s => s.replace(/^\s*(?:[1-9]|1[0-9])\s*[．.、]\s*/, '')
+                 .replace(/^[-•*▪●·（(]?\s*\d*\s*[）).、]?\s*/, '')
+                 .replace(/^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫]\s*/, '')
+                 .replace(/\s+/g, ' ').trim())
+      .filter(s => s.length > 1);
+  };
+
   const rows = [];
-  const blocks = String(text || '').replace(/\r\n/g, '\n').split(/\n{2,}/);
-  blocks.forEach(block => {
-    const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
-    if (!lines.length) return;
-    const head = lines[0];
-    let m = head.match(/^第\s*(\d+)\s*天\s*[｜|]\s*(.+)$/)
-      || head.match(/^(\d+)\s*[.、]\s*(.+)$/);
-    if (!m) return;
-    const dayIndex = Number(m[1]);
-    const passageLabel = m[2].trim();
-    const reflections = lines.slice(1)
-      .map(l => l.replace(/^[-•*▪●·]\s*/, '')
-                 .replace(/^[（(]?\s*\d+\s*[）).、]\s*/, '')
-                 .replace(/^[①②③④⑤⑥⑦⑧⑨⑩]\s*/, '')
-                 .trim())
-      .filter(Boolean);
-    if (Number.isFinite(dayIndex) && dayIndex >= 1) {
-      rows.push({ dayIndex, passageLabel, reflections });
-    }
+  heads.forEach((h, i) => {
+    const bodyRaw = src.slice(h.end, i + 1 < heads.length ? heads[i + 1].at : src.length).trim();
+    // body 開頭到第一個題號之間是標題，丟掉；沒有題號就整段當一條
+    const firstQ = bodyRaw.search(/(?<![0-9.:：vV])(?:[1-9]|1[0-9])\s*[．.、]\s*\S/);
+    const qText = firstQ >= 0 ? bodyRaw.slice(firstQ) : bodyRaw;
+    const reflections = splitQuestions(qText);
+    const { label, refs } = normalizeLabel(h.raw, h.chap, h.vs1, h.vs2);
+    rows.push({ dayIndex: h.dayIndex, passageLabel: label, passageRefs: refs, reflections });
   });
-  return rows.sort((a, b) => a.dayIndex - b.dayIndex);
+
+  // 同一天重複 → 後者覆蓋；依 dayIndex 排序
+  const byDay = new Map();
+  rows.forEach(r => byDay.set(r.dayIndex, r));
+  return [...byDay.values()].sort((a, b) => a.dayIndex - b.dayIndex);
 }
 
 async function renderAdminDevotionPlan(root, forceRefresh = false) {
@@ -2752,8 +2803,8 @@ async function renderAdminDevotionPlan(root, forceRefresh = false) {
 
       <details class="admin-devotion__import">
         <summary>貼文字批次匯入</summary>
-        <p class="admin-devotion__hint">每段一天，空行分隔。第一行「第1天 ｜ 使徒行傳 1:1-5」或「1. 使徒行傳 1:1-5」；之後每一行是一條思想經文（開頭的 -、1.、① 會自動去掉）。匯入不會自動發佈，逐日確認後再勾「發佈」。</p>
-        <textarea id="admin-devotion-bulk" class="form-control" rows="10" placeholder="第1天 ｜ 使徒行傳 1:1-5&#10;- 從 v.1-2 看路加寫這卷書的目的是什麼？&#10;- ...&#10;&#10;第2天 ｜ 使徒行傳 1:6-11&#10;- ..."></textarea>
+        <p class="admin-devotion__hint">可以<strong>直接貼從靈修手冊 PDF 複製出來的原文</strong>——只要每一天有「8/22（六） 徒1:1~5 標題」這種日期＋經文標頭，或「第1天 ｜ 使徒行傳 1:1-5」，思想題用「1. 2. 3.」編號即可。前面的簡介 / 目錄會自動略過，v.8、參太3:2 這類數字不會被誤切。匯入不會自動發佈，逐日確認後再勾「發佈」。</p>
+        <textarea id="admin-devotion-bulk" class="form-control" rows="10" placeholder="使徒行傳（一）靈修（共32天）… 8/22（六） 徒1:1~5 等候所應許的 1.v.1-2在總括前書…？ 2.主耶穌復活後40天…？ 8/23（日） 徒1:6~11 耶穌被接升天 1. v.6-7門徒關心的…？"></textarea>
         <div style="margin-top:.5rem;display:flex;gap:.5rem;">
           <button type="button" class="secondary-btn" id="admin-devotion-bulk-preview">預覽</button>
           <button type="button" class="primary-btn" id="admin-devotion-bulk-import" disabled>匯入</button>
@@ -2816,9 +2867,9 @@ async function renderAdminDevotionPlan(root, forceRefresh = false) {
   const bulkResult = root.querySelector('#admin-devotion-bulk-result');
   let parsedRows = [];
   bulkPreviewBtn?.addEventListener('click', () => {
-    parsedRows = parseDevotionBulkText(bulkArea.value);
+    parsedRows = parseDevotionBulkText(bulkArea.value, data.startDate);
     if (!parsedRows.length) {
-      bulkResult.textContent = '解析不到任何一天。請確認每段第一行是「第N天 ｜ 經文」或「N. 經文」。';
+      bulkResult.textContent = '解析不到任何一天。請確認每天有「M/D（週） 徒C:V~V 標題」或「第N天 ｜ 經文」的標頭，思想題用「1. 2. 3.」編號。';
       bulkImportBtn.disabled = true;
       return;
     }
