@@ -2331,9 +2331,20 @@ function renderPresetPlansList() {
   }
 
   const legacyCategoryIdPrefix = "00000000-0000-0000-a000-";
+  // 第一輪期末賽（第 2 階段）已拆成 4 個「月度期末賽」（c126 命名空間）。DB 裡
+  // 0017 的 sync trigger 仍會補一列舊的「聚合」第 2 階段（c026…02 / church_stage_02），
+  // 那一列已被取代、不該出現在探索清單。
+  const isSupersededAggregateStage2 = plan => {
+    const id = String(plan && (plan.id || plan.globalPlanId || ""));
+    const key = String(plan && plan.presetKey || "");
+    return id === "00000000-0000-0000-c026-000000000002"
+      || key === "church_stage_02"
+      || String(plan && plan.name || "") === "第2階段｜第一輪期末賽";
+  };
   const isObsoleteCategoryPlan = plan =>
     String(plan && (plan.id || plan.globalPlanId || "")).startsWith(legacyCategoryIdPrefix)
-    || String(plan && plan.presetKey || "").startsWith("m_");
+    || String(plan && plan.presetKey || "").startsWith("m_")
+    || isSupersededAggregateStage2(plan);
 
   const presetPlanEntries = Object.entries(CHURCH_PLAN_PRESETS).map(([key, plan]) => ({
     ...plan,
@@ -2369,6 +2380,13 @@ function renderPresetPlansList() {
       || normalizedName === "2026-2029 新生生命聖經速讀計畫");
   };
 
+  // 「這張卡只有管理員 / 有管理權限的人看得到，一般會友看不到」的 plan key 集合，
+  // 拿來在卡片上標一個提示，讓管理員知道會友端其實看不到這張。
+  const managerOnlyPlanKeys = new Set();
+  const markManagerOnly = plan => {
+    [plan.id, plan.globalPlanId, plan.presetKey, plan.name].filter(Boolean).forEach(v => managerOnlyPlanKeys.add(String(v)));
+  };
+
   const visiblePlans = sourcePlans.filter(plan => {
     if (!plan) return false;
     const isObsolete = isObsoleteCategoryPlan(plan);
@@ -2398,7 +2416,13 @@ function renderPresetPlansList() {
     if (isFullyHiddenCampaignStage && viewerRole !== "admin") return false;
     if (isHidden && !canManageHiddenPlans() && !showAsLocked) return false;
     if (!matchesSearch) return false;
-    return !isAlreadyJoined;
+    if (isAlreadyJoined) return false;
+    // 走到這裡代表這張卡會顯示。如果它只是因為「我是管理員 / 有隱藏計畫管理權」
+    // 才沒被濾掉（會友端其實看不到），就標記起來。
+    if (!showAsLocked && (isFullyHiddenCampaignStage || (isHidden && canManageHiddenPlans()))) {
+      markManagerOnly(plan);
+    }
+    return true;
   });
 
   if (visiblePlans.length === 0) {
@@ -2430,6 +2454,10 @@ function renderPresetPlansList() {
     const devDevMode = isDevotional && window.isDevotionalPlanDevMode(plan);
     const gmDevMode = isGroupMeeting && typeof window.isGroupMeetingPlanDevMode === "function" && window.isGroupMeetingPlanDevMode(plan);
     const viewerDevMode = devDevMode || gmDevMode;
+    // 這張卡只有「管理員 / 有隱藏計畫管理權」的人在探索清單看得到（會友端看不到）。
+    const isManagerOnly = [plan.id, plan.globalPlanId, plan.presetKey, plan.name]
+      .filter(Boolean).some(v => managerOnlyPlanKeys.has(String(v)));
+    const isHiddenFromMembers = viewerDevMode || isManagerOnly;
     const isFixed = plan.isFixed !== false && plan.is_fixed !== false;
     const scheduleLabel = isCampaignStage
       ? `第 ${Number(plan.stageNo || plan.campaignDefinition && plan.campaignDefinition.stageNo)} 階段・第 ${Number(plan.roundNo || plan.campaignDefinition && plan.campaignDefinition.roundNo)} 輪`
@@ -2446,12 +2474,14 @@ function renderPresetPlansList() {
       : "";
 
     const card = document.createElement("div");
-    card.className = "plan-card joined-plan-item-card" + (viewerDevMode ? " plan-card--dev" : "");
+    card.className = "plan-card joined-plan-item-card" + (isHiddenFromMembers ? " plan-card--dev" : "");
     card.innerHTML = renderPlanCardShell({
       plan,
       variant: isLockedStage ? "available-locked" : (isUpcomingFixed ? "available-upcoming" : "available"),
       header: renderPlanCardHeader({
-        title: escapeHTML(plan.name) + (viewerDevMode ? ' <span class="plan-card__dev-badge">開發中・會友看不到</span>' : ""),
+        title: escapeHTML(plan.name)
+          + (viewerDevMode ? ' <span class="plan-card__dev-badge">開發中・會友看不到</span>' : "")
+          + (isManagerOnly ? ' <span class="plan-card__dev-badge">會友看不到</span>' : ""),
         meta: `
           <span class="nlc-icon nlc-icon--sm" data-icon="calendarThirty" aria-hidden="true"></span>
           <span>${escapeHTML(scheduleLabel)}</span>
@@ -2474,6 +2504,12 @@ function renderPresetPlansList() {
           icon: "lock",
           label: "\u958b\u653e\u72c0\u614b",
           value: "\u958b\u767c\u4e2d\uff0c\u5c1a\u672a\u5c0d\u6703\u53cb\u958b\u653e\uff08\u53ea\u6709\u4f60\u770b\u5f97\u5230\uff09",
+          tone: "warning"
+        },
+        isManagerOnly && !viewerDevMode && {
+          icon: "lock",
+          label: "\u986f\u793a\u7bc4\u570d",
+          value: "\u53ea\u6709\u7cfb\u7d71\u7ba1\u7406\u54e1\u770b\u5f97\u5230\uff1b\u6703\u53cb\u7aef\u7684\u63a2\u7d22\u8a08\u756b\u4e0d\u6703\u51fa\u73fe\u9019\u5f35\uff08\uff1d\u76ee\u524d\u5c0d\u6703\u53cb\u662f\u96b1\u85cf\u7684\uff09\u3002",
           tone: "warning"
         },
         upcomingNotice && {
