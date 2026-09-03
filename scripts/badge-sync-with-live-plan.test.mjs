@@ -105,32 +105,34 @@ describe("badge unlock state stays synced with the live reading plan", () => {
   });
 
   it("does not confuse plans belonging to a different stage number", () => {
-    localStorage.setItem("church_stage_completed_rounds_2", "5");
+    // stage 3 有 live 計畫（round 2 / 100% → 完成 2 遍）；stage 4 沒 live、有 stale 快取 "5"
+    localStorage.setItem("church_stage_completed_rounds_4", "5");
     state.activePlans = [{
       planKind: "church_campaign_stage",
-      stageNo: 1,
-      currentRound: 1,
-      progress: 0
+      stageNo: 3,
+      currentRound: 2,
+      progress: 100
     }];
-
-    expect(getCampaignStageCompletedRounds(2)).toBe(5);
+    expect(getCampaignStageCompletedRounds(3)).toBe(2);   // 讀自己的 live，不吃 stage 4 快取
+    expect(getCampaignStageCompletedRounds(4)).toBe(5);   // 沒 live → fallback 自己的快取
   });
 
-  it("第一輪期末賽鐵獎：四個月度計畫全部完成才算完成一遍（取最小）", () => {
+  it("第一輪期末賽鐵獎：合成前一律 0；合成後讀凍結的 iron_tier（不再跑 live min）", () => {
     const mf = (key, currentRound, progress) => ({ presetKey: key, currentRound, progress, planKind: "church_campaign_stage", stageNo: 2 });
-    // 3/4 完成第一遍、1 個還在 40% → 0 遍
+    // 四卷都完成第一遍，但使用者「還沒按合成」 → 鐵獎徽章等效等級 = 0
     state.activePlans = [
       mf("church_r1final_2026_09", 1, 100), mf("church_r1final_2026_10", 1, 100),
-      mf("church_r1final_2026_11", 1, 100), mf("church_r1final_2026_12", 1, 40)
+      mf("church_r1final_2026_11", 1, 100), mf("church_r1final_2026_12", 1, 100)
     ];
     expect(getCampaignStageCompletedRounds(2)).toBe(0);
 
-    // 4/4 完成第一遍 → 1 遍
-    state.activePlans[3] = mf("church_r1final_2026_12", 1, 100);
-    expect(getCampaignStageCompletedRounds(2)).toBe(1);
+    // 使用者按了合成、凍結成 ★3（tier 3）
+    localStorage.setItem("church_r1final_synthesized", "1");
+    localStorage.setItem("church_r1final_iron_tier", "3");
+    expect(getCampaignStageCompletedRounds(2)).toBe(3);
 
-    // 只加入 2/4 → 0 遍（期末賽要四卷全讀）
-    state.activePlans = [mf("church_r1final_2026_09", 1, 100), mf("church_r1final_2026_10", 1, 100)];
-    expect(getCampaignStageCompletedRounds(2)).toBe(0);
+    // 凍結後即使 live 計畫變動也不再改變
+    state.activePlans = [];
+    expect(getCampaignStageCompletedRounds(2)).toBe(3);
   });
 });

@@ -263,7 +263,8 @@ describe("joined plan options menu", () => {
     expect(planSource).toContain("campaignAwardEarned");
     expect(planSource).toContain("plan-cover-thumbnail--icon");
     expect(planSource).toContain("white-space: nowrap");
-    expect(gamification).toContain('const ACHIEVEMENTS = typeof window.createChurchCampaignStageDefinitions');
+    expect(gamification).toContain("window.createChurchCampaignStageDefinitions()");
+    expect(gamification).toContain("const ACHIEVEMENTS = [..._stageAwardBadges, ..._firstRoundFinalBookBadges]");
     expect(gamification).toContain("church_stage_award_");
     expect(gamification).toContain("badge.designVersion = 2");
     expect(gamification).toContain("badge.maxStars = 5");

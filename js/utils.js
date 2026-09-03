@@ -640,23 +640,98 @@ function planCompletedRounds(plan) {
   return Number(plan.progress || 0) >= 100 ? currentRound : currentRound - 1;
 }
 
+// ── 第一輪期末賽：四小徽章 → 季末手動合成鐵獎 ──────────────────────────────
+// 設計：docs/first-round-final-badge-set-design.md
+const FIRST_ROUND_FINAL_STORAGE = {
+  synthesized: "church_r1final_synthesized",
+  ironTier: "church_r1final_iron_tier",
+  bookRoundsPrefix: "church_r1final_rounds_" // + presetKey
+};
+
+// 四卷遍數加總 S → 鐵獎「等效等級」，餵進 renderBadgeStars（1..5=★、6..8=💎、9..10+=👑）。
+// 星每 2 遍、鑽石每 3 遍、皇冠每 4 遍。
+function ironTierFromSum(s) {
+  const total = Number(s) || 0;
+  if (total < 4) return 0;
+  const starLvl = Math.min(5, Math.floor((total - 4) / 2) + 1);
+  if (starLvl < 5) return starLvl;                 // 1..4 → ★
+  const dia = Math.floor((total - 12) / 3);
+  if (dia <= 0) return 5;                          // S 12..14 → ★5
+  if (dia <= 3) return 5 + dia;                    // 6..8 → 💎1..3（S 15/18/21）
+  const crown = Math.floor((total - 21) / 4);      // S 25→1, 29→2, 33→3
+  if (crown < 1) return 8;                         // S 22..24 → 💎3
+  return 8 + Math.min(3, crown);                   // 9..11 → 👑1..3
+}
+
+function getFirstRoundFinalSpec() {
+  const defs = (typeof window !== "undefined" && typeof window.createChurchCampaignStageDefinitions === "function")
+    ? window.createChurchCampaignStageDefinitions().filter(d => d && d.isMonthlyFinal)
+    : [];
+  return defs
+    .slice()
+    .sort((a, b) => (Number(a.finalMonthIndex) || 0) - (Number(b.finalMonthIndex) || 0))
+    .map(d => ({ key: d.presetKey, book: (d.books && d.books[0]) || "", badgeId: d.finalBookBadgeId }));
+}
+
+function getFirstRoundFinalStatus() {
+  const spec = getFirstRoundFinalSpec();
+  const months = spec.map(s => {
+    const plan = findActivePlanByKey(s.key);
+    const live = plan ? planCompletedRounds(plan) : null;
+    const cacheKey = FIRST_ROUND_FINAL_STORAGE.bookRoundsPrefix + s.key;
+    if (live !== null) {
+      try { localStorage.setItem(cacheKey, String(live)); } catch (_e) {}
+    }
+    const completedRounds = live !== null ? live : Number(localStorage.getItem(cacheKey) || 0);
+    return {
+      ...s,
+      joined: Boolean(plan),
+      progress: plan ? Number(plan.progress || 0) : 0,
+      currentRound: plan ? Math.max(1, Number(plan.currentRound || 1)) : 1,
+      completedRounds
+    };
+  });
+  const perRounds = months.map(m => m.completedRounds);
+  const collected = months.filter(m => m.completedRounds >= 1).length;
+  const starSum = perRounds.reduce((n, v) => n + v, 0);
+  const minRounds = perRounds.length ? Math.min(...perRounds) : 0;
+
+  const synthDateStr = (typeof window !== "undefined" && window.CHURCH_CAMPAIGN
+    && window.CHURCH_CAMPAIGN.finalSynthesisDate) || "2027-01-02";
+  const seasonEnded = new Date() >= new Date(synthDateStr + "T00:00:00");
+  const synthesized = (() => { try { return localStorage.getItem(FIRST_ROUND_FINAL_STORAGE.synthesized) === "1"; } catch (_e) { return false; } })();
+  const thresholdMet = months.length === 4 && minRounds >= 1;
+  const frozenTier = (() => { try { return Number(localStorage.getItem(FIRST_ROUND_FINAL_STORAGE.ironTier)) || 0; } catch (_e) { return 0; } })();
+
+  return {
+    months, total: months.length || 4,
+    collected, starSum, minRounds,
+    seasonEnded, synthesized, thresholdMet,
+    previewTier: thresholdMet ? ironTierFromSum(starSum) : 0,   // 按鈕上顯示的預覽
+    ironTier: synthesized ? frozenTier : 0,                     // 徽章實際等級（凍結）
+    canSynthesize: seasonEnded && thresholdMet && !synthesized,
+    ironAwardEarned: synthesized && thresholdMet
+  };
+}
+
+// 鐵獎小徽章（church_r1final_book_*）目前遍數
+function getFirstRoundFinalBookRounds(badgeId) {
+  const status = getFirstRoundFinalStatus();
+  const m = status.months.find(x => x.badgeId === badgeId);
+  return m ? m.completedRounds : 0;
+}
+
 function getCampaignStageCompletedRounds(stageNo) {
   const target = Number(stageNo || 0);
   const storageKey = `church_stage_completed_rounds_${target}`;
 
-  // 第一輪期末賽：四個月度計畫**全部**完成 N 遍才算完成 N 遍 → 取最小（未加入的月＝0）。
+  // 第一輪期末賽（鐵獎）：改成「季末使用者手動合成」——徽章的等效等級只有兩種：
+  //   · 尚未合成 → 0（徽章牆顯示占位 / 「合成鐵獎」按鈕，checkAchievements 不解鎖）
+  //   · 已合成  → 凍結的 iron_tier（1..5=★、6..8=💎、9..11=👑）
+  // 賽季中的四卷進度改看 getFirstRoundFinalStatus().months[].completedRounds（小徽章各自的星）。
   if (target === 2) {
-    const monthlyKeys = getFirstRoundFinalMonthlyKeys();
-    if (monthlyKeys.length) {
-      const perMonth = monthlyKeys.map(key => planCompletedRounds(findActivePlanByKey(key)));
-      const anyJoined = monthlyKeys.some(key => findActivePlanByKey(key));
-      if (anyJoined) {
-        const completed = Math.max(0, Math.min(...perMonth));
-        localStorage.setItem(storageKey, String(completed));
-        return completed;
-      }
-    }
-    return Number(localStorage.getItem(storageKey) || 0);
+    const st = getFirstRoundFinalStatus();
+    return st.ironTier;
   }
 
   let liveCompletedRounds = null;
@@ -686,14 +761,9 @@ function getCampaignStageCompletedRounds(stageNo) {
 
 function getCampaignStageCurrentRound(stageNo) {
   const target = Number(stageNo || 0);
-  // 第一輪期末賽：目前遍數 = 四個月度計畫裡「跑最慢」那個（沒加入的月不算）。
+  // 第一輪期末賽（鐵獎）：僅用於徽章顯示 → 合成前 0、合成後凍結的 iron_tier。
   if (target === 2) {
-    const joined = getFirstRoundFinalMonthlyKeys()
-      .map(findActivePlanByKey).filter(Boolean);
-    if (joined.length) {
-      return Math.max(1, Math.min(...joined.map(plan => Number(plan.currentRound || 1))));
-    }
-    return 1;
+    return getFirstRoundFinalStatus().ironTier;
   }
   return (state.activePlans || []).reduce((maxRound, plan) => {
     if (!plan) return maxRound;
@@ -704,6 +774,10 @@ function getCampaignStageCurrentRound(stageNo) {
 }
 
 function getBadgeMilestoneConfig(badgeId) {
+  // 第一輪期末賽四卷小徽章：星等 = 該卷自己的遍數。
+  if (badgeId && badgeId.startsWith("church_r1final_book_")) {
+    return { levels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], unit: "遍", getValue: () => getFirstRoundFinalBookRounds(badgeId) };
+  }
   if (badgeId && badgeId.startsWith("church_stage_award_")) {
     const stageNo = Number(badgeId.replace("church_stage_award_", ""));
     return { levels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], unit: "遍", getValue: () => getCampaignStageCompletedRounds(stageNo) };
@@ -888,16 +962,51 @@ function renderBadgeWall(containerId) {
 
       const titleHtml = badge.campaignStageNo ? "" : `<span class="honor-badge-item__title">${safeTitle}</span>`;
 
+      // 鐵獎（第一輪期末賽）：合成前，把星等區換成「合成鐵獎」按鈕 / 季末結算提示。
+      let footerHtml = renderBadgeStars(badge);
+      let isSynthPending = false;
+      if (badge.id === "church_stage_award_2" && !isUnlocked
+        && typeof getFirstRoundFinalStatus === "function") {
+        const frf = getFirstRoundFinalStatus();
+        isSynthPending = true;
+        if (frf.canSynthesize) {
+          const previewLabel = frf.previewTier >= 9 ? `👑${frf.previewTier - 8}`
+            : frf.previewTier >= 6 ? `💎${frf.previewTier - 5}`
+            : `★${Math.max(1, frf.previewTier)}`;
+          footerHtml = `<button type="button" class="badge-synth-btn" data-synth-first-round-final>合成鐵獎（可得 ${previewLabel}）</button>`;
+        } else if (frf.thresholdMet && !frf.seasonEnded) {
+          footerHtml = `<span class="badge-synth-hint">12/31 賽季結束後可合成</span>`;
+        } else {
+          footerHtml = `<span class="badge-synth-hint">已完成 ${frf.collected}/${frf.total} 卷 · 未達鐵獎</span>`;
+        }
+      }
+
       badgeItem.innerHTML = `
-        ${!isUnlocked ? `<div class="honor-badge-item__lock"><span class="nlc-icon nlc-icon--sm" data-icon="lock" aria-hidden="true"></span></div>` : ""}
+        ${(!isUnlocked && !isSynthPending) ? `<div class="honor-badge-item__lock"><span class="nlc-icon nlc-icon--sm" data-icon="lock" aria-hidden="true"></span></div>` : ""}
         <div class="honor-badge-item__icon-wrap honor-badge-hex-shell" style="${shellStyle}">
           ${iconContent}
           ${isUnlocked ? `<span class="honor-badge-hex__check" aria-hidden="true" style="z-index: 5;"><span class="nlc-icon nlc-icon--sm" data-icon="checkCircle"></span></span>` : ""}
         </div>
         ${titleHtml}
-        ${renderBadgeStars(badge)}
+        ${footerHtml}
       `;
-      attachBadgeOpenHandlers(badgeItem, badge, isUnlocked);
+
+      const synthBtn = badgeItem.querySelector("[data-synth-first-round-final]");
+      if (synthBtn) {
+        synthBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          if (typeof window.synthesizeFirstRoundFinal === "function") {
+            const res = window.synthesizeFirstRoundFinal();
+            if (!res || !res.ok) {
+              if (typeof showToast === "function") showToast("目前還不能合成鐵獎。");
+              return;
+            }
+          }
+          renderBadgeWall(containerId);
+        });
+      } else {
+        attachBadgeOpenHandlers(badgeItem, badge, isUnlocked);
+      }
       container.appendChild(badgeItem);
     });
 
@@ -935,6 +1044,10 @@ window.getCampaignStageCompletedRounds = getCampaignStageCompletedRounds;
 window.getCampaignStageCurrentRound = getCampaignStageCurrentRound;
 window.getBadgeStarState = getBadgeStarState;
 window.renderBadgeStars = renderBadgeStars;
+window.getFirstRoundFinalStatus = getFirstRoundFinalStatus;
+window.getFirstRoundFinalBookRounds = getFirstRoundFinalBookRounds;
+window.ironTierFromSum = ironTierFromSum;
+window.FIRST_ROUND_FINAL_STORAGE = FIRST_ROUND_FINAL_STORAGE;
 
 // YouVersion high-grade full-screen detail subpage controller
 function closeBadgeDetailPage() {

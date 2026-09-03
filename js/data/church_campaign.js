@@ -26,6 +26,8 @@ const CHURCH_CAMPAIGN = {
   endDate: "2029-08-31",
   isFixed: true,
   version: 1,
+  // 第一輪期末賽（9–12 月四卷）→ 這天之後，使用者可在徽章牆手動「合成鐵獎」。
+  finalSynthesisDate: "2027-01-02",
   rules: {
     allowMidJoin: true,
     sequentialAwards: true,
@@ -115,7 +117,13 @@ function getMonthlyFinalPlanId(startDate) {
   return "00000000-0000-0000-c126-000000" + String(startDate).replace(/-/g, "").slice(0, 6);
 }
 
-function buildMonthlyFinalDefinition(definition, stage, mfDef) {
+// 第一輪期末賽四卷 → 小徽章 id（依 monthlyFinals 順序：出/利/民/申）。
+const FIRST_ROUND_FINAL_BOOK_BADGE_IDS = [
+  "church_r1final_book_ex", "church_r1final_book_lev",
+  "church_r1final_book_num", "church_r1final_book_deut"
+];
+
+function buildMonthlyFinalDefinition(definition, stage, mfDef, monthIndex = 0) {
   const segment = m(2, Number(stage.roundNo), mfDef.monthLabel, mfDef.startDate, mfDef.endDate,
     [r(mfDef.book, mfDef.from, mfDef.to)]);
   const stageEntry = { ...cloneChurchCampaign(stage), startDate: mfDef.startDate, endDate: mfDef.endDate, examDate: mfDef.examDate || null };
@@ -138,6 +146,11 @@ function buildMonthlyFinalDefinition(definition, stage, mfDef) {
     examDate: mfDef.examDate || null,
     // 鎖住時仍要出現在「探索計畫」（available-locked）——月度期末賽 4 張都要看得到。
     discoverWhenLocked: true,
+    // 第一輪期末賽拆分旗標：前端不用再靠字串猜（見 docs/first-round-final-badge-set-design.md）。
+    isMonthlyFinal: true,
+    finalMonthIndex: monthIndex + 1,
+    finalMonthTotal: 4,
+    finalBookBadgeId: FIRST_ROUND_FINAL_BOOK_BADGE_IDS[monthIndex] || null,
     rules: cloneChurchCampaign(definition.rules),
     stages: [stageEntry],
     segments: [segment],
@@ -149,7 +162,7 @@ function createChurchCampaignStageDefinitions(definition = CHURCH_CAMPAIGN) {
   return (definition.stages || []).flatMap(stage => {
     // 第一輪期末賽（stageNo 2）：展開成 monthlyFinals 那 4 個月度計畫，不再是單一階段。
     if (Number(stage.stageNo) === 2 && Array.isArray(definition.monthlyFinals) && definition.monthlyFinals.length) {
-      return definition.monthlyFinals.map(mfDef => buildMonthlyFinalDefinition(definition, stage, mfDef));
+      return definition.monthlyFinals.map((mfDef, i) => buildMonthlyFinalDefinition(definition, stage, mfDef, i));
     }
     const segments = (definition.segments || []).filter(segment => Number(segment.stageNo) === Number(stage.stageNo));
     const books = Array.from(new Set(segments.flatMap(segment => segment.readings.map(reading => reading.book))));
@@ -352,6 +365,7 @@ window.CHURCH_CAMPAIGN = CHURCH_CAMPAIGN;
 window.getChurchCampaignStageId = getChurchCampaignStageId;
 window.getChurchCampaignStagePresetKey = getChurchCampaignStagePresetKey;
 window.createChurchCampaignStageDefinitions = createChurchCampaignStageDefinitions;
+window.FIRST_ROUND_FINAL_BOOK_BADGE_IDS = FIRST_ROUND_FINAL_BOOK_BADGE_IDS;
 window.getChurchCampaignStageDefinition = getChurchCampaignStageDefinition;
 window.cloneChurchCampaign = cloneChurchCampaign;
 window.validateChurchCampaign = validateChurchCampaign;

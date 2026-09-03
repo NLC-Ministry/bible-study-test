@@ -1697,7 +1697,20 @@ function renderJoinedPlansList() {
       const upgradeAvailability = getPlanUpgradeAvailability(plan, { expired: isPlanExpired(plan) });
       const isCampaignStage = window.isCampaignStagePlan(plan);
       const campaignAwardName = plan.awardName || plan.campaignDefinition && plan.campaignDefinition.awardName || "";
-      const campaignAwardEarned = isCampaignStage && (currentRound > 1 || progress >= 100);
+      const isMonthlyFinalCard = isCampaignStage && (plan.isMonthlyFinal
+        || (Number(plan.stageNo) === 2 && String(plan.presetKey || "").startsWith("church_r1final")));
+      let campaignAwardEarned = isCampaignStage && (currentRound > 1 || progress >= 100);
+      // 第一輪期末賽月度卡：鐵獎是「四卷合計 + 季末手動合成」，不是單張完成就有。
+      let campaignAwardValue = `${campaignAwardEarned ? "已獲得" : "完成可獲得"} ${escapeHTML(campaignAwardName)}`;
+      if (isMonthlyFinalCard && typeof window.getFirstRoundFinalStatus === "function") {
+        const frf = window.getFirstRoundFinalStatus();
+        campaignAwardEarned = frf.ironAwardEarned;
+        campaignAwardValue = frf.ironAwardEarned
+          ? `已獲得 ${escapeHTML(campaignAwardName)}`
+          : frf.canSynthesize
+          ? `四卷完成 · 前往徽章牆合成${escapeHTML(campaignAwardName)}`
+          : `${escapeHTML(campaignAwardName)}：四卷全部完成才頒發 · 已完成 ${frf.collected}/${frf.total} 卷`;
+      }
       const weeklyScheduleSummary = formatFlexibleScheduleSummary(plan);
       const isUpcomingFixed = isFixedPlanUpcoming(plan);
       const dateMeta = `
@@ -1721,7 +1734,7 @@ function renderJoinedPlansList() {
             isCampaignStage && {
               icon: "award",
               label: "獎項",
-              value: `${campaignAwardEarned ? "已獲得" : "完成可獲得"} ${escapeHTML(campaignAwardName)}`,
+              value: campaignAwardValue,
               tone: campaignAwardEarned ? "success" : "brand"
             },
             {
@@ -1762,7 +1775,7 @@ function renderJoinedPlansList() {
             isCampaignStage && {
               icon: "award",
               label: "獎項",
-              value: `${campaignAwardEarned ? "已獲得" : "完成可獲得"} ${escapeHTML(campaignAwardName)}`,
+              value: campaignAwardValue,
               tone: campaignAwardEarned ? "success" : "brand"
             },
             {
@@ -2105,7 +2118,19 @@ function openPlanDetailsDialog(plan, options = {}) {
   // 延後大區梯次沒有 campaignDefinition，但一樣要顯示「完成可獲得的獎」——用 plan.awardName。
   const awardName = plan.awardName || (isCampaignStage ? (definition.awardName || "") : "");
   const showAward = Boolean(awardName);
-  const awardEarned = showAward && ((plan.currentRound || 1) > 1 || Number(plan.progress || 0) >= 100);
+  const isMonthlyFinalDetail = plan.isMonthlyFinal
+    || (Number(plan.stageNo) === 2 && String(plan.presetKey || "").startsWith("church_r1final"));
+  let awardEarned = showAward && ((plan.currentRound || 1) > 1 || Number(plan.progress || 0) >= 100);
+  let awardCaption = awardEarned ? "已完成並獲得" : "完成本階段可獲得";
+  if (isMonthlyFinalDetail && typeof window.getFirstRoundFinalStatus === "function") {
+    const frf = window.getFirstRoundFinalStatus();
+    awardEarned = frf.ironAwardEarned;
+    awardCaption = frf.ironAwardEarned
+      ? "已完成並獲得"
+      : frf.canSynthesize
+      ? "四卷完成 · 前往徽章牆合成"
+      : `四卷全部完成才頒發（已完成 ${frf.collected}/${frf.total} 卷）`;
+  }
   const segmentHtml = segments.map(segment => `
     <section style="padding:.9rem;border:1px solid var(--border-card);border-radius:12px;background:var(--bg-secondary);">
       <div style="display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;">
@@ -2131,7 +2156,7 @@ function openPlanDetailsDialog(plan, options = {}) {
       </button>
 
       <h3 id="plan-details-title" style="margin:0 0 1rem;font-size:1.15rem;font-weight:500;color:var(--text-primary);padding-right:2rem;">${escapeHTML(plan.name || "讀經計畫")}</h3>
-      ${showAward ? `<div style="display:flex;align-items:center;gap:.75rem;padding:.9rem;margin-bottom:1rem;border-radius:14px;background:var(--bg-secondary);border:1px solid var(--border-card);"><div style="width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:var(--primary-color);color:white;"><span class="nlc-icon" data-icon="award" aria-hidden="true"></span></div><div><div style="font-size:0.875rem;color:var(--text-muted);">${awardEarned ? "已完成並獲得" : "完成本階段可獲得"}</div><strong style="font-size:1rem;color:var(--text-primary);">${escapeHTML(awardName)}</strong></div></div>` : ""}
+      ${showAward ? `<div style="display:flex;align-items:center;gap:.75rem;padding:.9rem;margin-bottom:1rem;border-radius:14px;background:var(--bg-secondary);border:1px solid var(--border-card);"><div style="width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:var(--primary-color);color:white;"><span class="nlc-icon" data-icon="award" aria-hidden="true"></span></div><div><div style="font-size:0.875rem;color:var(--text-muted);">${escapeHTML(awardCaption)}</div><strong style="font-size:1rem;color:var(--text-primary);">${escapeHTML(awardName)}</strong></div></div>` : ""}
       ${plan.description ? `<p style="margin:0 0 1rem;font-size:0.875rem;line-height:1.6;color:var(--text-secondary);">${escapeHTML(plan.description)}</p>` : ""}
       <dl style="display:grid;grid-template-columns:auto 1fr;gap:.65rem .9rem;margin:0;font-size:0.875rem;">
         <dt style="color:var(--text-muted);">計畫類型</dt><dd style="margin:0;color:var(--text-primary);">${isCampaignStage ? "教會分階段計畫" : (isFlexible ? "非固定日期" : "固定日期")}</dd>
@@ -2492,7 +2517,9 @@ function renderPresetPlansList() {
         isCampaignStage && {
           icon: "award",
           label: "完成獎勵",
-          value: escapeHTML(awardName)
+          value: (plan.isMonthlyFinal || (Number(plan.stageNo) === 2 && String(plan.presetKey || "").startsWith("church_r1final")))
+            ? `${escapeHTML(awardName)}（四卷合計）`
+            : escapeHTML(awardName)
         },
         isLockedStage && {
           icon: "lock",

@@ -1,15 +1,46 @@
 // Bible Speed Reading Gamification: Achievements, Fireworks, and Honor Badges
 
-const ACHIEVEMENTS = typeof window.createChurchCampaignStageDefinitions === "function"
-  ? window.createChurchCampaignStageDefinitions().map(stage => ({
-      id: "church_stage_award_" + stage.stageNo,
+const _stageAwardBadges = (typeof window.createChurchCampaignStageDefinitions === "function"
+  ? window.createChurchCampaignStageDefinitions()
+  : [])
+  // stageNo 2 現在展開成 4 張月度計畫 → 會產生 4 個一樣的 church_stage_award_2；依 stageNo 去重。
+  .reduce((acc, stage) => {
+    const no = Number(stage.stageNo);
+    if (acc.seen.has(no)) return acc;
+    acc.seen.add(no);
+    acc.list.push({
+      id: "church_stage_award_" + no,
       title: stage.awardName,
-      description: "完成「" + stage.name + "」讀經計畫",
-      triggerText: "完成1~5遍點亮1~5顆星；完成6~8遍獲得1~3顆鑽石；完成9~10+遍獲得1~3個皇冠至尊榮譽",
+      description: no === 2
+        ? "完成 出埃及記＋利未記＋民數記＋申命記（各一遍）→ 賽季結束後在徽章牆合成鐵獎"
+        : "完成「" + stage.name + "」讀經計畫",
+      triggerText: no === 2
+        ? "四卷遍數加總：每 2 遍 1 顆星（上限 5）→ 每 3 遍 1 顆鑽石（上限 3）→ 每 4 遍 1 個皇冠（上限 3）"
+        : "完成1~5遍點亮1~5顆星；完成6~8遍獲得1~3顆鑽石；完成9~10+遍獲得1~3個皇冠至尊榮譽",
       iconKey: "award",
-      campaignStageNo: stage.stageNo
-    }))
-  : [];
+      campaignStageNo: no
+    });
+    return acc;
+  }, { seen: new Set(), list: [] })
+  .list;
+
+// 第一輪期末賽（stageNo 2）的四卷小徽章：各自記自己的遍數。集滿四卷後季末手動合成鐵獎。
+const _firstRoundFinalBookBadges = (typeof window.createChurchCampaignStageDefinitions === "function"
+  ? window.createChurchCampaignStageDefinitions().filter(d => d && d.isMonthlyFinal)
+  : [])
+  .slice()
+  .sort((a, b) => (Number(a.finalMonthIndex) || 0) - (Number(b.finalMonthIndex) || 0))
+  .map(d => ({
+    id: d.finalBookBadgeId,
+    title: (d.books && d.books[0]) || "",
+    description: "讀完「" + ((d.books && d.books[0]) || "") + "」（第一輪期末賽，四卷之一）",
+    triggerText: "完成1遍點亮1顆星，之後每多讀1遍多1顆星（滿5顆後鑽石、皇冠）",
+    iconKey: "bookOpen",
+    firstRoundFinalBook: true
+  }))
+  .filter(b => b.id);
+
+const ACHIEVEMENTS = [..._stageAwardBadges, ..._firstRoundFinalBookBadges];
 ACHIEVEMENTS.forEach(badge => {
   badge.designVersion = 2;
   badge.maxStars = 5;
@@ -218,6 +249,42 @@ window.triggerBadgeUnlockNotification = function(badgeId) {
   return { ok: true, badge };
 };
 
+
+// 第一輪期末賽：使用者在徽章牆按「合成鐵獎」時呼叫。防連點；只成立一次。
+window.synthesizeFirstRoundFinal = function synthesizeFirstRoundFinal() {
+  const status = typeof window.getFirstRoundFinalStatus === "function" ? window.getFirstRoundFinalStatus() : null;
+  const store = window.FIRST_ROUND_FINAL_STORAGE || {
+    synthesized: "church_r1final_synthesized", ironTier: "church_r1final_iron_tier"
+  };
+  if (!status) return { ok: false, error: "status_unavailable" };
+  if (status.synthesized) return { ok: true, alreadySynthesized: true, tier: status.ironTier };
+  if (!status.canSynthesize) {
+    return { ok: false, error: status.seasonEnded ? "threshold_not_met" : "season_not_ended" };
+  }
+  const tier = Math.max(1, Number(
+    typeof window.ironTierFromSum === "function" ? window.ironTierFromSum(status.starSum) : 1
+  ) || 1);
+  try {
+    localStorage.setItem(store.ironTier, String(tier));
+    localStorage.setItem(store.synthesized, "1");
+  } catch (_e) { /* noop */ }
+
+  // triggerBadgeUnlockNotification 自己會 push unlocked_badges / recordBadgeUnlockDate /
+  // launchFireworks / openBadgeDetailPage；它會擋 notified_ 旗標，所以在它之前先清掉。
+  try { localStorage.removeItem("notified_church_stage_award_2"); } catch (_e) {}
+  if (typeof window.triggerBadgeUnlockNotification === "function") {
+    window.triggerBadgeUnlockNotification("church_stage_award_2");
+  } else {
+    const unlocked = JSON.parse(localStorage.getItem("unlocked_badges") || "[]");
+    if (!unlocked.includes("church_stage_award_2")) {
+      unlocked.push("church_stage_award_2");
+      localStorage.setItem("unlocked_badges", JSON.stringify(unlocked));
+    }
+    if (typeof launchFireworks === "function") launchFireworks();
+  }
+  refreshBadgeSurfaces();
+  return { ok: true, tier };
+};
 
 window.refreshBadgeSurfaces = refreshBadgeSurfaces;
 window.launchFireworks = launchFireworks;

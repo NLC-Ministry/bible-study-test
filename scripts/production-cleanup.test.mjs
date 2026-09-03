@@ -119,7 +119,7 @@ describe("legacy badge cleanup", () => {
       expect(gamification).not.toContain(`id: "${badgeId}"`);
       expect(utils).not.toContain(`${badgeId}:`);
     }
-    expect(gamification).toContain("window.createChurchCampaignStageDefinitions().map");
+    expect(gamification).toContain("window.createChurchCampaignStageDefinitions()");
     expect(gamification).toContain('status: 404, error: "badge_not_found"');
     expect(html).toContain('id="badge-wall-summary">0 / 10');
     expect(utils).not.toContain("tier-bronze");
