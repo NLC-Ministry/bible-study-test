@@ -663,6 +663,24 @@ const ISSUE_ADMIN_RPC_FUNCTIONS = new Set(["issue_admin_thread_list", "issue_adm
 
 ---
 
+## 對話感 / 發現性強化（2026-09-03 補做）
+
+舊用戶把「回報」當投遞箱，不知道會有回覆、可以回話。已做：
+
+**發現性**
+- 泡泡打開時：**有回報過就先進「我的對話」列表**（新用戶才直接進表單）。`IssueReportFab` 開啟前先查 `myReports()` / `unreadSummary()`。
+- 送出成功訊息改成：「已送出。管理員的回覆會出現在這個對話裡，你也可以隨時補充訊息或截圖。」送出後直接停在該對話。
+- 第一次進任一對話：頂部一次性提示條「我們會在這裡回覆你 👇…」，`localStorage['issue_thread_hint_seen']` 記住。
+- 文案：標題「問題回報與對話」、副標「回報後可以在這裡跟我們一來一往討論、補充截圖」、分頁「💬 我的對話」/「＋ 新問題」、泡泡 aria「問題回報與對話」。
+- 人在 App 裡、抽屜關著時，未讀從無變有 → `window.showToast("你的回報有新回覆…")`（`IssueReportFab` 每 60s 輪詢 + focus）。
+
+**像對話框**
+- 訊息**分組**（同一人 5 分鐘內連續訊息只標一次名字）＋**日期分隔線**（今天／昨天／M月D日），helper 從 `ReportDrawer.tsx` export（`groupMessages` / `dayKey` / `dayLabel` / `clockTime` / `formatWhen`），管理端 pane 共用。
+- **「管理員已讀」**：會友最後一則訊息下方，當 `report.adminLastReadAt >= 該訊息時間`。`issue_thread_get`（SQL）多回 `adminLastReadAt` / `memberLastReadAt`（取呼叫前的值）。
+- 管理員訊息標「🛡 管理員」，會友訊息不標名。
+- 空串顯示系統列「已送出，等待管理員回覆…」。
+- 輸入框：圓角、自動長高至 ~5 行（120px 上限）、Cmd/Ctrl+Enter 送出。會友端維持共用 `<Textarea>` primitive（過 font-size 測試）。
+
 ## 日後可加（不在初版）
 
 - Web Push（VAPID + 訂閱表 + 發推 Edge Function）→ 關掉 App 也收得到。

@@ -1,8 +1,9 @@
 // components/issue-report/AdminReportView.tsx
 import React, { useState, useEffect } from "react";
-import { Loader2, ChevronLeft, ImagePlus, Send, Trash2 } from "lucide-react";
+import { Loader2, ChevronLeft, ImagePlus, Send, Trash2, Shield } from "lucide-react";
 import { AdminReportTable } from "./AdminReportTable.tsx";
 import { ThreadPipeline, compressScreenshot, type ThreadImage } from "./IssueReportBlocks.ts";
+import { groupMessages, dayKey, dayLabel, clockTime, formatWhen } from "./ReportDrawer.tsx";
 
 interface IssueReport {
   id: string;
@@ -37,14 +38,16 @@ const STATUS_MAP: Record<string, string> = {
 
 export function convertToCSV(data: IssueReport[]): string {
   if (!data || data.length === 0) return "";
-  const headers = ["ID", "建立時間", "分類", "處理狀況", "官方回覆", "回覆時間", "問題描述", "頁面網址", "回報者姓名", "回報者牧區", "回報者小組"];
+  // 改成對話串後，單一「官方回覆 / 回覆時間」欄不再適用（回覆散在對話串裡）；
+  // 改放「訊息數 / 最後訊息時間」，一列仍代表一張 issue。
+  const headers = ["ID", "建立時間", "分類", "處理狀況", "訊息數", "最後訊息時間", "問題描述", "頁面網址", "回報者姓名", "回報者牧區", "回報者小組"];
   const rows = data.map(item => [
     item.id,
     item.created_at,
     CATEGORY_MAP[item.category] || item.category,
     STATUS_MAP[item.status] || item.status || "待處理",
-    item.metadata?.reply ? String(item.metadata.reply).replace(/"/g, '""') : "",
-    item.metadata?.replied_at || "",
+    (item as any).messageCount ?? "",
+    (item as any).lastMessageAt || "",
     (item.description || "").replace(/"/g, '""'),
     item.url || "",
     item.profiles?.name || "訪客/離線",
@@ -209,6 +212,14 @@ const AdminThreadPane: React.FC<{ reportId: string; onClose: () => void; onChang
   const [lightbox, setLightbox] = useState<string | null>(null);
   const scroller = React.useRef<HTMLDivElement | null>(null);
   const fileRef = React.useRef<HTMLInputElement | null>(null);
+  const taRef = React.useRef<HTMLTextAreaElement | null>(null);
+
+  React.useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+  }, [text]);
 
   const load = async () => {
     const res = await ThreadPipeline.get(reportId, true);
@@ -300,37 +311,57 @@ const AdminThreadPane: React.FC<{ reportId: string; onClose: () => void; onChang
               {report && (
                 <div className="rounded-lg border border-border bg-card p-3 text-sm">
                   <div className="text-[11px] font-semibold text-muted-foreground mb-1">
-                    原始回報{report.url ? ` · ${report.url}` : ""}
+                    原始回報 · {formatWhen(report.createdAt)}{report.url ? ` · ${report.url}` : ""}
                   </div>
                   <p className="whitespace-pre-wrap leading-relaxed text-foreground">{report.description}</p>
                 </div>
               )}
-              {messages.map((m) => {
-                const fromAdmin = m.authorRole === "admin";
+              {messages.length === 0 && (
+                <div className="mx-auto my-2 rounded-full bg-muted px-3 py-1 text-[11px] text-muted-foreground">
+                  尚無往來訊息
+                </div>
+              )}
+              {groupMessages(messages).map((grp, gi, all) => {
+                const m0 = grp[0];
+                const fromAdmin = m0.authorRole === "admin";
+                const prev = all[gi - 1];
+                const showDay = !prev || dayKey(prev[0].createdAt) !== dayKey(m0.createdAt);
                 return (
-                  <div key={m.id} className={`flex flex-col ${fromAdmin ? "items-end" : "items-start"}`}>
-                    <span className="text-[11px] text-muted-foreground mb-0.5">
-                      {fromAdmin ? "管理員" : "會友"}{m.isInternal ? "（內部備註）" : ""}
-                    </span>
-                    <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed ${
-                      m.isInternal ? "bg-amber-100 text-amber-900 border border-amber-300"
-                      : fromAdmin ? "bg-primary text-primary-foreground rounded-br-sm"
-                      : "bg-card border border-border text-foreground rounded-bl-sm"
-                    }`}>
-                      {m.body && <span>{m.body}</span>}
-                      {m.attachmentUrl && (
-                        <div className={m.body ? "mt-2" : ""}>
-                          <img src={m.attachmentUrl} alt="截圖" onClick={() => setLightbox(m.attachmentUrl)}
-                            className="max-h-52 max-w-full cursor-pointer rounded-md object-cover" />
-                          <button type="button" onClick={() => delAttachment(m.id)}
-                            className="mt-1 inline-flex items-center gap-1 text-[11px] text-destructive">
-                            <Trash2 className="h-3 w-3" /> 刪除截圖
-                          </button>
-                        </div>
-                      )}
+                  <React.Fragment key={m0.id}>
+                    {showDay && (
+                      <div className="mx-auto my-1 rounded-full bg-muted px-3 py-0.5 text-[11px] text-muted-foreground">
+                        {dayLabel(m0.createdAt)}
+                      </div>
+                    )}
+                    <div className={`flex flex-col ${fromAdmin ? "items-end" : "items-start"}`}>
+                      <span className="mb-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                        {fromAdmin && <Shield className="h-3 w-3 text-primary" />}
+                        {fromAdmin ? "管理員" : "會友"}{m0.isInternal ? "（內部備註）" : ""}
+                      </span>
+                      <div className={`flex flex-col gap-1 ${fromAdmin ? "items-end" : "items-start"}`}>
+                        {grp.map((m: any) => (
+                          <div key={m.id} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed ${
+                            m.isInternal ? "bg-amber-100 text-amber-900 border border-amber-300"
+                            : fromAdmin ? "bg-primary text-primary-foreground rounded-br-sm"
+                            : "bg-card border border-border text-foreground rounded-bl-sm"
+                          }`}>
+                            {m.body && <span>{m.body}</span>}
+                            {m.attachmentUrl && (
+                              <div className={m.body ? "mt-2" : ""}>
+                                <img src={m.attachmentUrl} alt="截圖" onClick={() => setLightbox(m.attachmentUrl)}
+                                  className="max-h-52 max-w-full cursor-pointer rounded-md object-cover" />
+                                <button type="button" onClick={() => delAttachment(m.id)}
+                                  className="mt-1 inline-flex items-center gap-1 text-[11px] text-destructive">
+                                  <Trash2 className="h-3 w-3" /> 刪除截圖
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <span className="mt-0.5 text-[10px] text-muted-foreground">{clockTime(grp[grp.length - 1].createdAt)}</span>
                     </div>
-                    <span className="mt-0.5 text-[10px] text-muted-foreground">{new Date(m.createdAt).toLocaleString("zh-TW")}</span>
-                  </div>
+                  </React.Fragment>
                 );
               })}
             </>
@@ -356,11 +387,13 @@ const AdminThreadPane: React.FC<{ reportId: string; onClose: () => void; onChang
               <ImagePlus className="h-4 w-4" />
             </button>
             <textarea
+              ref={taRef}
               rows={1}
               value={text}
               onChange={(e) => setText(e.target.value.slice(0, 500))}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } }}
               placeholder="輸入回覆…"
-              className="min-h-[2.5rem] flex-1 resize-none rounded-md border border-border bg-card px-3 py-2 text-sm"
+              className="max-h-[120px] min-h-[2.5rem] flex-1 resize-none rounded-2xl border border-border bg-card px-3 py-2 text-sm"
             />
             <button type="button" className="primary-btn h-10 w-10 p-0 justify-center"
               disabled={busy || (!text.trim() && !image)} onClick={send} aria-label="送出">

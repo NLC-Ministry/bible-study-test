@@ -168,7 +168,9 @@ BEGIN
     'report', jsonb_build_object(
       'id', r.id, 'category', r.category, 'status', r.status,
       'description', r.description, 'url', r.url,
-      'createdAt', r.created_at, 'lastMessageAt', r.last_message_at, 'closedAt', r.closed_at),
+      'createdAt', r.created_at, 'lastMessageAt', r.last_message_at, 'closedAt', r.closed_at,
+      -- 讀取進度（取「呼叫前」的值，用來顯示「管理員已讀」/「會友已讀」）
+      'adminLastReadAt', r.admin_last_read_at, 'memberLastReadAt', r.member_last_read_at),
     'messages', msgs,
     'viewerRole', CASE WHEN is_admin THEN 'admin' ELSE 'member' END);
 END $$;

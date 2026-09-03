@@ -109,7 +109,7 @@ export const SupportFab: React.FC<SupportFabProps> = ({ onClick, isOpen, unreadR
           whileTap={{ scale: 0.95 }}
           transition={{ type: "spring", stiffness: 260, damping: 20 }}
           className="issue-report-fab fixed z-sheet flex h-14 w-14 items-center justify-center rounded-full border border-border bg-primary text-primary-foreground shadow-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-          aria-label={unreadReplyCount > 0 ? `打開問題回報與建議表單，有 ${unreadReplyCount} 則未讀回覆` : "打開問題回報與建議表單"}
+          aria-label={unreadReplyCount > 0 ? `打開問題回報與對話，有 ${unreadReplyCount} 則未讀回覆` : "打開問題回報與對話"}
           type="button"
         >
           <MessageSquare className="h-[var(--icon-size-lg)] w-[var(--icon-size-lg)]" strokeWidth={2} />

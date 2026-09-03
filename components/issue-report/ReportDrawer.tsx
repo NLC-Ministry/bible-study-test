@@ -1,6 +1,6 @@
 // components/issue-report/ReportDrawer.tsx
 import React from "react";
-import { Loader2, CheckCircle, AlertCircle, X, ChevronLeft, ImagePlus, Send } from "lucide-react";
+import { Loader2, CheckCircle, AlertCircle, X, ChevronLeft, ImagePlus, Send, Shield } from "lucide-react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -194,7 +194,9 @@ export const ReportDrawer: React.FC<ReportDrawerProps> = ({ isOpen, onClose, def
       const isOffline = result.source === "offline";
       setMessage({
         type: "success",
-        text: isOffline ? "已保存至離線佇列，恢復連線後會自動上傳！" : "感謝回報！可在「我的回報」繼續補充。"
+        text: isOffline
+          ? "已保存至離線佇列，恢復連線後會自動上傳！"
+          : "已送出。管理員的回覆會出現在這個對話裡，你也可以隨時補充訊息或截圖。"
       });
       reset();
       if (!isOffline && result.reportId) {
@@ -229,35 +231,23 @@ export const ReportDrawer: React.FC<ReportDrawerProps> = ({ isOpen, onClose, def
           <div className="flex items-start justify-between gap-3">
             <div className="grid gap-1.5">
               <h2 id="issue-report-title" className="text-lg font-semibold leading-none tracking-tight text-foreground">
-                問題與建議回報
+                問題回報與對話
               </h2>
               <p id="issue-report-description" className="text-sm text-muted-foreground">
-                感謝您的建言，讓我們一起把讀經體驗變得更好。
+                回報後可以在這裡跟我們一來一往討論、補充截圖。
               </p>
             </div>
             <button
               type="button"
               className="secondary-btn h-9 w-9 shrink-0 p-0"
               onClick={handleClose}
-              aria-label="關閉問題回報"
+              aria-label="關閉"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
 
           <div className="mt-3 flex border-b border-border">
-            <button
-              type="button"
-              className={`flex-1 pb-2 text-center text-sm font-medium border-b-2 transition-colors ${
-                activeTab === "form"
-                  ? "border-primary text-primary font-semibold"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              style={{ background: "transparent", boxShadow: "none" }}
-              onClick={() => setActiveTab("form")}
-            >
-              📝 填寫回報
-            </button>
             <button
               type="button"
               className={`flex-1 pb-2 text-center text-sm font-medium border-b-2 transition-colors ${
@@ -272,7 +262,19 @@ export const ReportDrawer: React.FC<ReportDrawerProps> = ({ isOpen, onClose, def
                 loadMyReports(true);
               }}
             >
-              💬 我的回報
+              💬 我的對話
+            </button>
+            <button
+              type="button"
+              className={`flex-1 pb-2 text-center text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "form"
+                  ? "border-primary text-primary font-semibold"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              style={{ background: "transparent", boxShadow: "none" }}
+              onClick={() => { setActiveTab("form"); setOpenReportId(null); }}
+            >
+              ＋ 新問題
             </button>
           </div>
         </header>
@@ -452,7 +454,7 @@ function statusPillStyle(status: string): React.CSSProperties {
   const [bg, text] = map[status] || map.pending;
   return { backgroundColor: bg, color: text };
 }
-function formatWhen(iso?: string): string {
+export function formatWhen(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -462,6 +464,41 @@ function formatWhen(iso?: string): string {
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小時前`;
   return d.toLocaleDateString("zh-TW");
 }
+export function clockTime(iso?: string): string {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
+}
+export function dayKey(iso?: string): string {
+  const d = iso ? new Date(iso) : null;
+  return d && !Number.isNaN(d.getTime()) ? d.toDateString() : "";
+}
+export function dayLabel(iso?: string): string {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return "";
+  const today = new Date();
+  const yst = new Date(); yst.setDate(yst.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "今天";
+  if (d.toDateString() === yst.toDateString()) return "昨天";
+  return d.toLocaleDateString("zh-TW", { month: "long", day: "numeric" });
+}
+// Group consecutive messages by the same author within 5 minutes.
+export function groupMessages(messages: any[]): any[][] {
+  const groups: any[][] = [];
+  for (const m of messages) {
+    const last = groups[groups.length - 1];
+    const prev = last && last[last.length - 1];
+    const close = prev
+      && prev.authorRole === m.authorRole
+      && prev.isInternal === m.isInternal
+      && Math.abs(new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime()) < 5 * 60_000
+      && dayKey(prev.createdAt) === dayKey(m.createdAt);
+    if (close) last.push(m);
+    else groups.push([m]);
+  }
+  return groups;
+}
+const THREAD_HINT_KEY = "issue_thread_hint_seen";
 
 interface ThreadViewProps {
   loading: boolean;
@@ -484,13 +521,39 @@ const ThreadView: React.FC<ThreadViewProps> = ({
 }) => {
   const scrollerRef = React.useRef<HTMLDivElement | null>(null);
   const fileRef = React.useRef<HTMLInputElement | null>(null);
+  const taRef = React.useRef<HTMLTextAreaElement | null>(null);
   const report = thread?.report;
   const messages: any[] = Array.isArray(thread?.messages) ? thread.messages : [];
+  const groups = React.useMemo(() => groupMessages(messages), [messages]);
+
+  const [hintDismissed, setHintDismissed] = React.useState(true);
+  React.useEffect(() => {
+    try { setHintDismissed(localStorage.getItem(THREAD_HINT_KEY) === "1"); } catch (_e) { setHintDismissed(false); }
+  }, []);
+  const dismissHint = () => {
+    setHintDismissed(true);
+    try { localStorage.setItem(THREAD_HINT_KEY, "1"); } catch (_e) { /* noop */ }
+  };
 
   React.useEffect(() => {
     const el = scrollerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length, loading]);
+
+  // auto-grow composer up to ~5 lines
+  React.useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+  }, [composerText]);
+
+  const lastMineAt = React.useMemo(() => {
+    const mine = messages.filter((m) => m.authorRole === "member");
+    return mine.length ? mine[mine.length - 1].createdAt : null;
+  }, [messages]);
+  const adminSaw = lastMineAt && thread?.report?.adminLastReadAt
+    && new Date(thread.report.adminLastReadAt).getTime() >= new Date(lastMineAt).getTime();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -518,38 +581,81 @@ const ThreadView: React.FC<ThreadViewProps> = ({
           </div>
         ) : (
           <>
+            {!hintDismissed && (
+              <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-foreground">
+                <span>我們會在這裡回覆你 👇 有補充直接打在下面，也可以傳截圖。</span>
+                <button type="button" onClick={dismissHint} className="ml-auto shrink-0 text-muted-foreground" aria-label="知道了">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+
             {report && (
               <div className="rounded-lg border border-border bg-card p-3">
-                <div className="text-[11px] font-semibold text-muted-foreground mb-1">原始回報</div>
+                <div className="text-[11px] font-semibold text-muted-foreground mb-1">
+                  你的回報 · {formatWhen(report.createdAt)}
+                </div>
                 <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{report.description}</p>
               </div>
             )}
-            {messages.map((m) => {
-              const mine = m.authorRole === "member";
+
+            {messages.length === 0 && (
+              <div className="mx-auto my-2 rounded-full bg-muted px-3 py-1 text-[11px] text-muted-foreground">
+                已送出，等待管理員回覆…
+              </div>
+            )}
+
+            {groups.map((grp, gi) => {
+              const m0 = grp[0];
+              const mine = m0.authorRole === "member";
+              const prevGrp = groups[gi - 1];
+              const showDay = !prevGrp || dayKey(prevGrp[0].createdAt) !== dayKey(m0.createdAt);
               return (
-                <div key={m.id} className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
-                  {!mine && <span className="text-[11px] text-muted-foreground mb-0.5">管理員</span>}
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
-                      mine
-                        ? "bg-primary text-primary-foreground rounded-br-sm"
-                        : "bg-card border border-border text-foreground rounded-bl-sm"
-                    }`}
-                  >
-                    {m.body && <span>{m.body}</span>}
-                    {m.attachmentUrl && (
-                      <img
-                        src={m.attachmentUrl}
-                        alt="截圖"
-                        onClick={() => onOpenLightbox(m.attachmentUrl)}
-                        className={`${m.body ? "mt-2 " : ""}max-h-52 max-w-full cursor-pointer rounded-md object-cover`}
-                      />
+                <React.Fragment key={m0.id}>
+                  {showDay && (
+                    <div className="mx-auto my-1 rounded-full bg-muted px-3 py-0.5 text-[11px] text-muted-foreground">
+                      {dayLabel(m0.createdAt)}
+                    </div>
+                  )}
+                  <div className={`flex flex-col ${mine ? "items-end" : "items-start"}`}>
+                    {!mine && (
+                      <span className="mb-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Shield className="h-3 w-3 text-primary" /> 管理員
+                      </span>
                     )}
+                    <div className={`flex flex-col gap-1 ${mine ? "items-end" : "items-start"}`}>
+                      {grp.map((m) => (
+                        <div
+                          key={m.id}
+                          className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap ${
+                            mine
+                              ? "bg-primary text-primary-foreground rounded-br-sm"
+                              : "bg-card border border-border text-foreground rounded-bl-sm"
+                          }`}
+                        >
+                          {m.body && <span>{m.body}</span>}
+                          {m.attachmentUrl && (
+                            <img
+                              src={m.attachmentUrl}
+                              alt="截圖"
+                              onClick={() => onOpenLightbox(m.attachmentUrl)}
+                              className={`${m.body ? "mt-2 " : ""}max-h-52 max-w-full cursor-pointer rounded-md object-cover`}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <span className="mt-0.5 text-[10px] text-muted-foreground">
+                      {clockTime(grp[grp.length - 1].createdAt)}
+                    </span>
                   </div>
-                  <span className="mt-0.5 text-[10px] text-muted-foreground">{formatWhen(m.createdAt)}</span>
-                </div>
+                </React.Fragment>
               );
             })}
+
+            {adminSaw && (
+              <span className="-mt-2 self-end text-[10px] text-muted-foreground">管理員已讀</span>
+            )}
           </>
         )}
       </div>
@@ -583,11 +689,15 @@ const ThreadView: React.FC<ThreadViewProps> = ({
             <ImagePlus className="h-4 w-4" />
           </button>
           <Textarea
+            ref={taRef}
             rows={1}
             value={composerText}
             onChange={(e) => setComposerText(e.target.value.slice(0, 500))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); onSend(); }
+            }}
             placeholder="輸入訊息…"
-            className="min-h-[2.5rem] flex-1 resize-none"
+            className="max-h-[120px] min-h-[2.5rem] flex-1 resize-none rounded-2xl"
           />
           <button
             type="button"
