@@ -201,7 +201,13 @@ export const AdminReportView: React.FC = () => {
 const CAT_LABEL: Record<string, string> = { bug: "Bug 錯誤", ui: "UI 建議", data: "資料問題", other: "其他" };
 const ST_LABEL: Record<string, string> = { pending: "待處理", processing: "處理中", resolved: "已解決", ignored: "已存檔" };
 
-const AdminThreadPane: React.FC<{ reportId: string; onClose: () => void; onChanged: () => void }> = ({ reportId, onClose, onChanged }) => {
+export const AdminThreadPane: React.FC<{
+  reportId: string;
+  onClose: () => void;
+  onChanged: () => void;
+  embedded?: boolean;      // true = 填滿父容器（給浮動泡泡用），不畫 fixed 遮罩
+  onBack?: () => void;     // embedded 時左上角按鈕的行為（回列表）
+}> = ({ reportId, onClose, onChanged, embedded = false, onBack }) => {
   const [thread, setThread] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
@@ -275,14 +281,10 @@ const AdminThreadPane: React.FC<{ reportId: string; onClose: () => void; onChang
     if (r.success) await load();
   };
 
-  return (
-    <div className="fixed inset-0 z-[9998] flex items-stretch justify-end bg-black/50" onClick={onClose}>
-      <div
-        className="flex h-full w-full max-w-md flex-col bg-background border-l border-border shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+  const body = (
+      <>
         <div className="shrink-0 flex items-center gap-2 border-b border-border px-3 py-2">
-          <button type="button" onClick={onClose} className="secondary-btn h-8 w-8 p-0" aria-label="關閉">
+          <button type="button" onClick={embedded ? (onBack || onClose) : onClose} className="secondary-btn h-8 w-8 p-0" aria-label={embedded ? "返回列表" : "關閉"}>
             <ChevronLeft className="h-4 w-4" />
           </button>
           {report && (
@@ -413,12 +415,91 @@ const AdminThreadPane: React.FC<{ reportId: string; onClose: () => void; onChang
             </button>
           </div>
         </div>
+      </>
+  );
+
+  const lightboxEl = lightbox ? (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/85 p-4" onClick={() => setLightbox(null)}>
+      <img src={lightbox} alt="截圖" className="max-h-[90dvh] max-w-full rounded-md object-contain" />
+    </div>
+  ) : null;
+
+  if (embedded) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col bg-background">
+        {body}
+        {lightboxEl}
       </div>
-      {lightbox && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/85 p-4" onClick={() => setLightbox(null)}>
-          <img src={lightbox} alt="截圖" className="max-h-[90dvh] max-w-full rounded-md object-contain" />
-        </div>
-      )}
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9998] flex items-stretch justify-end bg-black/50" onClick={onClose}>
+      <div
+        className="flex h-full w-full max-w-md flex-col bg-background border-l border-border shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {body}
+      </div>
+      {lightboxEl}
+    </div>
+  );
+};
+
+// 浮動泡泡的「回覆模式」用：精簡回報清單（最新在上），會友有新訊息標紅點。
+export const AdminMiniList: React.FC<{
+  onOpen: (reportId: string) => void;
+  autoOpenNewest?: boolean;
+  reloadKey?: number;
+}> = ({ onOpen, autoOpenNewest, reloadKey }) => {
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const openedRef = React.useRef(false);
+
+  const load = async () => {
+    const res = await ThreadPipeline.adminList(undefined, 50, 0);
+    setLoading(false);
+    if (!res.success) return;
+    setRows(res.rows);
+    if (autoOpenNewest && !openedRef.current && res.rows.length) {
+      openedRef.current = true;
+      onOpen(res.rows[0].id);
+    }
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [reloadKey]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground gap-2">
+        <Loader2 className="h-5 w-5 animate-spin text-primary" /><span className="text-sm">載入回報…</span>
+      </div>
+    );
+  }
+  if (!rows.length) {
+    return <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">目前沒有回報</div>;
+  }
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+      {rows.map((r) => (
+        <button
+          key={r.id}
+          type="button"
+          onClick={() => onOpen(r.id)}
+          className="w-full text-left rounded-lg border border-border bg-card p-3 shadow-sm hover:border-muted-foreground/40"
+        >
+          <div className="flex items-center gap-2">
+            {r.unreadFromMember && <span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" aria-label="會友有新訊息" />}
+            <span className={CATEGORY_BADGE_CLASS}>{CAT_LABEL[r.category] || r.category}</span>
+            <span className={statusBadgeClass(r.status)}>{ST_LABEL[r.status] || r.status}</span>
+            <span className="ml-auto text-xs text-muted-foreground">{formatWhen(r.lastMessageAt || r.createdAt)}</span>
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {r.reporter?.name || "訪客/離線"}{r.reporter?.pastoralZone ? ` · ${r.reporter.pastoralZone}` : ""}
+          </div>
+          <p className="mt-1 text-sm text-foreground line-clamp-2 leading-relaxed">{r.description}</p>
+        </button>
+      ))}
     </div>
   );
 };

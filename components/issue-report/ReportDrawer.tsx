@@ -16,6 +16,7 @@ import {
   NativeSelectOption,
 } from "../ui/native-select.tsx";
 import { Textarea } from "../ui/textarea.tsx";
+import { AdminThreadPane, AdminMiniList } from "./AdminReportView.tsx";
 
 export const reportSchema = z.object({
   category: z.enum(["bug", "ui", "data", "other"], {
@@ -43,9 +44,24 @@ interface ReportDrawerProps {
   onClose: () => void;
   defaultTab?: "form" | "my-reports";
   onReportsViewed?: () => void;
+  mode?: "user" | "admin";           // admin = 「回覆模式」，泡泡直接進最新對話
+  canToggleMode?: boolean;           // 只有管理員給 true
+  onToggleMode?: (next: "user" | "admin") => void;
 }
 
-export const ReportDrawer: React.FC<ReportDrawerProps> = ({ isOpen, onClose, defaultTab = "form", onReportsViewed }) => {
+export const ReportDrawer: React.FC<ReportDrawerProps> = ({
+  isOpen, onClose, defaultTab = "form", onReportsViewed,
+  mode = "user", canToggleMode = false, onToggleMode
+}) => {
+  // 管理員「回覆模式」：泡泡打開直接進最新回報對話
+  const [adminOpenId, setAdminOpenId] = React.useState<string | null>(null);
+  const [adminListKey, setAdminListKey] = React.useState(0);
+  React.useEffect(() => {
+    if (!isOpen || mode !== "admin") { setAdminOpenId(null); return; }
+    // 每次打開重置成「自動開最新」
+    setAdminOpenId(null);
+    setAdminListKey(k => k + 1);
+  }, [isOpen, mode]);
   const [activeTab, setActiveTab] = React.useState<"form" | "my-reports">(defaultTab);
   const [isLoading, setIsLoading] = React.useState(false);
   const [message, setMessage] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -231,10 +247,12 @@ export const ReportDrawer: React.FC<ReportDrawerProps> = ({ isOpen, onClose, def
           <div className="flex items-start justify-between gap-3">
             <div className="grid gap-1.5">
               <h2 id="issue-report-title" className="text-lg font-semibold leading-none tracking-tight text-foreground">
-                問題回報與對話
+                {mode === "admin" ? "回報對話（回覆模式）" : "問題回報與對話"}
               </h2>
               <p id="issue-report-description" className="text-sm text-muted-foreground">
-                回報後可以在這裡跟我們一來一往討論、補充截圖。
+                {mode === "admin"
+                  ? "直接進最新的回報對話，快速回覆。"
+                  : "回報後可以在這裡跟我們一來一往討論、補充截圖。"}
               </p>
             </div>
             <button
@@ -247,6 +265,26 @@ export const ReportDrawer: React.FC<ReportDrawerProps> = ({ isOpen, onClose, def
             </button>
           </div>
 
+          {canToggleMode && (
+            <div className="mt-3 flex gap-1 rounded-lg bg-muted p-1 text-xs font-medium">
+              <button
+                type="button"
+                className={`flex-1 rounded-md py-1.5 transition-colors ${mode === "admin" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+                onClick={() => onToggleMode?.("admin")}
+              >
+                🛠 回覆模式
+              </button>
+              <button
+                type="button"
+                className={`flex-1 rounded-md py-1.5 transition-colors ${mode === "user" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+                onClick={() => onToggleMode?.("user")}
+              >
+                🙋 使用者模式
+              </button>
+            </div>
+          )}
+
+          {mode !== "admin" && (
           <div className="mt-3 flex border-b border-border">
             <button
               type="button"
@@ -277,9 +315,26 @@ export const ReportDrawer: React.FC<ReportDrawerProps> = ({ isOpen, onClose, def
               ＋ 新問題
             </button>
           </div>
+          )}
         </header>
 
-        {activeTab === "form" ? (
+        {mode === "admin" ? (
+          adminOpenId ? (
+            <AdminThreadPane
+              embedded
+              reportId={adminOpenId}
+              onBack={() => { setAdminOpenId(null); setAdminListKey(k => k + 1); }}
+              onClose={handleClose}
+              onChanged={() => { setAdminListKey(k => k + 1); onReportsViewed?.(); }}
+            />
+          ) : (
+            <AdminMiniList
+              reloadKey={adminListKey}
+              autoOpenNewest
+              onOpen={(id) => setAdminOpenId(id)}
+            />
+          )
+        ) : activeTab === "form" ? (
           <form onSubmit={handleSubmit(onSubmit)} className="min-h-0 flex-1 overflow-y-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">
             <div className="flex flex-col gap-4">
               {message && (
