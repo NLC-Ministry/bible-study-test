@@ -13888,6 +13888,26 @@ select,
     overscroll-behavior: contain;
     padding: 1rem 1rem calc(var(--app-bottom-nav-height, 72px) + var(--app-safe-bottom, 0px) + 2rem);
   }
+
+  /* 子頁能捲動的關鍵：面板不能被 `.card-col { height: 100% }` 綁死成一個螢幕高
+     （外層 #admin-section-content 是 position:fixed 有固定高度）——被綁死時內容
+     溢出但捲軸看不到，就「滑不動 / 滑不到底」。改成 auto，讓面板隨內容長高。 */
+  body.admin-section-open #admin-view > #admin-section-content .card-col,
+  body.admin-section-open #admin-view > #admin-section-content .admin-section-panel {
+    height: auto;
+    min-height: 0;
+  }
+
+  /* 滿版子頁不用外層卡片框：把最外層 .glass-card 的邊框 / 底色 / 內距 拆掉，
+     內容靠 #admin-section-content 的 1rem 邊距對齊即可。內部功能小框
+     （.admin-feature-setting-row、清單列、表格…）維持原樣。 */
+  body.admin-section-open #admin-view > #admin-section-content .glass-card {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+  }
 }
 
 .admin-section-content {
