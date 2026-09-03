@@ -139,20 +139,26 @@ async function refreshCareReminderBadge(options = {}) {
   careReminderBadgeLastRefresh = now;
 
   try {
-    const [careResult, quizResult, examResult] = await Promise.all([
+    const [careResult, quizResult, examResult, issueResult] = await Promise.all([
       db.fetchCareReminders(),
       typeof db.fetchQuizNotifications === "function"
         ? db.fetchQuizNotifications()
         : Promise.resolve({ data: [], error: null }),
       typeof db.fetchExamNotifications === "function"
         ? db.fetchExamNotifications()
-        : Promise.resolve({ data: [], error: null })
+        : Promise.resolve({ data: [], error: null }),
+      typeof db.fetchIssueThreadUnread === "function"
+        ? db.fetchIssueThreadUnread()
+        : Promise.resolve({ total: 0, error: null })
     ]);
     if (!careResult.error || !quizResult.error || !examResult.error) {
+      const issueUnread = Math.max(0, Number(issueResult && issueResult.total) || 0);
       updateCareReminderBadge([
         ...(careResult.data || []),
         ...(quizResult.data || []),
-        ...(examResult.data || [])
+        ...(examResult.data || []),
+        // 回報有新回覆：以「未讀」佔位項灌進鈴鐺數字。
+        ...Array.from({ length: issueUnread }, (_unused, i) => ({ id: `issue-thread-${i}`, status: "unread" }))
       ]);
     }
   } catch (error) {
@@ -180,19 +186,32 @@ async function renderNotificationsList() {
   container.innerHTML = `<div style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.875rem;"><span class="nlc-icon nlc-icon--sm" data-icon="loading" aria-hidden="true"></span> 載入中...</div>`;
   if (typeof hydrateIcons === "function") hydrateIcons(container);
 
-  const [careResult, quizResult, examResult] = await Promise.all([
+  const [careResult, quizResult, examResult, issueResult] = await Promise.all([
     db.fetchAllNotifications(),
     typeof db.fetchQuizNotifications === "function"
       ? db.fetchQuizNotifications()
       : Promise.resolve({ data: [], error: null }),
     typeof db.fetchExamNotifications === "function"
       ? db.fetchExamNotifications()
-      : Promise.resolve({ data: [], error: null })
+      : Promise.resolve({ data: [], error: null }),
+    typeof db.fetchIssueThreadUnread === "function"
+      ? db.fetchIssueThreadUnread()
+      : Promise.resolve({ total: 0, error: null })
   ]);
   const notifications = [...(careResult.data || []), ...(quizResult.data || []), ...(examResult.data || [])]
     .sort((left, right) => String(right.createdAt || right.created_at || right.sent_on || "")
       .localeCompare(String(left.createdAt || left.created_at || left.sent_on || "")))
     .slice(0, 20);
+  const issueUnread = Math.max(0, Number(issueResult && issueResult.total) || 0);
+  if (issueUnread > 0) {
+    notifications.unshift({
+      type: "issue-thread",
+      status: "unread",
+      sender: { role: "admin" },
+      message: `你的回報有 ${issueUnread} 則新回覆，點此查看。`,
+      sent_on: ""
+    });
+  }
   const error = careResult.error && quizResult.error && examResult.error ? careResult.error : null;
 
   if (error || !notifications || notifications.length === 0) {
@@ -241,6 +260,11 @@ async function renderNotificationsList() {
 
     div.onclick = async (e) => {
       e.stopPropagation();
+      if (item.type === "issue-thread") {
+        document.getElementById("notification-popover")?.classList.add("hidden");
+        window.dispatchEvent(new CustomEvent("open-issue-report", { detail: { tab: "my-reports" } }));
+        return;
+      }
       if (item.status === 'unread') {
         div.classList.remove("notification-item--unread");
         if (isExamNotification && typeof db.acknowledgeExamNotification === "function") {

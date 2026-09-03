@@ -43,6 +43,7 @@ interface AdminReportTableProps {
   onExport: (exportData?: IssueReport[]) => void;
   onDelete: (id: string) => Promise<void>;
   onUpdate: (id: string, status: string, reply: string) => Promise<void>;
+  onOpenThread?: (id: string) => void;
 }
 
 export const AdminReportTable: React.FC<AdminReportTableProps> = ({
@@ -52,7 +53,8 @@ export const AdminReportTable: React.FC<AdminReportTableProps> = ({
   onRefresh,
   onExport,
   onDelete,
-  onUpdate
+  onUpdate,
+  onOpenThread
 }) => {
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
 
@@ -374,12 +376,15 @@ export const AdminReportTable: React.FC<AdminReportTableProps> = ({
                       <motion.button
                         whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.9 }}
-                        onClick={() => handleReplyOpen(report)}
-                        className="inline-flex rounded-lg p-2 text-cyan-400 bg-slate-900 hover:bg-cyan-500/20 hover:text-cyan-300 border border-cyan-500/40 transition-colors focus:outline-none shadow-sm cursor-pointer"
-                        title="回覆 / 修改狀態"
+                        onClick={() => (onOpenThread ? onOpenThread(report.id) : handleReplyOpen(report))}
+                        className="relative inline-flex rounded-lg p-2 text-cyan-400 bg-slate-900 hover:bg-cyan-500/20 hover:text-cyan-300 border border-cyan-500/40 transition-colors focus:outline-none shadow-sm cursor-pointer"
+                        title="開啟對話"
                         type="button"
                       >
                         <MessageSquare className="h-4 w-4" />
+                        {(report as any).unreadFromMember && (
+                          <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-rose-500 border border-slate-900" />
+                        )}
                       </motion.button>
                       <motion.button
                         whileHover={{ scale: 1.1 }}

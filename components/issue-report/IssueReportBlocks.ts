@@ -142,7 +142,7 @@ export class SubmitReportBlock {
     url?: string;
     user_agent?: string;
     user_id?: string;
-  }): Promise<{ success: boolean; source: "online" | "offline"; error?: string }> {
+  }): Promise<{ success: boolean; source: "online" | "offline"; error?: string; reportId?: string }> {
     if (this.isOnline()) {
       try {
         const state = (window as any).state;
@@ -151,21 +151,27 @@ export class SubmitReportBlock {
           throw new Error("Supabase client is not initialized");
         }
 
-        const { error } = await supabase
-          .from("issue_reports")
-          .insert([reportData]);
+        // .select("id") so the drawer can jump straight into the new ticket's
+        // conversation. Works for both the real client and the nlc-data shim;
+        // guarded so a builder without .select() (older shim / test mock) still
+        // completes the insert.
+        let insertQuery: any = supabase.from("issue_reports").insert([reportData]);
+        if (insertQuery && typeof insertQuery.select === "function") {
+          insertQuery = insertQuery.select("id").single();
+        }
+        const { data, error } = await insertQuery;
 
         if (error) throw error;
-        return { success: true, source: "online" };
+        return { success: true, source: "online", reportId: data?.id };
       } catch (err: any) {
         console.warn("[IssueReport] Online submission failed, caching to offline queue:", err);
         // Fallback to offline queue if online request fails
-        await this.queue.add(reportData);
+        await this.queue.add({ ...reportData, kind: "new_report" });
         return { success: true, source: "offline" };
       }
     } else {
       // Offline mode
-      await this.queue.add(reportData);
+      await this.queue.add({ ...reportData, kind: "new_report" });
       return { success: true, source: "offline" };
     }
   }
@@ -177,7 +183,7 @@ export class SubmitReportBlock {
 export class ReportPipeline {
   private static isLocked = false;
 
-  static async execute(category: string, description: string): Promise<{ success: boolean; source?: "online" | "offline"; error?: string }> {
+  static async execute(category: string, description: string): Promise<{ success: boolean; source?: "online" | "offline"; error?: string; reportId?: string }> {
     // Concurrency Lock / Debounce check
     if (this.isLocked) {
       return { success: false, error: "提交處理中，請勿重複連點" };
@@ -380,17 +386,186 @@ export function initOfflineReportSync() {
       if (!supabase) return;
 
       for (const report of reports) {
-        const { id, ...data } = report;
-        const { error } = await supabase.from("issue_reports").insert([data]);
-        if (!error) {
+        const { id, kind, ...data } = report;
+        try {
+          if (kind === "thread_message") {
+            const res = await ThreadPipeline.post(data.report_id, {
+              body: data.body || "",
+              image: data.image || null
+            });
+            if (!res.success) throw new Error(res.error || "thread sync failed");
+          } else {
+            const { error } = await supabase.from("issue_reports").insert([data]);
+            if (error) throw error;
+          }
           await queue.delete(id);
           console.log(`[IssueReport] Sync success: ${id}`);
-        } else {
-          console.warn(`[IssueReport] Sync failed for ${id}:`, error);
+        } catch (err) {
+          console.warn(`[IssueReport] Sync failed for ${id}:`, err);
         }
       }
     } catch (err) {
       console.error("[IssueReport] Offline sync error:", err);
     }
   });
+}
+
+// ───────────────────────── 對話串（migration 0153）─────────────────────────
+
+async function getAccessToken(): Promise<string> {
+  const state = (window as any).state;
+  const supabase = state?.supabase;
+  let token = "";
+  try {
+    if (supabase && typeof supabase.auth?.getSession === "function") {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session?.access_token) token = data.session.access_token;
+    }
+  } catch (_e) { /* fall through */ }
+  if (!token && (window as any).auth?.getValidAccessToken) {
+    try { token = await (window as any).auth.getValidAccessToken(); } catch (_e) { /* noop */ }
+  }
+  return token || "";
+}
+
+/** POST one action/rpc to the nlc-data Edge Function. */
+export async function callNlc(payload: Record<string, unknown>): Promise<{ success: boolean; data?: any; error?: string }> {
+  const state = (window as any).state;
+  const cfg = state?.supabaseConfig || {};
+  const supabaseUrl = String(cfg.url || "").replace(/\/+$/, "");
+  const anonKey = String(cfg.anonKey || "");
+  if (!supabaseUrl) return { success: false, error: "no_config" };
+  const token = await getAccessToken();
+  if (!token) return { success: false, error: "not_logged_in" };
+  try {
+    const resp = await fetch(`${supabaseUrl}/functions/v1/nlc-data`, {
+      method: "POST",
+      headers: {
+        "apikey": anonKey,
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { success: false, error: json?.error || `HTTP ${resp.status}` };
+    return { success: true, data: json?.data };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "network_error" };
+  }
+}
+
+const rpc = (fn: string, args: Record<string, unknown>) =>
+  callNlc({ action: "rpc", function: fn, args });
+
+/**
+ * Shrink a picked screenshot in-browser to WebP ≤ ~300 KB before upload.
+ * Canvas re-encode also drops EXIF/GPS. Returns null on unsupported files.
+ */
+export async function compressScreenshot(
+  file: File
+): Promise<{ base64: string; mime: string; w: number; h: number } | null> {
+  if (!file || !/^image\/(png|jpe?g|webp)$/i.test(file.type)) return null;
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) return null;
+
+  const encode = (maxSide: number, quality: number) => {
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL("image/webp", quality);
+    return { dataUrl, w, h };
+  };
+
+  const CAP = 300 * 1024;
+  const attempts: Array<[number, number]> = [[1600, 0.7], [1600, 0.55], [1400, 0.5], [1200, 0.42], [1000, 0.4]];
+  let best: { dataUrl: string; w: number; h: number } | null = null;
+  for (const [side, q] of attempts) {
+    const out = encode(side, q);
+    if (!out || !out.dataUrl.startsWith("data:image/webp")) continue;
+    best = out;
+    // rough byte size of a base64 payload
+    const bytes = Math.ceil((out.dataUrl.length - out.dataUrl.indexOf(",") - 1) * 0.75);
+    if (bytes <= CAP) break;
+  }
+  bitmap.close?.();
+  if (!best) return null;
+  return {
+    base64: best.dataUrl.replace(/^data:[^,]*,/, ""),
+    mime: "image/webp",
+    w: best.w,
+    h: best.h
+  };
+}
+
+export interface ThreadImage { base64: string; mime: string; w: number; h: number; }
+
+export class ThreadPipeline {
+  /** 會友：我的工單清單 */
+  static async myReports(): Promise<{ success: boolean; rows: any[]; error?: string }> {
+    const r = await rpc("issue_my_reports", {});
+    if (!r.success) return { success: false, rows: [], error: r.error };
+    return { success: true, rows: Array.isArray(r.data?.rows) ? r.data.rows : [] };
+  }
+
+  /** 讀一串（回覆含 attachmentUrl 簽名網址）。順手把該串標記已讀。 */
+  static async get(reportId: string, markRead = true): Promise<{ success: boolean; data?: any; error?: string }> {
+    return callNlc({ action: "issue_thread_get", report_id: reportId, mark_read: markRead });
+  }
+
+  /** 發一則訊息（body 可空，但要有 image） */
+  static async post(
+    reportId: string,
+    opts: { body?: string; image?: ThreadImage | null; isInternal?: boolean }
+  ): Promise<{ success: boolean; data?: any; error?: string }> {
+    return callNlc({
+      action: "issue_thread_post",
+      report_id: reportId,
+      body: opts.body || "",
+      is_internal: opts.isInternal === true,
+      image: opts.image || null
+    });
+  }
+
+  static async deleteAttachment(messageId: string): Promise<{ success: boolean; error?: string }> {
+    const r = await callNlc({ action: "issue_thread_attachment_delete", message_id: messageId });
+    return { success: r.success, error: r.error };
+  }
+
+  static async markRead(reportId: string): Promise<void> {
+    await rpc("issue_thread_mark_read", { p_report_id: reportId });
+  }
+
+  /** { total, role } — 驅動浮動按鈕 / 鈴鐺的未讀數字 */
+  static async unreadSummary(): Promise<{ total: number; role: string }> {
+    const r = await rpc("issue_thread_unread_summary", {});
+    if (!r.success || !r.data) return { total: 0, role: "anon" };
+    return { total: Number(r.data.total) || 0, role: String(r.data.role || "anon") };
+  }
+
+  /** 管理端清單 */
+  static async adminList(status?: string, limit = 40, offset = 0): Promise<{ success: boolean; rows: any[]; error?: string }> {
+    const args: Record<string, unknown> = { p_limit: limit, p_offset: offset };
+    if (status && status !== "all") args.p_status = status;
+    const r = await rpc("issue_admin_thread_list", args);
+    if (!r.success) return { success: false, rows: [], error: r.error };
+    return { success: true, rows: Array.isArray(r.data?.rows) ? r.data.rows : [] };
+  }
+
+  static async setStatus(reportId: string, status: string): Promise<{ success: boolean; error?: string }> {
+    const r = await rpc("issue_admin_set_status", { p_report_id: reportId, p_status: status });
+    return { success: r.success, error: r.error };
+  }
+}
+
+/** 把一則離線訊息排入佇列（送出失敗時用） */
+export async function queueOfflineThreadMessage(reportId: string, body: string, image: ThreadImage | null) {
+  const queue = new OfflineQueue();
+  await queue.add({ kind: "thread_message", report_id: reportId, body, image });
 }

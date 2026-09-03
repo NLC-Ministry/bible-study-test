@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.generate-daily-quizzes]
 verify_jwt = false
+
+[functions.issue-report-maintenance]
+verify_jwt = false

@@ -197,6 +197,21 @@ const GROUP_MEETING_RPC_FUNCTIONS = new Set([
   "bulk_upsert_group_meeting_weeks",
   "set_group_meeting_plan_future_open"
 ]);
+// 回報對話串（issue_reports 工單 + issue_report_messages，migration 0153）。
+// 每支 RPC 自己在 SQL 端用 _issue_actor()/_issue_is_admin() 做「本人或 admin」授權；
+// 這裡只需注入 p_actor_id。碰 Storage 的（附件上傳/簽名網址/刪物件）不是 RPC，
+// 走下面的 issue_thread_get / issue_thread_post / issue_thread_attachment_delete action。
+const ISSUE_RPC_FUNCTIONS = new Set([
+  "issue_thread_mark_read",
+  "issue_thread_unread_summary",
+  "issue_my_reports",
+  "issue_admin_thread_list",
+  "issue_admin_set_status"
+]);
+const ISSUE_ADMIN_RPC_FUNCTIONS = new Set([
+  "issue_admin_thread_list",
+  "issue_admin_set_status"
+]);
 const RPC_FUNCTIONS = new Set([
   "increment_likes",
   "decrement_likes",
@@ -207,7 +222,8 @@ const RPC_FUNCTIONS = new Set([
   ...QUIZ_RPC_FUNCTIONS,
   ...EXAM_RPC_FUNCTIONS,
   ...DEVOTION_RPC_FUNCTIONS,
-  ...GROUP_MEETING_RPC_FUNCTIONS
+  ...GROUP_MEETING_RPC_FUNCTIONS,
+  ...ISSUE_RPC_FUNCTIONS
 ]);
 
 function jsonResponse(body: unknown, status = 200) {
@@ -577,7 +593,7 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const table = body.table;
     const action = body.action || "select";
-    if (!["save_profile", "rpc", "send_care_reminder", "mark_issue_report_reply_seen", "sync_registration_stats_sheet"].includes(action) && (!table || typeof table !== "string")) {
+    if (!["save_profile", "rpc", "send_care_reminder", "mark_issue_report_reply_seen", "sync_registration_stats_sheet", "issue_thread_get", "issue_thread_post", "issue_thread_attachment_delete"].includes(action) && (!table || typeof table !== "string")) {
       return jsonResponse({ error: "missing_table" }, 400);
     }
 
@@ -600,6 +616,9 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ error: "forbidden_rpc" }, 403);
       }
       if (ADMIN_RPC_FUNCTIONS.has(functionName) && !isAdmin(profile)) {
+        return jsonResponse({ error: "forbidden_rpc" }, 403);
+      }
+      if (ISSUE_ADMIN_RPC_FUNCTIONS.has(functionName) && !isAdmin(profile)) {
         return jsonResponse({ error: "forbidden_rpc" }, 403);
       }
       if (QUIZ_RPC_FUNCTIONS.has(functionName)) {
@@ -638,6 +657,7 @@ Deno.serve(async (req: Request) => {
         || EXAM_RPC_FUNCTIONS.has(functionName)
         || DEVOTION_RPC_FUNCTIONS.has(functionName)
         || GROUP_MEETING_RPC_FUNCTIONS.has(functionName)
+        || ISSUE_RPC_FUNCTIONS.has(functionName)
         || functionName === "get_admin_registration_statistics"
         || functionName === "create_region_stage_cohort")
         ? { ...(body.args || {}), p_actor_id: profile.id }
@@ -759,6 +779,122 @@ Deno.serve(async (req: Request) => {
         .single();
       if (updateError) return jsonResponse({ error: updateError.message }, 400);
       return jsonResponse({ data: updated });
+    }
+
+    // ── 回報對話串：碰 Storage 的三個 action（SQL RPC 動不到 Storage）──────────
+    // 授權一律在 SQL 端（_issue_actor / _issue_is_admin：本人或 admin）。
+    const ISSUE_SHOTS_BUCKET = "issue-report-shots";
+    const issueShotExt = (mime: string) =>
+      mime === "image/png" ? "png" : mime === "image/jpeg" ? "jpg" : "webp";
+    const issueDecodeBase64 = (b64: string) => {
+      const clean = String(b64 || "").replace(/^data:[^,]*,/, "");
+      const bin = atob(clean);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    };
+
+    if (action === "issue_thread_get") {
+      const reportId = String(body.report_id || "");
+      if (!reportId) return jsonResponse({ error: "missing_report_id" }, 400);
+      const { data, error } = await supabaseAdmin.rpc("issue_thread_get", {
+        p_report_id: reportId,
+        p_actor_id: profile.id,
+        p_mark_read: body.mark_read !== false
+      });
+      if (error) return jsonResponse({ error: error.message, code: error.code }, 400);
+      const thread = data || {};
+      const messages: any[] = Array.isArray(thread.messages) ? thread.messages : [];
+      const paths = messages
+        .map((m) => m?.attachmentPath)
+        .filter((p): p is string => typeof p === "string" && p.length > 0 && p !== "pending");
+      if (paths.length) {
+        const { data: signed } = await supabaseAdmin.storage
+          .from(ISSUE_SHOTS_BUCKET)
+          .createSignedUrls(paths, 300);
+        const urlByPath = new Map<string, string>();
+        (signed || []).forEach((s: any) => {
+          if (s && !s.error && s.path && s.signedUrl) urlByPath.set(s.path, s.signedUrl);
+        });
+        for (const m of messages) {
+          if (m?.attachmentPath && urlByPath.has(m.attachmentPath)) {
+            m.attachmentUrl = urlByPath.get(m.attachmentPath);
+          }
+        }
+      }
+      return jsonResponse({ data: thread });
+    }
+
+    if (action === "issue_thread_post") {
+      const reportId = String(body.report_id || "");
+      if (!reportId) return jsonResponse({ error: "missing_report_id" }, 400);
+      const image = body.image && typeof body.image === "object" ? body.image : null;
+      const imgMime = image ? String(image.mime || "") : "";
+      if (image && !["image/webp", "image/jpeg", "image/png"].includes(imgMime)) {
+        return jsonResponse({ error: "bad_mime" }, 400);
+      }
+      let imgBytes: Uint8Array | null = null;
+      if (image) {
+        try {
+          imgBytes = issueDecodeBase64(image.base64);
+        } catch (_e) {
+          return jsonResponse({ error: "bad_image" }, 400);
+        }
+        if (!imgBytes.length || imgBytes.length > 512000) {
+          return jsonResponse({ error: "too_large" }, 400);
+        }
+      }
+
+      const { data: posted, error: postErr } = await supabaseAdmin.rpc("issue_thread_post", {
+        p_report_id: reportId,
+        p_body: typeof body.body === "string" ? body.body : "",
+        p_is_internal: body.is_internal === true,
+        p_has_attachment: !!image,
+        p_actor_id: profile.id
+      });
+      if (postErr) return jsonResponse({ error: postErr.message, code: postErr.code }, 400);
+      const messageId = posted?.id;
+
+      if (image && imgBytes && messageId) {
+        const path = `${reportId}/${messageId}.${issueShotExt(imgMime)}`;
+        const up = await supabaseAdmin.storage
+          .from(ISSUE_SHOTS_BUCKET)
+          .upload(path, imgBytes, { contentType: imgMime, upsert: true });
+        if (up.error) {
+          await supabaseAdmin.rpc("issue_thread_drop_attachment", {
+            p_message_id: messageId, p_actor_id: profile.id
+          });
+          return jsonResponse({ error: "upload_failed" }, 500);
+        }
+        const { error: setErr } = await supabaseAdmin.rpc("issue_thread_set_attachment", {
+          p_message_id: messageId, p_path: path, p_mime: imgMime,
+          p_bytes: imgBytes.length,
+          p_w: Number(image.w) || null, p_h: Number(image.h) || null,
+          p_actor_id: profile.id
+        });
+        if (setErr) {
+          await supabaseAdmin.storage.from(ISSUE_SHOTS_BUCKET).remove([path]);
+          await supabaseAdmin.rpc("issue_thread_drop_attachment", {
+            p_message_id: messageId, p_actor_id: profile.id
+          });
+          return jsonResponse({ error: setErr.message }, 400);
+        }
+      }
+      return jsonResponse({ data: { id: messageId, reportId } });
+    }
+
+    if (action === "issue_thread_attachment_delete") {
+      const messageId = String(body.message_id || "");
+      if (!messageId) return jsonResponse({ error: "missing_message_id" }, 400);
+      const { data, error } = await supabaseAdmin.rpc("issue_thread_drop_attachment", {
+        p_message_id: messageId, p_actor_id: profile.id
+      });
+      if (error) return jsonResponse({ error: error.message, code: error.code }, 400);
+      const oldPath = data?.oldPath;
+      if (typeof oldPath === "string" && oldPath && oldPath !== "pending") {
+        await supabaseAdmin.storage.from(ISSUE_SHOTS_BUCKET).remove([oldPath]);
+      }
+      return jsonResponse({ data: { ok: true } });
     }
 
     if (action === "save_profile") {

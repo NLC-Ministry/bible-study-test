@@ -63,9 +63,27 @@ describe("mark_issue_report_reply_seen (nlc-data)", () => {
   });
 });
 
-describe("admin reply resets reply_seen_at so a re-reply re-triggers the badge", () => {
-  it("both the network payload and the optimistic local state set reply_seen_at: null on every reply submission", () => {
-    const occurrences = adminView.match(/reply_seen_at: null/g) || [];
-    expect(occurrences.length).toBeGreaterThanOrEqual(2);
+// Migration 0153 replaced the single metadata.reply model with a conversation
+// thread. The reporter's unread badge is now driven by member_last_read_at vs
+// the timestamp of the newest admin message (issue_thread_unread_summary),
+// recomputed server-side — there is no client-set reply_seen_at anymore.
+describe("admin replies go through the conversation thread, not metadata.reply", () => {
+  it("AdminReportView posts replies + status via the 0153 pipeline", () => {
+    expect(adminView).toContain("ThreadPipeline.post(");
+    expect(adminView).toContain("ThreadPipeline.setStatus(");
+    // the old direct write to issue_reports.metadata.reply is gone
+    expect(adminView).not.toContain("replied_by");
+    expect(adminView).not.toContain("reply_seen_at");
+  });
+
+  it("the reporter's badge count comes from the server-side unread summary RPC", () => {
+    const fab = readFileSync(join(root, "components", "issue-report", "IssueReportFab.tsx"), "utf8");
+    expect(fab).toContain("ThreadPipeline.unreadSummary()");
+  });
+
+  it("unread summary + thread reads are self-authorizing in the DB (never trust client actor)", () => {
+    const mig = readFileSync(join(root, "supabase", "migrations", "0153_issue_report_conversation.sql"), "utf8");
+    expect(mig).toContain("COALESCE(auth.uid(), p_actor_id)");
+    expect(mig).toContain("r.user_id IS DISTINCT FROM actor THEN RAISE EXCEPTION 'forbidden'");
   });
 });

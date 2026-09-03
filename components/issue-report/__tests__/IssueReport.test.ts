@@ -355,10 +355,13 @@ describe("Issue Report System Tests", () => {
     it("當開關狀態 isOpen 改變時，正確反應屬性", () => {
       const mockState = vi.fn().mockImplementation((init) => [init, vi.fn()]);
       const mockEffect = vi.fn();
+      const mockRef = vi.fn().mockImplementation((init) => ({ current: init ?? null }));
       const origUseState = React.useState;
       const origUseEffect = React.useEffect;
+      const origUseRef = React.useRef;
       (React as any).useState = mockState;
       (React as any).useEffect = mockEffect;
+      (React as any).useRef = mockRef;
 
       try {
         const drawerOpen = (ReportDrawer as any)({
@@ -375,6 +378,7 @@ describe("Issue Report System Tests", () => {
       } finally {
         (React as any).useState = origUseState;
         (React as any).useEffect = origUseEffect;
+        (React as any).useRef = origUseRef;
       }
     });
 

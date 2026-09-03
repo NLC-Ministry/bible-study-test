@@ -2,7 +2,7 @@
 import React from "react";
 import { SupportFab } from "./SupportFab.tsx";
 import { ReportDrawer } from "./ReportDrawer.tsx";
-import { initOfflineReportSync, FetchMyReportsPipeline, countUnseenReplies } from "./IssueReportBlocks.ts";
+import { initOfflineReportSync, ThreadPipeline } from "./IssueReportBlocks.ts";
 
 export const IssueReportFab: React.FC = () => {
   const [isOpen, setIsOpen] = React.useState(false);
@@ -10,16 +10,25 @@ export const IssueReportFab: React.FC = () => {
   const [unreadReplyCount, setUnreadReplyCount] = React.useState(0);
 
   const refreshUnreadCount = React.useCallback(() => {
-    FetchMyReportsPipeline.execute().then(result => {
-      if (result.success && Array.isArray(result.data)) {
-        setUnreadReplyCount(countUnseenReplies(result.data));
-      }
+    ThreadPipeline.unreadSummary().then(({ total }) => {
+      setUnreadReplyCount(total);
     }).catch(() => {});
   }, []);
 
   // Initialize offline sync on component mount
   React.useEffect(() => {
     initOfflineReportSync();
+  }, []);
+
+  // Let non-React surfaces (e.g. the notification bell) open the drawer.
+  React.useEffect(() => {
+    const onOpen = (e: Event) => {
+      const tab = (e as CustomEvent)?.detail?.tab === "my-reports" ? "my-reports" : "form";
+      setDefaultTab(tab);
+      setIsOpen(true);
+    };
+    window.addEventListener("open-issue-report", onOpen);
+    return () => window.removeEventListener("open-issue-report", onOpen);
   }, []);
 
   // Check for unread replies on mount, and again whenever the tab regains

@@ -5450,6 +5450,20 @@ const db = {
     });
   },
 
+  // 回報對話串（migration 0153）：未讀數字，餵鈴鐺 / 通知中心。
+  async fetchIssueThreadUnread() {
+    if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) {
+      return { total: 0, error: null };
+    }
+    try {
+      const { data, error } = await state.supabase.rpc("issue_thread_unread_summary", {});
+      if (error) return { total: 0, error };
+      return { total: Number(data && data.total) || 0, role: data && data.role, error: null };
+    } catch (error) {
+      return { total: 0, error };
+    }
+  },
+
   async getFeatureSetting(key, fallback = false) {
     const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz", "speed_reading_exam", "daily_devotion", "group_meeting_plan"]);
     if (!allowedKeys.has(key)) {
