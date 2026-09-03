@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { Loader2, ChevronLeft, ImagePlus, Send, Trash2, Shield } from "lucide-react";
 import { AdminReportTable } from "./AdminReportTable.tsx";
 import { ThreadPipeline, compressScreenshot, type ThreadImage } from "./IssueReportBlocks.ts";
-import { groupMessages, dayKey, dayLabel, clockTime, formatWhen } from "./ReportDrawer.tsx";
+import { groupMessages, dayKey, dayLabel, clockTime, formatWhen, statusBadgeClass, CATEGORY_BADGE_CLASS } from "./ReportDrawer.tsx";
 
 interface IssueReport {
   id: string;
@@ -287,13 +287,17 @@ const AdminThreadPane: React.FC<{ reportId: string; onClose: () => void; onChang
           </button>
           {report && (
             <>
-              <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-card)" }}>
+              <span className={CATEGORY_BADGE_CLASS}>
                 {CAT_LABEL[report.category] || report.category}
+              </span>
+              <span className={`${statusBadgeClass(report.status)} ml-auto`}>
+                {ST_LABEL[report.status] || report.status}
               </span>
               <select
                 value={report.status}
                 onChange={(e) => setStatus(e.target.value)}
-                className="ml-auto text-xs rounded-md border border-border bg-card px-2 py-1"
+                className="text-sm rounded-md border border-border bg-card text-foreground px-2 py-1"
+                aria-label="變更狀態"
               >
                 {Object.entries(ST_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
@@ -340,11 +344,19 @@ const AdminThreadPane: React.FC<{ reportId: string; onClose: () => void; onChang
                       </span>
                       <div className={`flex flex-col gap-1 ${fromAdmin ? "items-end" : "items-start"}`}>
                         {grp.map((m: any) => (
-                          <div key={m.id} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed ${
-                            m.isInternal ? "bg-amber-100 text-amber-900 border border-amber-300"
-                            : fromAdmin ? "bg-primary text-primary-foreground rounded-br-sm"
-                            : "bg-card border border-border text-foreground rounded-bl-sm"
-                          }`}>
+                          <div
+                            key={m.id}
+                            className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed ${
+                              m.isInternal ? "border"
+                              : fromAdmin ? "bg-primary text-primary-foreground rounded-br-sm"
+                              : "bg-card border border-border text-foreground rounded-bl-sm"
+                            }`}
+                            style={m.isInternal ? {
+                              background: "var(--color-warning-subtle)",
+                              color: "var(--color-warning-foreground, var(--text-primary))",
+                              borderColor: "color-mix(in srgb, var(--color-warning) 30%, transparent)"
+                            } : undefined}
+                          >
                             {m.body && <span>{m.body}</span>}
                             {m.attachmentUrl && (
                               <div className={m.body ? "mt-2" : ""}>

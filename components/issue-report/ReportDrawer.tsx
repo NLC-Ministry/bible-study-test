@@ -405,13 +405,13 @@ export const ReportDrawer: React.FC<ReportDrawerProps> = ({ isOpen, onClose, def
                   >
                     <div className="flex items-center gap-2">
                       {report.unread && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="有新回覆" />}
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-card)" }}>
+                      <span className={CATEGORY_BADGE_CLASS}>
                         {CATEGORY_LABEL[report.category] || report.category}
                       </span>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={statusPillStyle(report.status)}>
+                      <span className={statusBadgeClass(report.status)}>
                         {STATUS_LABEL[report.status] || report.status}
                       </span>
-                      <span className="ml-auto text-[11px] text-muted-foreground">
+                      <span className="ml-auto text-xs text-muted-foreground">
                         {formatWhen(report.lastMessageAt || report.createdAt)}
                       </span>
                     </div>
@@ -438,22 +438,24 @@ export const ReportDrawer: React.FC<ReportDrawerProps> = ({ isOpen, onClose, def
   );
 };
 
-const CATEGORY_LABEL: Record<string, string> = {
+export const CATEGORY_LABEL: Record<string, string> = {
   bug: "Bug 錯誤", ui: "UI 建議", data: "資料問題", other: "其他"
 };
-const STATUS_LABEL: Record<string, string> = {
+export const STATUS_LABEL: Record<string, string> = {
   pending: "待處理", processing: "處理中", resolved: "已解決", ignored: "已存檔"
 };
-function statusPillStyle(status: string): React.CSSProperties {
-  const map: Record<string, [string, string]> = {
-    pending: ["rgba(234,179,8,0.22)", "#b45309"],
-    processing: ["rgba(59,130,246,0.22)", "#1d4ed8"],
-    resolved: ["rgba(34,197,94,0.22)", "#15803d"],
-    ignored: ["rgba(148,163,184,0.22)", "#475569"]
-  };
-  const [bg, text] = map[status] || map.pending;
-  return { backgroundColor: bg, color: text };
+// 一律用設計系統的 .stat-badge token（隨 light/dark/warm 主題切換、對比達標）。
+// 不要在這裡塞 rgba/hex —— 深色主題下會看不清。
+const STATUS_BADGE_VARIANT: Record<string, string> = {
+  pending: "stat-badge--warning",
+  processing: "stat-badge--brand",
+  resolved: "stat-badge--success",
+  ignored: "stat-badge--neutral"
+};
+export function statusBadgeClass(status: string): string {
+  return `stat-badge ${STATUS_BADGE_VARIANT[status] || "stat-badge--neutral"}`;
 }
+export const CATEGORY_BADGE_CLASS = "stat-badge stat-badge--neutral";
 export function formatWhen(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -563,10 +565,10 @@ const ThreadView: React.FC<ThreadViewProps> = ({
         </button>
         {report && (
           <>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: "var(--bg-surface)", border: "1px solid var(--border-card)" }}>
+            <span className={CATEGORY_BADGE_CLASS}>
               {CATEGORY_LABEL[report.category] || report.category}
             </span>
-            <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={statusPillStyle(report.status)}>
+            <span className={statusBadgeClass(report.status)}>
               {STATUS_LABEL[report.status] || report.status}
             </span>
           </>
