@@ -53,8 +53,10 @@ describe("campaign stage release control", () => {
     expect(planModule).toContain('if (isFullyHiddenCampaignStage && viewerRole !== "admin") return false;');
     expect(planModule).toContain("if (isHidden && !canManageHiddenPlans() && !showAsLocked) return false;");
     expect(planModule).toContain("const isLockedStage = window.isCampaignStageLocked(plan)");
-    // 鎖住的教會階段（以及每日靈修 / 小組聚會這類「只看內容」的計畫）在探索清單卡片不顯示加入/建隊動作。
-    expect(planModule).toContain('(isLockedStage || isViewerPlan) ? "" : renderPlanCardActions([');
+    // 鎖住的教會階段在探索清單卡片不顯示任何動作；每日靈修 / 小組聚會這類「只看內容」
+    // 的計畫改成只給一顆「預覽內容」按鈕（viewer-open），不顯示加入/建隊。
+    expect(planModule).toContain("actions: isLockedStage");
+    expect(planModule).toContain('action: "viewer-open"');
     expect(planModule).toContain("if (isLockedStage) {");
     expect(planModule).toContain("openPlanDetailsDialog(plan);");
     expect(planModule).toContain('icon: "lock"');

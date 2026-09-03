@@ -2800,12 +2800,17 @@ function parseDevotionBulkText(text, startDateStr) {
   const rows = [];
   heads.forEach((h, i) => {
     const bodyRaw = src.slice(h.end, i + 1 < heads.length ? heads[i + 1].at : src.length).trim();
-    // body 開頭到第一個題號之間是標題，丟掉；沒有題號就整段當一條
+    // body 開頭到第一個題號之間就是「當日主題 / 標題」（例：「等候所應許的」）。
     const firstQ = bodyRaw.search(/(?<![0-9.:：vV])(?:[1-9]|1[0-9])\s*[．.、]\s*\S/);
     const qText = firstQ >= 0 ? bodyRaw.slice(firstQ) : bodyRaw;
+    const title = (firstQ >= 0 ? bodyRaw.slice(0, firstQ) : "")
+      .replace(/[\s　]+/g, " ")
+      .replace(/^[｜|:：\-–—•·]+/, "")
+      .trim()
+      .slice(0, 60);
     const reflections = splitQuestions(qText);
     const { label, refs } = normalizeLabel(h.raw, h.chap, h.vs1, h.vs2);
-    rows.push({ dayIndex: h.dayIndex, passageLabel: label, passageRefs: refs, reflections });
+    rows.push({ dayIndex: h.dayIndex, title, passageLabel: label, passageRefs: refs, reflections });
   });
 
   // 同一天重複 → 後者覆蓋；依 dayIndex 排序
@@ -2843,6 +2848,7 @@ async function renderAdminDevotionPlan(root, forceRefresh = false) {
   const rowHtml = days.map(d => `
     <tr data-devotion-day-id="${escapeHTML(String(d.id))}" data-devotion-day-index="${d.dayIndex}">
       <td>第 ${d.dayIndex} 天<br><span class="admin-devotion__date">${escapeHTML(d.displayDate || '')}</span></td>
+      <td>${escapeHTML(d.title || '（未填）')}</td>
       <td>${escapeHTML(d.passageLabel || '（未填）')}</td>
       <td style="text-align:center;">${Array.isArray(d.reflections) ? d.reflections.length : 0}</td>
       <td style="text-align:center;">${d.videoUrl ? '✔' : '—'}</td>
@@ -2891,8 +2897,8 @@ async function renderAdminDevotionPlan(root, forceRefresh = false) {
 
       <div class="admin-devotion__list-wrap">
         <table class="admin-devotion__table">
-          <thead><tr><th>天 / 日期</th><th>經文進度</th><th>思想條數</th><th>影片</th><th>狀態</th><th></th></tr></thead>
-          <tbody>${rowHtml || '<tr><td colspan="6" class="admin-user-directory__empty">尚無內容，請用上方「批次匯入」或下方「新增一天」。</td></tr>'}</tbody>
+          <thead><tr><th>天 / 日期</th><th>主題</th><th>經文進度</th><th>思想條數</th><th>影片</th><th>狀態</th><th></th></tr></thead>
+          <tbody>${rowHtml || '<tr><td colspan="7" class="admin-user-directory__empty">尚無內容，請用上方「批次匯入」或下方「新增一天」。</td></tr>'}</tbody>
         </table>
       </div>
       <button type="button" class="secondary-btn" id="admin-devotion-add" style="margin-top:.75rem;">＋ 新增一天</button>
@@ -2951,7 +2957,7 @@ async function renderAdminDevotionPlan(root, forceRefresh = false) {
       return;
     }
     bulkResult.innerHTML = `解析到 <strong>${parsedRows.length}</strong> 天：`
-      + parsedRows.map(r => `第 ${r.dayIndex} 天（${escapeHTML(r.passageLabel)}・${r.reflections.length} 條）`).join('、');
+      + parsedRows.map(r => `第 ${r.dayIndex} 天（${r.title ? escapeHTML(r.title) + '｜' : ''}${escapeHTML(r.passageLabel)}・${r.reflections.length} 條）`).join('、');
     bulkImportBtn.disabled = false;
   });
   bulkImportBtn?.addEventListener('click', async () => {
@@ -2967,11 +2973,12 @@ async function renderAdminDevotionPlan(root, forceRefresh = false) {
   const openEditor = (day) => {
     const editor = root.querySelector('#admin-devotion-editor');
     if (!editor) return;
-    const d = day || { dayIndex: (days.at(-1)?.dayIndex || 0) + 1, passageLabel: '', reflections: [], videoUrl: '', videoTitle: '', isPublished: false };
+    const d = day || { dayIndex: (days.at(-1)?.dayIndex || 0) + 1, title: '', passageLabel: '', reflections: [], videoUrl: '', videoTitle: '', isPublished: false };
     editor.classList.remove('hidden');
     editor.innerHTML = `
       <h4>${day ? `編輯第 ${d.dayIndex} 天` : '新增一天'}</h4>
       <label>第幾天<input type="number" min="1" id="dv-day-index" class="form-control" value="${d.dayIndex}" ${day ? 'readonly' : ''}></label>
+      <label>當日主題<input type="text" id="dv-title" class="form-control" value="${escapeHTML(d.title || '')}" placeholder="等候所應許的"></label>
       <label>經文進度<input type="text" id="dv-passage" class="form-control" value="${escapeHTML(d.passageLabel || '')}" placeholder="使徒行傳 1:1-5"></label>
       <label>思想經文（一行一條）<textarea id="dv-reflections" class="form-control" rows="6">${escapeHTML((d.reflections || []).join('\n'))}</textarea></label>
       <label>靈修影片連結<input type="url" id="dv-video-url" class="form-control" value="${escapeHTML(d.videoUrl || '')}" placeholder="https://..."></label>
@@ -2986,6 +2993,7 @@ async function renderAdminDevotionPlan(root, forceRefresh = false) {
       const payload = {
         globalPlanId: planId,
         dayIndex: Number(editor.querySelector('#dv-day-index').value),
+        title: editor.querySelector('#dv-title').value.trim(),
         passageLabel: editor.querySelector('#dv-passage').value.trim(),
         reflections: editor.querySelector('#dv-reflections').value.split('\n').map(s => s.trim()).filter(Boolean),
         videoUrl: editor.querySelector('#dv-video-url').value.trim(),

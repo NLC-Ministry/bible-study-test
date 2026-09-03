@@ -15495,6 +15495,10 @@ textarea::placeholder {
 }
 .devotion-view__daylabel strong { color: var(--text-primary); }
 .devotion-view__date { color: var(--text-muted); }
+.devotion-view__theme {
+  margin: 0; text-align: center; color: var(--text-primary);
+  font-size: 1.125rem; font-weight: var(--type-weight-strong, 500); line-height: 1.5;
+}
 .devotion-view__block {
   border: 1px solid var(--border-card); border-radius: var(--radius-md);
   background: var(--bg-card); padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.6rem;

@@ -2519,10 +2519,18 @@ function renderPresetPlansList() {
           tone: "warning"
         }
       ]),
-      actions: (isLockedStage || isViewerPlan) ? "" : renderPlanCardActions([
-        { kind: "primary", icon: "bookOpen", label: "自己加入", action: "solo-join" },
-        { kind: "secondary", icon: "people", label: "建立團隊", action: "team-create" }
-      ])
+      actions: isLockedStage
+        ? ""
+        : isViewerPlan
+        // 靈修 / 小組聚會：不加入、不組隊，只給一顆「預覽內容」按鈕（點卡片其他地方也可）。
+        ? renderPlanCardActions([
+            { kind: "primary", icon: "bookOpen",
+              label: isGroupMeeting ? "預覽週計畫" : "預覽內容", action: "viewer-open" }
+          ])
+        : renderPlanCardActions([
+            { kind: "primary", icon: "bookOpen", label: "自己加入", action: "solo-join" },
+            { kind: "secondary", icon: "people", label: "建立團隊", action: "team-create" }
+          ])
     });
 
     const openDetails = () => {
@@ -2559,6 +2567,11 @@ function renderPresetPlansList() {
     };
 
     card.querySelector('[data-plan-card-action="details"]')?.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openDetails();
+    });
+    card.querySelector('[data-plan-card-action="viewer-open"]')?.addEventListener("click", event => {
       event.preventDefault();
       event.stopPropagation();
       openDetails();
@@ -9019,13 +9032,15 @@ async function enterPlanListState() {
 }
 
 async function enterPlanDetailState() {
-  if (typeof window.guardPlanEligibility === "function" && window.guardPlanEligibility()) return;
   if (!state.activePlan) {
     await enterPlanListState();
     return;
   }
-  // 每日靈修計畫：不跑讀經打卡機制，改渲染靈修 viewer（獨立容器，不碰一般詳情結構）。
-  if ((state.activePlan.planKind || state.activePlan.plan_kind) === "devotional") {
+  const activePlanKind = state.activePlan.planKind || state.activePlan.plan_kind;
+  // 每日靈修 / 小組聚會週計畫：純看內容，不打卡、不組隊、沒有「重複幾遍」的輪次概念。
+  // 也**不跑「會友資格」閘門**——那個閘門是給「加入讀經計畫」用的，純預覽內容
+  // 不該被 onboarding 缺項（缺小組 / 會籍待審…）擋掉，否則點了卡片沒反應。
+  if (activePlanKind === "devotional") {
     window.currentPlanViewState = PLAN_ROUTE.DETAIL;
     state.planDetailOpen = true;
     state.planActiveSubTab = "today";
@@ -9033,8 +9048,7 @@ async function enterPlanDetailState() {
     await renderDevotionViewer(state.activePlan);
     return;
   }
-  // 小組聚會週計畫：同樣走獨立 viewer。
-  if ((state.activePlan.planKind || state.activePlan.plan_kind) === "group_meeting") {
+  if (activePlanKind === "group_meeting") {
     window.currentPlanViewState = PLAN_ROUTE.DETAIL;
     state.planDetailOpen = true;
     state.planActiveSubTab = "today";
@@ -9042,6 +9056,7 @@ async function enterPlanDetailState() {
     await renderGroupMeetingViewer(state.activePlan);
     return;
   }
+  if (typeof window.guardPlanEligibility === "function" && window.guardPlanEligibility()) return;
   exitDevotionViewer();
   exitGroupMeetingViewer();
   calculatePlanProgress();
@@ -9319,6 +9334,7 @@ function renderDevotionViewer(plan) {
           <div class="devotion-view__daylabel">
             <strong>第 ${cur.dayIndex} 天</strong> / 共 ${total} 天　<span class="devotion-view__date">${escapeHTML(cur.displayDate || "")}</span>
           </div>
+          ${(!locked && cur.title) ? `<h3 class="devotion-view__theme">${escapeHTML(cur.title)}</h3>` : ""}
           ${locked ? `
             <div class="devotion-view__locked">
               <span class="nlc-icon nlc-icon--md" data-icon="lock" aria-hidden="true"></span>
