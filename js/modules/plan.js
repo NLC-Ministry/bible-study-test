@@ -1532,6 +1532,55 @@ function bindPlanParticipationItemActions(card, plan, model) {
   });
 }
 
+// 「每日陪你靈修」歡迎卡（計畫分頁側欄，靜態文案：邀請去探索計畫）：只有在
+// 使用者完全沒有任何計畫——一般讀經、每日靈修、小組聚會通通沒有——才顯示，
+// 已經有任何一種計畫的話，這句「歡迎加入」文案就顯得多餘/矛盾。
+function userHasNoPlanAtAll() {
+  if ((state.activePlans || []).length > 0) return false;
+  const hasVisibleDevotional = (state.globalPlans || []).some(gp =>
+    (gp.planKind || gp.plan_kind) === "devotional" && isDevotionalPlanVisibleToUser(gp)
+  );
+  if (hasVisibleDevotional) return false;
+  const hasVisibleGroupMeeting = (state.globalPlans || []).some(gp =>
+    (gp.planKind || gp.plan_kind) === "group_meeting"
+    && typeof isGroupMeetingPlanVisibleToUser === "function" && isGroupMeetingPlanVisibleToUser(gp)
+  );
+  return !hasVisibleGroupMeeting;
+}
+
+// 「已結束」分頁維持原本一律隱藏這張卡；「我的計畫」／「探索計畫」分頁則改成
+// 只在完全沒有任何計畫時才顯示。兩份清單（joined/preset）各自渲染時都會呼叫
+// 這裡，且各自從 DOM 讀目前作用中的分頁，所以不管先渲染哪一份都能算對。
+function updatePlanSidebarIntroCardVisibility() {
+  const sidebarCard = document.getElementById("plan-sidebar-info-card");
+  if (!sidebarCard) return;
+  const activePill = document.querySelector("#plan-list-status-pills .pill-btn.active");
+  const filter = activePill ? activePill.getAttribute("data-filter") : "mine";
+  if (filter === "completed") {
+    sidebarCard.classList.add("hidden");
+    return;
+  }
+  sidebarCard.classList.toggle("hidden", !userHasNoPlanAtAll());
+}
+
+// 靈修影片連結只存网址，縮圖用 YouTube 自家公開的縮圖 CDN 現拼現算
+// （img.youtube.com/vi/<id>/...），不用呼叫任何 API、不用金鑰——只是把網址
+// 裡的 video id 抽出來組另一個網址而已。抽不出 id（例如貼的不是 YouTube 連結）
+// 就沒有縮圖，退回純文字連結。
+function extractYoutubeVideoId(url) {
+  try {
+    const u = new URL(String(url || ""));
+    const host = u.hostname.replace(/^www\.|^m\./, "");
+    if (host === "youtu.be") return u.pathname.slice(1).split("/")[0] || null;
+    if (host === "youtube.com") {
+      if (u.pathname === "/watch") return u.searchParams.get("v");
+      const match = u.pathname.match(/^\/(?:shorts|embed|live)\/([^/?]+)/);
+      if (match) return match[1];
+    }
+  } catch (_) { /* not a valid URL */ }
+  return null;
+}
+
 function formatPlanDurationLabel(startDate, endDate) {
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -1576,30 +1625,17 @@ function buildViewerOnlyPlanCard(plan) {
         value: "開發中，尚未對會友開放（只有你看得到）",
         tone: "warning"
       }
-    ]),
-    actions: renderPlanCardActions([
-      { kind: "primary", icon: "bookOpen",
-        label: isGroupMeeting ? "預覽週計畫" : "預覽內容", action: "viewer-open" }
     ])
+    // 沒有 actions：整張卡片可點擊直接進去，再放一顆「預覽內容」按鈕是多餘的。
   });
 
-  const openViewer = () => {
+  card.onclick = () => {
     if (isDevotional && typeof window.previewDevotionalPlanAsMember === "function") {
       window.previewDevotionalPlanAsMember(plan.globalPlanId || plan.id);
     } else if (isGroupMeeting && typeof window.previewGroupMeetingPlanAsMember === "function") {
       window.previewGroupMeetingPlanAsMember(plan.globalPlanId || plan.id);
     }
   };
-
-  card.onclick = (event) => {
-    if (event.target.closest("[data-plan-card-action]")) return;
-    openViewer();
-  };
-  card.querySelector('[data-plan-card-action="viewer-open"]')?.addEventListener("click", event => {
-    event.preventDefault();
-    event.stopPropagation();
-    openViewer();
-  });
 
   return card;
 }
@@ -1618,6 +1654,7 @@ function renderJoinedPlansList() {
 
     const activePill = document.querySelector("#plan-list-status-pills .pill-btn.active");
     const filter = activePill ? activePill.getAttribute("data-filter") : "mine";
+    updatePlanSidebarIntroCardVisibility();
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -2348,6 +2385,7 @@ function renderPresetPlansList() {
   const container = document.getElementById("preset-plans-list");
   if (!container) return;
   container.innerHTML = "";
+  updatePlanSidebarIntroCardVisibility();
 
   // 每日靈修功能旗標還沒讀到 → 先讀，讀到「開啟」再重畫一次讓靈修計畫現身。
   if (typeof window.dailyDevotionFeatureEnabled !== "boolean" && typeof isDailyDevotionFeatureEnabled === "function") {
@@ -9357,8 +9395,14 @@ function renderDevotionViewer(plan) {
             ${cur.videoUrl ? `
             <section class="devotion-view__block">
               <h4 class="devotion-view__h">靈修影片</h4>
-              <a class="secondary-btn" href="${escapeHTML(cur.videoUrl)}" target="_blank" rel="noopener noreferrer">
-                ${escapeHTML(cur.videoTitle || "觀看影片")} ↗
+              <a class="devotion-video-link" href="${escapeHTML(cur.videoUrl)}" target="_blank" rel="noopener noreferrer"
+                 aria-label="${escapeHTML(cur.videoTitle || '觀看影片')}">
+                ${devotionVideoThumbUrl ? `
+                <span class="devotion-video-link__thumb-wrap">
+                  <img class="devotion-video-link__thumb" src="${escapeHTML(devotionVideoThumbUrl)}" alt="" loading="lazy">
+                  <span class="devotion-video-link__play nlc-icon" data-icon="circlePlay" aria-hidden="true"></span>
+                </span>` : ""}
+                <span class="devotion-video-link__title">${escapeHTML(cur.videoTitle || "觀看影片")} ↗</span>
               </a>
             </section>` : ""}
           `}

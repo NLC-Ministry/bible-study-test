@@ -304,7 +304,15 @@ export function updateDashboardView() {
 
 
   const planSummaryDiv = document.getElementById("active-plan-summary");
-  if (state.activePlan) {
+  // state.activePlan 是全 app 共用的單一指標，「預覽」每日靈修／小組聚會週
+  // 計畫時也會暫時把它設成那份計畫（見 previewDevotionalPlanAsMember 等）。
+  // 這張卡是繞著一般讀經計畫的章節/輪次/百分比畫的，靈修計畫沒有這些欄位，
+  // 硬塞進來只會顯示一堆 undefined——所以這裡當作「沒有進行中的計畫」處理，
+  // 靈修計畫改由獨立的「每日靈修」卡片（refreshDevotionHomeCard）負責。
+  const activePlanKind = state.activePlan && (state.activePlan.planKind || state.activePlan.plan_kind);
+  const hasRegularActivePlan = state.activePlan
+    && activePlanKind !== "devotional" && activePlanKind !== "group_meeting";
+  if (hasRegularActivePlan) {
     const progress = state.activePlan.progress || 0;
     const currentRound = state.activePlan.currentRound || 1;
     const started = isPlanStarted(state.activePlan);

@@ -304,6 +304,15 @@
             </div>
           </div>
 
+          <!-- 每日靈修（獨立於上面「進行中的計畫」卡片，不共用 state.activePlan 的
+               進度式版面；沒有加入任何「每日靈修」計畫就整塊隱藏——見 js/modules/
+               home.js 的 refreshDevotionHomeCard()）。刻意簡化：只顯示日期＋經文，
+               有影片才多顯示一個小提示，不出現任何進度/百分比。放在速讀計畫卡片
+               下方、每日金句上方，避免跟金句卡並排搶成同一列。 -->
+          <div class="glass-card card-col span-12 bento-card devotion-home-card hidden" id="devotion-home-card">
+            <div id="devotion-home-content"></div>
+          </div>
+
           <!-- 每日金句 (Verse of the Day) -->
           <div id="verse-card"
             class="card-col span-4 bento-card relative w-full min-h-[320px] rounded-2xl overflow-hidden cursor-default shadow-lg is-loading"
@@ -401,14 +410,6 @@
 
               </div>
             </div>
-          </div>
-
-          <!-- 每日靈修（獨立於上面「進行中的計畫」卡片，不共用 state.activePlan 的
-               進度式版面；沒有加入任何「每日靈修」計畫就整塊隱藏——見 js/modules/
-               home.js 的 refreshDevotionHomeCard()）。刻意簡化：只顯示日期＋經文，
-               有影片才多顯示一個小提示，不出現任何進度/百分比。 -->
-          <div class="glass-card card-col span-12 bento-card devotion-home-card hidden" id="devotion-home-card">
-            <div id="devotion-home-content"></div>
           </div>
 
           <!-- 教會公告（獨立公告區塊，不與大測驗連動） -->
