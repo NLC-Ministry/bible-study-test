@@ -299,6 +299,7 @@ export function updateDashboardView() {
   renderDailyVerse();
   updateAnnouncementsList();
   void refreshExamHomeBanner();
+  void refreshDevotionHomeCard();
 
 
 
@@ -1996,6 +1997,117 @@ function renderDailyVerse(options = {}) {
     });
   }
 }
+
+// ── 首頁「每日靈修」獨立卡片 ────────────────────────────────────────────────
+// 刻意跟上面「進行中的計畫」卡片完全分開：那張卡繞著單一個 state.activePlan
+// 指標畫進度條/百分比，靈修計畫沒有「進度」這個概念，硬塞進同一張卡只會兩邊
+// 都變得四不像。
+//
+// ⚠️ 靈修計畫沒有「加入」這回事（不像一般讀經計畫要寫進 reading_plans 才會
+// 出現在 state.activePlans）——只有「這個人看不看得到」：daily_devotion 功能
+// 開了就所有人看得到，沒開就只有 admin/pastor 看得到（先建內容用）。所以這裡
+// 一定要查 state.globalPlans + isDevotionalPlanVisibleToUser()，查
+// state.activePlans 永遠會是空的，卡片永遠不會出現。
+let devotionHomeCardRequestId = 0;
+
+function findVisibleDevotionalPlan() {
+  return (state.globalPlans || []).find(gp =>
+    gp && (gp.planKind || gp.plan_kind) === "devotional"
+    && typeof window.isDevotionalPlanVisibleToUser === "function"
+    && window.isDevotionalPlanVisibleToUser(gp)
+  ) || null;
+}
+
+function formatDevotionHomeDate(iso) {
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso || "";
+  const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+  return `${d.getMonth() + 1}/${d.getDate()}（週${weekdays[d.getDay()]}）`;
+}
+
+async function refreshDevotionHomeCard() {
+  const card = document.getElementById("devotion-home-card");
+  const host = document.getElementById("devotion-home-content");
+  if (!card || !host) return;
+
+  const plan = findVisibleDevotionalPlan();
+  if (!plan) {
+    card.classList.add("hidden");
+    host.innerHTML = "";
+    return;
+  }
+  const isDevMode = typeof window.isDevotionalPlanDevMode === "function" && window.isDevotionalPlanDevMode(plan);
+
+  const requestId = ++devotionHomeCardRequestId;
+  const planId = plan.globalPlanId || plan.global_plan_id || plan.id;
+  try {
+    const res = (typeof db !== "undefined" && typeof db.getDevotionalPlan === "function")
+      ? await db.getDevotionalPlan(planId)
+      : null;
+    if (requestId !== devotionHomeCardRequestId) return; // 已經有更新的請求蓋過去了
+
+    if (!res || !res.success) {
+      card.classList.add("hidden");
+      host.innerHTML = "";
+      return;
+    }
+    const data = res.data || {};
+    const days = Array.isArray(data.days) ? data.days : [];
+    const todayRow = days.find(d => d.displayDate === data.today);
+    if (!todayRow) {
+      // 計畫還沒開始／已經結束當天沒有內容：這種狀態沒什麼好顯示的，直接藏起來。
+      card.classList.add("hidden");
+      host.innerHTML = "";
+      return;
+    }
+
+    const dateLabel = formatDevotionHomeDate(todayRow.displayDate);
+    const passageLabel = todayRow.passageLabel
+      || (Array.isArray(todayRow.passageRefs) ? todayRow.passageRefs.join("、") : "");
+    const hasVideo = !!(todayRow.videoUrl && String(todayRow.videoUrl).trim());
+
+    card.classList.remove("hidden");
+    host.innerHTML = `
+      ${isDevMode ? '<p class="devotion-home-row__dev-hint">開發中・只有你看得到</p>' : ""}
+      <div class="devotion-home-row" role="button" tabindex="0" aria-label="進入今日每日靈修">
+        <span class="nlc-icon devotion-home-row__icon" data-icon="bookOpen" aria-hidden="true"></span>
+        <div class="devotion-home-row__body">
+          <p class="devotion-home-row__title">每日靈修・${escapeHTML(dateLabel)}</p>
+          <p class="devotion-home-row__passage">${escapeHTML(passageLabel || "今日內容準備中")}</p>
+        </div>
+        ${hasVideo ? `<span class="devotion-home-row__video-hint"><span class="nlc-icon" data-icon="video" aria-hidden="true"></span>影片</span>` : ""}
+        <span class="nlc-icon devotion-home-row__chevron" data-icon="chevronRight" aria-hidden="true"></span>
+      </div>`;
+
+    const row = host.querySelector(".devotion-home-row");
+    if (row) {
+      row.onclick = () => window.openDevotionPlanFromDashboard();
+      row.onkeydown = (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          window.openDevotionPlanFromDashboard();
+        }
+      };
+    }
+    if (typeof hydrateIcons === "function") hydrateIcons(host);
+  } catch (e) {
+    if (requestId !== devotionHomeCardRequestId) return;
+    console.warn("[Home] refreshDevotionHomeCard error:", e);
+    card.classList.add("hidden");
+    host.innerHTML = "";
+  }
+}
+
+window.openDevotionPlanFromDashboard = function () {
+  const plan = findVisibleDevotionalPlan();
+  if (!plan) return;
+  // 靈修計畫沒有「加入」，走跟計畫分頁「預覽內容」按鈕同一條路
+  // （previewDevotionalPlanAsMember：直接把這份計畫設為 activePlan 並切過去）。
+  if (typeof window.resetDevotionViewerDay === "function") window.resetDevotionViewerDay();
+  if (typeof window.previewDevotionalPlanAsMember === "function") {
+    window.previewDevotionalPlanAsMember(plan.globalPlanId || plan.id);
+  }
+};
 
 window.openActivePlanFromDashboard = function (event) {
   if (typeof window.guardPlanEligibility === "function" && window.guardPlanEligibility()) return;
