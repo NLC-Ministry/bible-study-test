@@ -252,8 +252,13 @@ describe("joined plan options menu", () => {
     expect(schedule).toBeGreaterThan(details);
     expect(exit).toBeGreaterThan(schedule);
     expect(html).not.toContain('id="edit-flexible-plan-schedule-btn" style="display:none;"');
-    expect(planSource).toContain('if (flexibleScheduleMenuButton) flexibleScheduleMenuButton.style.display = ""');
-    expect(planSource).toContain('if (!plan) return;');
+    // 每日靈修／小組經營週計畫沒有「每週讀經安排」／「重設進度」的概念，這兩顆
+    // 按鈕只在點開「...」選單當下依這份計畫的種類決定要不要藏起來——不是在
+    // initPlanControls 跑一次就定案，見 refreshPlanOptionsMenuForKind()。
+    expect(planSource).toContain("function refreshPlanOptionsMenuForKind(plan)");
+    expect(planSource).toContain('scheduleBtn.style.display = isViewerOnlyPlan ? "none" : ""');
+    expect(planSource).toContain('resetBtn.style.display = isViewerOnlyPlan ? "none" : ""');
+    expect(planSource).toContain("refreshPlanOptionsMenuForKind(state.activePlan)");
   });
 
   it("shows stage awards and each monthly chapter range in plan details", () => {
