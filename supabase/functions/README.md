@@ -116,6 +116,50 @@ deduplicated by an atomic database status transition. A ready but unapproved
 variant asks for confirmation before replacement; once approved, the database
 trigger permanently blocks replacement, editing, and approval cancellation.
 
+## 每日靈修影片自動抓取 (`sync-devotion-video`)
+
+The church's YouTube channel (`@NewLifeChurch` by default) usually publishes
+that day's devotion video around 07:00 Asia/Taipei. This scheduled function
+runs shortly after, reads the channel's public Atom/RSS feed
+(`youtube.com/feeds/videos.xml` — no login, no API key, no quota; the same
+public data a browser or any RSS reader sees), and fills `video_url` /
+`video_title` on today's row in `plan_devotion_days` for whichever devotional
+plan (`plan_kind = 'devotional'`) is currently active.
+
+It only writes when that day's `video_url` is still blank — if an
+administrator already pasted a different link by hand, the sync never
+overwrites it (see `sync_devotion_day_video` in the migration below, which
+runs the update `WHERE video_url IS NULL`). It also refuses to backfill: if
+the channel's latest video isn't actually published today, the row is left
+alone rather than attaching an old video to today's date.
+
+Required Edge Function secrets:
+
+```bash
+DEVOTION_VIDEO_SYNC_CRON_SECRET=<random shared secret>
+DEVOTION_YOUTUBE_HANDLE=NewLifeChurch          # optional, this is the default
+DEVOTION_YOUTUBE_CHANNEL_ID=<UCxxxxxxxx...>    # optional; skips the @handle → channel_id lookup when set
+```
+
+Deploy without Supabase JWT verification, same reason as the quiz generator —
+pg_cron authenticates with the custom `x-cron-secret` header instead:
+
+```bash
+supabase functions deploy sync-devotion-video --no-verify-jwt
+```
+
+Migration `0155_devotion_video_sync.sql` runs it daily at 07:10 Taipei time
+(23:10 UTC) and adds the blank-only write RPC. Store the same cron secret in
+Vault once:
+
+```sql
+select vault.create_secret(
+  'REPLACE_WITH_DEVOTION_VIDEO_SYNC_CRON_SECRET',
+  'devotion_video_sync_cron_secret',
+  'x-cron-secret sent to sync-devotion-video'
+);
+```
+
 ## issue-report-sheet-sync
 
 Mirrors every new `public.issue_reports` row to an engineering-team Google
