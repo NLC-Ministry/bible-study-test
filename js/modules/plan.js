@@ -9511,8 +9511,7 @@ function renderGroupMeetingViewer(plan) {
         else if (w.isPast) cls.push("past");
         if (w.locked) cls.push("locked");
         return `<button type="button" class="${cls.join(" ")}" data-gm-week="${w.weekIndex}">
-          <span class="gm-week-chip__n">第 ${w.weekIndex} 週</span>
-          <span class="gm-week-chip__d">${escapeHTML(w.dateLabel || "")}</span>
+          <span class="gm-week-chip__n">${escapeHTML(w.dateLabel || "")}</span>
         </button>`;
       }).join("");
       return `<div class="group-meeting-view__strip scrollbar-none">${chips}</div>`;
@@ -9539,12 +9538,12 @@ function renderGroupMeetingViewer(plan) {
           ${buildStrip()}
           ${cur.monthTheme ? `<p class="group-meeting-view__theme">月主題　${escapeHTML(cur.monthTheme)}</p>` : ""}
           <div class="group-meeting-view__weeklabel">
-            <strong>第 ${cur.weekIndex} 週</strong>　<span>${escapeHTML(cur.dateLabel || "")}</span>
+            <strong>${escapeHTML(cur.dateLabel || "")}</strong>
           </div>
           ${cur.locked ? `
             <div class="group-meeting-view__locked">
               <span class="nlc-icon nlc-icon--md" data-icon="lock" aria-hidden="true"></span>
-              <p>這一週（${escapeHTML(cur.dateLabel || "")}）開放</p>
+              <p>${escapeHTML(cur.dateLabel || "")} 開放</p>
             </div>` : noteOnly ? `
             <div class="group-meeting-view__note">${escapeHTML(cur.note)}</div>` : `
             <section class="group-meeting-view__block">
@@ -9562,7 +9561,7 @@ function renderGroupMeetingViewer(plan) {
               <h4 class="group-meeting-view__h">敬拜讚美詩歌</h4>
               ${songs.length
                 ? `<ul class="group-meeting-view__songs">${songs.map(s => `<li><span class="group-meeting-view__songcode">${escapeHTML(String(s.code || ""))}</span>${escapeHTML(String(s.title || ""))}</li>`).join("")}</ul>`
-                : `<p class="group-meeting-view__muted">（本週無詩歌單）</p>`}
+                : `<p class="group-meeting-view__muted">（無詩歌單）</p>`}
             </section>
             ${cur.note ? `<div class="group-meeting-view__note">${escapeHTML(cur.note)}</div>` : ""}
           `}
