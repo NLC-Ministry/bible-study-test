@@ -7786,6 +7786,15 @@ button,
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Tailwind preflight is OFF, and there is no global button background reset.
+   A bare <button> in the issue-report React subtrees would otherwise render the
+   UA "ButtonFace" (a light grey) and hide near-white text in dark/warm themes.
+   :where() keeps specificity at 0 so any Tailwind bg-* / .primary-btn still wins. */
+:where(#issue-report-root, #admin-reports-root) button:where(:not([class*="-btn"])) {
+  background-color: transparent;
+  color: inherit;
+}
+
 button:active,
 [role="button"]:active,
 .tab-btn:active,

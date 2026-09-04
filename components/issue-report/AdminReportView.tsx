@@ -365,7 +365,7 @@ export const AdminThreadPane: React.FC<{
                                 <img src={m.attachmentUrl} alt="截圖" onClick={() => setLightbox(m.attachmentUrl)}
                                   className="max-h-52 max-w-full cursor-pointer rounded-md object-cover" />
                                 <button type="button" onClick={() => delAttachment(m.id)}
-                                  className="mt-1 inline-flex items-center gap-1 text-[11px] text-destructive">
+                                  className="mt-1 inline-flex items-center gap-1 bg-transparent text-xs text-destructive hover:underline">
                                   <Trash2 className="h-3 w-3" /> 刪除截圖
                                 </button>
                               </div>

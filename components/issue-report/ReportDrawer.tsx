@@ -266,17 +266,27 @@ export const ReportDrawer: React.FC<ReportDrawerProps> = ({
           </div>
 
           {canToggleMode && (
-            <div className="mt-3 flex gap-1 rounded-lg bg-muted p-1 text-xs font-medium">
+            <div className="mt-3 flex gap-1 rounded-lg border border-border p-1 text-sm font-medium">
               <button
                 type="button"
-                className={`flex-1 rounded-md py-1.5 transition-colors ${mode === "admin" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+                aria-pressed={mode === "admin"}
+                className={`flex-1 rounded-md py-1.5 transition-colors ${
+                  mode === "admin"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-transparent text-foreground hover:bg-accent"
+                }`}
                 onClick={() => onToggleMode?.("admin")}
               >
                 🛠 回覆模式
               </button>
               <button
                 type="button"
-                className={`flex-1 rounded-md py-1.5 transition-colors ${mode === "user" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+                aria-pressed={mode === "user"}
+                className={`flex-1 rounded-md py-1.5 transition-colors ${
+                  mode === "user"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-transparent text-foreground hover:bg-accent"
+                }`}
                 onClick={() => onToggleMode?.("user")}
               >
                 🙋 使用者模式
@@ -641,7 +651,7 @@ const ThreadView: React.FC<ThreadViewProps> = ({
             {!hintDismissed && (
               <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-foreground">
                 <span>我們會在這裡回覆你 👇 有補充直接打在下面，也可以傳截圖。</span>
-                <button type="button" onClick={dismissHint} className="ml-auto shrink-0 text-muted-foreground" aria-label="知道了">
+                <button type="button" onClick={dismissHint} className="ml-auto shrink-0 bg-transparent text-foreground/70 hover:text-foreground" aria-label="知道了">
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
