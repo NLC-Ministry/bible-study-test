@@ -888,6 +888,12 @@ const auth = {
     localStorage.removeItem("reading_logs");
     localStorage.removeItem("selected_plan_key");
     localStorage.removeItem("offline_trusted_identity");
+    // 螢光筆是本機優先合併（見 db.js loadUserData）——不清掉的話，同一台裝置
+    // 換下一個人登入時,上一位的螢光筆記錄會被當成「我自己還沒同步的修改」
+    // 留著，顯示出不是自己的紀錄，編輯到還會用新帳號把它寫回伺服器。
+    localStorage.removeItem("bible_highlights");
+    localStorage.removeItem("bible_highlight_timestamps");
+    localStorage.removeItem("bible_highlights_owner");
     try { sessionStorage.removeItem("plan_elig_hub_verified"); } catch (_) {}
 
     if (typeof state !== "undefined" && state.supabase && state.supabase.auth && typeof state.supabase.auth.signOut === "function") {

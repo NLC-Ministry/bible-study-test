@@ -1274,6 +1274,21 @@ const db = {
           state.globalPlans = globalPlansResult.data ? globalPlansResult.data.map(mapGlobalPlanRecord) : [];
         }
 
+        // 同一台裝置換過使用者（登出後換人登入、共用平板、忘記登出）時，
+        // localStorage 裡的 bible_highlights 是上一位留下來的——本機優先的合併
+        // 邏輯會把它當成「我自己剛存的、還沒同步成功」保留下來，導致畫面出現
+        // 不是自己的螢光紀錄，甚至之後編輯到那一筆時還會用目前這個帳號把它
+        // 寫回伺服器。用一個「這份本機快取屬於誰」的標記比對，對不上就整包
+        // 丟掉，只信任伺服器這份。logout() 也會清，這裡是清不乾淨時的最後防線。
+        const highlightsOwnerKey = "bible_highlights_owner";
+        let cachedHighlightsOwner = null;
+        try { cachedHighlightsOwner = localStorage.getItem(highlightsOwnerKey); } catch (_) {}
+        if (cachedHighlightsOwner && cachedHighlightsOwner !== user.id) {
+          state.highlights = {};
+          state.highlightTimestamps = {};
+        }
+        try { localStorage.setItem(highlightsOwnerKey, user.id); } catch (_) {}
+
         // 螢光筆雲端合併：伺服器資料補齊本機沒有的（換裝置/清資料的情況），
         // 但本機既有的 key 維持不變——避免一筆剛按完、還沒同步成功的螢光筆
         // 被稍慢抵達的舊伺服器回應蓋掉。

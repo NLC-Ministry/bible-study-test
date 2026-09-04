@@ -898,6 +898,24 @@ function getBadgeFrameClass(badge) {
   return "";
 }
 
+// 鐵獎拼圖：四卷小徽章（church_r1final_book_ex/lev/num/deut）各自顯示鐵獎大圖
+// （iron-badge.svg，campaignStageNo 2）的其中一角，讀完那一卷才點亮那一塊——
+// 集滿四塊視覺上就是拼出同一張完整的鐵獎圖。順序跟
+// FIRST_ROUND_FINAL_BOOK_BADGE_IDS（出/利/民/申）一致：左上/右上/左下/右下。
+// clip-path 先裁出那一角，再用 transform: scale(2) 以同一角為原點放大，
+// 讓裁出來的那一塊填滿整個徽章格子（不放大的話只會是格子角落一小塊）。
+const FIRST_ROUND_FINAL_QUADRANTS = Object.freeze({
+  church_r1final_book_ex:   { clipPath: "inset(0 50% 50% 0)",   transformOrigin: "top left" },
+  church_r1final_book_lev:  { clipPath: "inset(0 0 50% 50%)",   transformOrigin: "top right" },
+  church_r1final_book_num:  { clipPath: "inset(50% 50% 0 0)",   transformOrigin: "bottom left" },
+  church_r1final_book_deut: { clipPath: "inset(50% 0 0 50%)",   transformOrigin: "bottom right" }
+});
+
+function getFirstRoundFinalQuadrant(badgeId) {
+  return FIRST_ROUND_FINAL_QUADRANTS[badgeId] || null;
+}
+window.getFirstRoundFinalQuadrant = getFirstRoundFinalQuadrant;
+
 function renderBadgeWall(containerId) {
   const container = document.getElementById("badges-grid") || document.getElementById(containerId);
   if (!container) {
@@ -939,16 +957,28 @@ function renderBadgeWall(containerId) {
       let iconContent = "";
       let shellStyle = "height: auto; aspect-ratio: 200/240; display: flex; align-items: center; justify-content: center; position: relative;";
 
-      if (badge.campaignStageNo) {
+      if (badge.firstRoundFinalBook) {
+        // 鐵獎拼圖：四卷小徽章各顯示鐵獎大圖的其中一角，讀完那一卷才點亮。
+        const ironBadgePath = getCampaignMedalPath(2);
+        const quadrant = getFirstRoundFinalQuadrant(badge.id);
+        const imgFilterStyle = !isUnlocked
+          ? "filter: grayscale(1) saturate(0) brightness(0.75) contrast(1.05); opacity: 0.55;"
+          : "";
+        const quadrantStyle = quadrant
+          ? `clip-path: ${quadrant.clipPath}; transform: scale(2); transform-origin: ${quadrant.transformOrigin};`
+          : "";
+        iconContent = `<img width="200" height="240" class="campaign-medal-image first-round-final-quadrant" src="${ironBadgePath}" loading="lazy" decoding="async" style="${quadrantStyle} ${imgFilterStyle}" alt="${safeTitle}" />`;
+        shellStyle += " --campaign-medal-frame: none !important; overflow: hidden;";
+      } else if (badge.campaignStageNo) {
         const medalPath = getCampaignMedalPath(badge.campaignStageNo);
         const lockStateClass = isUnlocked ? "honor-badge-hex--unlocked" : "honor-badge-hex--locked";
-        
+
         const imgFilterStyle = !isUnlocked
           ? "filter: grayscale(1) saturate(0) brightness(0.75) contrast(1.05); opacity: 0.75;"
           : "";
-          
+
         iconContent = `<img width="200" height="240" class="campaign-medal-image campaign-medal-stage-${badge.campaignStageNo} ${lockStateClass}" src="${medalPath}" loading="lazy" decoding="async" style="${imgFilterStyle}" alt="${safeTitle}" />`;
-        
+
         // ── 覆蓋 CSS 變數，關閉 ::after 背景圖渲染，防止與 <img> 產生重疊重影 ──
         shellStyle += " --campaign-medal-frame: none !important;";
       } else {
@@ -1116,7 +1146,10 @@ window.openBadgeDetailPage = function(badge, isUnlocked, isDark) {
     triggerCard.classList.toggle("hidden", !triggerCopy);
   }
 
-  const campaignMedalPath = getCampaignMedalPath(badge.campaignStageNo);
+  // 鐵獎拼圖：四卷小徽章詳情頁也顯示鐵獎大圖的那一角（跟徽章牆格子一致），
+  // 不是各卷自己的通用書本圖示。
+  const firstRoundFinalQuadrant = badge.firstRoundFinalBook ? getFirstRoundFinalQuadrant(badge.id) : null;
+  const campaignMedalPath = firstRoundFinalQuadrant ? getCampaignMedalPath(2) : getCampaignMedalPath(badge.campaignStageNo);
   if (icon) {
     icon.className = "nlc-icon";
     if (campaignMedalPath) icon.classList.add("hidden");
@@ -1129,25 +1162,53 @@ window.openBadgeDetailPage = function(badge, isUnlocked, isDark) {
   if (medalImage) {
     medalImage.className = "campaign-medal-image";
     if (campaignMedalPath) {
-      medalImage.classList.add(getBadgeFrameClass(badge));
+      if (firstRoundFinalQuadrant) {
+        // #badge-detail-hero .campaign-medal-image 預設是特意放大 130% 出血的
+        // 英雄圖排版——拼圖這裡要精準裁一角再放大，用行內樣式蓋掉那個預設值。
+        medalImage.classList.add("first-round-final-quadrant");
+        medalImage.style.position = "absolute";
+        medalImage.style.inset = "0";
+        medalImage.style.width = "100%";
+        medalImage.style.height = "100%";
+        medalImage.style.maxWidth = "100%";
+        medalImage.style.clipPath = firstRoundFinalQuadrant.clipPath;
+        medalImage.style.transform = "scale(2)";
+        medalImage.style.transformOrigin = firstRoundFinalQuadrant.transformOrigin;
+      } else {
+        medalImage.classList.add(getBadgeFrameClass(badge));
+        medalImage.style.position = "";
+        medalImage.style.inset = "";
+        medalImage.style.width = "";
+        medalImage.style.height = "";
+        medalImage.style.maxWidth = "";
+        medalImage.style.clipPath = "";
+        medalImage.style.transform = "";
+        medalImage.style.transformOrigin = "";
+      }
       medalImage.src = campaignMedalPath;
       medalImage.alt = badge.title || "";
       medalImage.fetchPriority = "high";
       medalImage.style.filter = isUnlocked
         ? ""
         : "grayscale(1) saturate(0) brightness(0.75) contrast(1.05)";
-      medalImage.style.opacity = isUnlocked ? "" : "0.75";
+      medalImage.style.opacity = isUnlocked ? "" : (firstRoundFinalQuadrant ? "0.55" : "0.75");
     } else {
       medalImage.classList.add("hidden");
       medalImage.removeAttribute("src");
       medalImage.alt = "";
       medalImage.style.filter = "";
       medalImage.style.opacity = "";
+      medalImage.style.clipPath = "";
+      medalImage.style.transform = "";
+      medalImage.style.transformOrigin = "";
     }
   }
 
   // Apply Shield styles based on unlock state (theme via CSS)
   if (shield) {
+    // 拼圖那一角是裁切+放大出來的，需要外框把超出的部分蓋住，不然會看到不該
+    // 露出的其他角落。一般徽章不裁切，維持原本可以出血的樣子。
+    shield.style.overflow = firstRoundFinalQuadrant ? "hidden" : "";
     shield.classList.remove("badge-shield--unlocked", "badge-shield--locked", "holographic-shine");
     shield.classList.add(isUnlocked ? "badge-shield--unlocked" : "badge-shield--locked");
     if (isUnlocked) {
