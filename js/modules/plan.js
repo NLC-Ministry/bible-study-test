@@ -9351,6 +9351,8 @@ function renderDevotionViewer(plan) {
       const refs = Array.isArray(cur.passageRefs) ? cur.passageRefs : [];
       const firstRef = refs[0] || (typeof parsePassageLabel === "function" ? parsePassageLabel(cur.passageLabel) : null);
       const passageRead = lsGet(readKey(cur.dayIndex));
+      const devotionVideoId = cur.videoUrl ? extractYoutubeVideoId(cur.videoUrl) : null;
+      const devotionVideoThumbUrl = devotionVideoId ? `https://img.youtube.com/vi/${devotionVideoId}/hqdefault.jpg` : "";
 
       const taskRow = ({ checked, title, opens, arrow, dataAttr }) => `
         <div class="plan-task-item" ${dataAttr || ""}>
