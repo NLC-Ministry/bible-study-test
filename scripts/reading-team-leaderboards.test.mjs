@@ -66,7 +66,7 @@ describe("reading team leaderboards", () => {
     expect(plan).toContain("以目前最高平均每人閱讀章數為 100%");
     expect(plan).toContain('class="pastoral-race-average-notice" role="note"');
     expect(plan).toContain("提醒：此排行榜顯示平均數");
-    expect(plan).toContain("尚未閱讀的有效成員也會計入人數");
+    expect(plan).toContain("不論是否報名此計畫、是否已開始閱讀都計入分母");
     expect(css).toContain(".pastoral-race-average-notice");
     expect(plan).toContain("共 ${pastoralStats.length} 個牧區");
     expect(plan).toContain("const pct = Math.min(100");
@@ -87,7 +87,7 @@ describe("reading team leaderboards", () => {
     expect(plan).toContain('class="pastoral-race-progress" role="progressbar"');
     expect(plan).toContain('aria-valuenow="${pct}"');
     expect(plan).toContain("章／人");
-    expect(plan).toContain("總計 ${item.total_chapters} 章 · ${item.members} 人");
+    expect(plan).toContain("總計 ${item.total_chapters} 章 · 全牧區 ${item.members} 人");
     expect(plan).not.toContain('data-pastoral-race-replay');
     expect(plan).toContain('const ownershipClass = item.is_mine ? " pastoral-race-row--mine" : ""');
     expect(plan).toContain("我的牧區");

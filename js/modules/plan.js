@@ -6630,10 +6630,10 @@ async function renderMyPersonalRankings() {
   const zoneTotal = Number(context.zoneTotal || 0);
 
   if (elRankAll) elRankAll.textContent = churchRank > 0 ? `第 ${churchRank} 名` : "尚未加入";
-  if (elRankAllTotal) elRankAllTotal.textContent = `共 ${churchTotal} 人`;
+  if (elRankAllTotal) elRankAllTotal.textContent = `共 ${churchTotal} 人報名`;
   if (elRankZoneTitle) elRankZoneTitle.textContent = zoneName ? `${zoneName} 個人排行` : "牧區個人排行";
   if (elRankZone) elRankZone.textContent = !zoneName ? "未選牧區" : (zoneRank > 0 ? `第 ${zoneRank} 名` : "尚未加入");
-  if (elRankZoneTotal) elRankZoneTotal.textContent = zoneName ? `共 ${zoneTotal} 人` : "請設定所屬牧區";
+  if (elRankZoneTotal) elRankZoneTotal.textContent = zoneName ? `共 ${zoneTotal} 人報名` : "請設定所屬牧區";
 }
 
 function updateReadingTeamRankingSummary(division, text) {
@@ -6971,7 +6971,7 @@ async function renderPlanRankingView() {
       </div>
       <div class="pastoral-race-average-notice" role="note" aria-label="平均數計算說明">
         <strong>提醒：此排行榜顯示平均數</strong>
-        <span>平均每人閱讀章數＝牧區總閱讀章數 ÷ 牧區有效人數；尚未閱讀的有效成員也會計入人數。</span>
+        <span>平均每人閱讀章數＝牧區總閱讀章數 ÷ 全牧區在籍有效人數；不論是否報名此計畫、是否已開始閱讀都計入分母，所以這裡的人數通常比上方「我的讀經排名」的報名人數多。</span>
       </div>
       <div class="pastoral-race-track">
         ${pastoralStats.length === 0 ? '<div class="pastoral-race-empty">目前沒有已設定牧區的排行資料</div>' : ""}
@@ -7001,7 +7001,7 @@ async function renderPlanRankingView() {
             <div class="pastoral-race-identity">
               <span class="pastoral-race-name">${escapeHTML(item.name)}</span>
               ${item.is_mine ? '<span class="pastoral-race-mine-badge">我的牧區</span>' : ""}
-              <span class="pastoral-race-members">總計 ${item.total_chapters} 章 · ${item.members} 人</span>
+              <span class="pastoral-race-members">總計 ${item.total_chapters} 章 · 全牧區 ${item.members} 人</span>
             </div>
             <div class="pastoral-race-score"><strong>${formatAverageChapters(item.average_chapters)}</strong><span>章／人</span></div>
           </div>
