@@ -15,17 +15,28 @@ const iconManifest = JSON.parse(readFileSync("js/design/icon-manifest.json", "ut
 // isDevotionalPlanVisibleToUser()，查 state.activePlans 永遠是空的、卡片永遠
 // 不會出現——這是實際發生過的 bug，見 js/modules/home.js findVisibleDevotionalPlan()。
 describe("home dashboard: independent daily-devotion card", () => {
-  it("index.html declares the card below the reading-plan card, hidden by default", () => {
+  it("index.html declares the card below the reading-plan card and above the daily-verse card, hidden by default", () => {
     const planCardIdx = html.indexOf('id="active-plan-summary"');
     const devoCardIdx = html.indexOf('id="devotion-home-card"');
+    const verseCardIdx = html.indexOf('id="verse-card"');
     const announcementsIdx = html.indexOf('announcements-card');
     expect(planCardIdx).toBeGreaterThan(-1);
     expect(devoCardIdx).toBeGreaterThan(planCardIdx);
-    expect(announcementsIdx).toBeGreaterThan(devoCardIdx);
+    // 使用者明確要求：不要跟每日金句卡並排在同一列搶版面，要出現在它上面。
+    expect(verseCardIdx).toBeGreaterThan(devoCardIdx);
+    expect(announcementsIdx).toBeGreaterThan(verseCardIdx);
     const cardTagStart = html.lastIndexOf("<div", devoCardIdx);
     const cardTag = html.slice(cardTagStart, html.indexOf(">", devoCardIdx) + 1);
     expect(cardTag).toContain("hidden");
     expect(html).toContain('id="devotion-home-content"');
+  });
+
+  it("the '進行中的計畫' widget never renders a devotional/group_meeting plan, even if state.activePlan briefly points at one (e.g. after previewing it)", () => {
+    const idx = home.indexOf('const planSummaryDiv = document.getElementById("active-plan-summary");');
+    expect(idx).toBeGreaterThan(-1);
+    const body = home.slice(idx, idx + 700);
+    expect(body).toContain('activePlanKind !== "devotional" && activePlanKind !== "group_meeting"');
+    expect(body).toContain("if (hasRegularActivePlan) {");
   });
 
   it("looks up a devotional plan by visibility (state.globalPlans), not by join state (state.activePlans)", () => {
@@ -133,14 +144,55 @@ describe("devotional/group_meeting plans live in 我的計畫, not 探索計畫"
     expect(body).toContain("plansToRender.length === 0 && viewerOnlyPlans.length === 0");
   });
 
-  it("buildViewerOnlyPlanCard has no progress bar / join actions, just a preview button that reuses the same preview helpers", () => {
+  it("buildViewerOnlyPlanCard has no progress bar / join actions / preview button — tapping anywhere on the card opens it directly", () => {
     const idx = plan.indexOf("function buildViewerOnlyPlanCard(plan)");
     expect(idx).toBeGreaterThan(-1);
     const body = plan.slice(idx, plan.indexOf("\nfunction renderJoinedPlansList", idx));
     expect(body).not.toContain("progress-bar");
     expect(body).not.toContain("solo-join");
+    // 一顆「預覽內容」按鈕跟整張卡片可點擊是重複的功能，使用者明確說多餘——
+    // 拿掉按鈕，只留 card.onclick。
+    expect(body).not.toContain("viewer-open");
+    expect(body).not.toContain("renderPlanCardActions");
+    expect(body).toContain("card.onclick = () => {");
     expect(body).toContain("window.previewDevotionalPlanAsMember(plan.globalPlanId || plan.id)");
     expect(body).toContain("window.previewGroupMeetingPlanAsMember(plan.globalPlanId || plan.id)");
     expect(body).toContain("開發中・只有你看得到");
+  });
+});
+
+// 計畫分頁側欄「每日陪你靈修」歡迎卡（index.html 裡的靜態文案：「歡迎加入教會
+// 季度速讀挑戰！點擊頂部 探索計畫...」）：原本「我的計畫」／「探索計畫」分頁
+// 一律顯示，但這句話是給完全沒有任何計畫的人看的——只要已經有任何一種計畫
+// （一般讀經、每日靈修、小組聚會都算），繼續顯示就顯得多餘/矛盾。
+describe("計畫分頁側欄「每日陪你靈修」歡迎卡：只在完全沒有任何計畫時才顯示", () => {
+  it("index.html still has the static welcome copy inside #plan-sidebar-info-card", () => {
+    const idx = html.indexOf('id="plan-sidebar-info-card"');
+    expect(idx).toBeGreaterThan(-1);
+    const body = html.slice(idx, idx + 700);
+    expect(body).toContain("每日陪你靈修");
+    expect(body).toContain("探索計畫");
+  });
+
+  it("userHasNoPlanAtAll checks state.activePlans plus visible devotional/group_meeting plans in state.globalPlans", () => {
+    const idx = plan.indexOf("function userHasNoPlanAtAll()");
+    expect(idx).toBeGreaterThan(-1);
+    const body = plan.slice(idx, plan.indexOf("\nfunction updatePlanSidebarIntroCardVisibility", idx));
+    expect(body).toContain("(state.activePlans || []).length > 0");
+    expect(body).toContain('(gp.planKind || gp.plan_kind) === "devotional" && isDevotionalPlanVisibleToUser(gp)');
+    expect(body).toContain('(gp.planKind || gp.plan_kind) === "group_meeting"');
+  });
+
+  it("updatePlanSidebarIntroCardVisibility keeps the 已結束 tab always hidden, and is called from both renderJoinedPlansList and renderPresetPlansList", () => {
+    const idx = plan.indexOf("function updatePlanSidebarIntroCardVisibility()");
+    expect(idx).toBeGreaterThan(-1);
+    const body = plan.slice(idx, idx + 600);
+    expect(body).toContain('if (filter === "completed")');
+    expect(body).toContain('sidebarCard.classList.toggle("hidden", !userHasNoPlanAtAll())');
+
+    const joinedIdx = plan.indexOf("function renderJoinedPlansList()");
+    expect(plan.slice(joinedIdx, joinedIdx + 700)).toContain("updatePlanSidebarIntroCardVisibility();");
+    const presetIdx = plan.indexOf("function renderPresetPlansList()");
+    expect(plan.slice(presetIdx, presetIdx + 400)).toContain("updatePlanSidebarIntroCardVisibility();");
   });
 });
