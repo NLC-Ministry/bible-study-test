@@ -5827,11 +5827,12 @@ async function renderPlanStatsView() {
     }
 
     // 5. Cumulative chapters read (累積閱讀章數) — 所有遍次累計，不重置。
-    // 嚴格以「這個計畫」為範圍：比對 plan_id / global_plan_id / presetKey / preset_key，
-    // 四個都沒有的舊日誌才當「無歸屬」退路計入（與 calculateAllPlansProgress 同一套規則）。
-    // 不能再用「沒有 plan_id 就算這個計畫」的寬鬆退路——那會把別的計畫（例如 8 月
-    // 正辦階段，帶 global_plan_id 但沒有 camelCase 的 plan_id）的打卡混進來，
-    // 導致總章數超過本計畫實際卷數（出埃及記只有 40 章卻顯示 45）。
+    // 嚴格以「這個計畫」為範圍：一筆打卡的 plan_id / global_plan_id / presetKey /
+    // preset_key 至少一個對得上本計畫才算。
+    // 不再收「四個識別碼都沒有」的無歸屬打卡——那會把使用者在沉浸式閱讀器裡、
+    // 沒有作用中計畫時讀的章節（plan_id = NULL）灌進來，導致總章數超過本計畫
+    // 實際卷數（出埃及記只有 40 章卻顯示 45）。logChapterRead 每次都會寫 plan_id，
+    // 屬於本計畫的打卡不會沒有識別碼。
     const reportStatTotalChapters = document.getElementById("report-stat-total-chapters");
     if (reportStatTotalChapters) {
       const planIds = [state.activePlan.id, state.activePlan.globalPlanId, state.activePlan.global_plan_id]
@@ -5845,8 +5846,7 @@ async function renderPlanStatsView() {
           const logKey = l.presetKey || l.preset_key;
           const logMatchesPlan =
             (logPlanId && planIds.includes(String(logPlanId))) ||
-            (logKey && planKeys.includes(String(logKey))) ||
-            (!l.plan_id && !l.global_plan_id && !l.presetKey && !l.preset_key);
+            (logKey && planKeys.includes(String(logKey)));
           if (logMatchesPlan) {
             // 每一遍各章節分開計算，累積跨遍次總章數
             const r = l.round || 1;
