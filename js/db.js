@@ -5465,6 +5465,50 @@ const db = {
     });
   },
 
+  // ── 每日靈修／小組聚會週計畫「功能設定」（migration 0156）──────────────────
+  // 總開關（admin 專屬）+ 每人一份的個人偏好。get_/set_my_* 一律只碰呼叫者
+  // 自己那筆，沒有「目標使用者」這個概念。
+  async _callDevotionGroupFeatureRpc(functionName, args = {}) {
+    if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) {
+      return { success: false, message: "這個功能需要登入正式帳號。" };
+    }
+    try {
+      const { data, error } = await state.supabase.rpc(functionName, args);
+      if (error) {
+        console.warn(`[DevotionGroupFeature] ${functionName} failed: ${JSON.stringify({ message: error.message, code: error.code })}`);
+        const map = {
+          devotion_group_features_master_disabled: "這個功能目前還沒開放，請先請系統管理員開啟「功能設定」總開關。",
+          devotion_group_master_admin_required: "只有系統管理員可以切換這個總開關。",
+          invalid_feature_key: "資料格式不正確，未寫入。",
+          forbidden_rpc: "沒有權限，或後端尚未更新（nlc-data 可能需要重新部署）。"
+        };
+        const message = map[error.message] || "操作失敗，請稍後再試。";
+        return { success: false, error, message };
+      }
+      return { success: true, data };
+    } catch (error) {
+      console.warn(`[DevotionGroupFeature] ${functionName} failed: ${String(error)}`);
+      return { success: false, error, message: "操作失敗，請稍後再試。" };
+    }
+  },
+  async getMyDevotionGroupPreferences() {
+    return this._callDevotionGroupFeatureRpc("get_my_devotion_group_preferences", {});
+  },
+  async setMyDevotionGroupPreference(featureKey, enabled) {
+    return this._callDevotionGroupFeatureRpc("set_my_devotion_group_preference", {
+      p_feature_key: featureKey,
+      p_enabled: enabled === true
+    });
+  },
+  async setDevotionGroupFeaturesMaster(enabled) {
+    if (!state.currentUser || getUserRoleCode(state.currentUser) !== "admin") {
+      return { success: false, message: "只有系統管理員可以切換這個總開關。" };
+    }
+    return this._callDevotionGroupFeatureRpc("set_devotion_group_features_master", {
+      p_enabled: enabled === true
+    });
+  },
+
   // 回報對話串（migration 0153）：未讀數字，餵鈴鐺 / 通知中心。
   async fetchIssueThreadUnread() {
     if (!state.isSupabaseMode || !state.supabase || (state.currentUser && state.currentUser.is_demo)) {
@@ -5480,7 +5524,7 @@ const db = {
   },
 
   async getFeatureSetting(key, fallback = false) {
-    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz", "speed_reading_exam", "daily_devotion", "group_meeting_plan"]);
+    const allowedKeys = new Set(["pastoral_sharing_wall", "daily_quiz", "speed_reading_exam", "daily_devotion", "group_meeting_plan", "devotion_group_features_master"]);
     if (!allowedKeys.has(key)) {
       return { enabled: Boolean(fallback), error: new Error("unknown_feature_setting") };
     }

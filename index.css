@@ -12221,6 +12221,16 @@ body.dark-theme #admin-reports-root .admin-report-view textarea {
   line-height: 1.4;
 }
 
+/* 「功能設定」總開關下面的常駐說明文字（管理分頁跟個人分頁的功能設定子頁面
+   都會用到），跟 admin-feature-setting-feedback 同一套字級/顏色，但不是狀態
+   回饋，平常就顯示。 */
+.feature-settings-hint {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  margin: 0.4rem 0 0;
+}
+
 .feature-switch {
   position: relative;
   width: 48px;

@@ -1677,6 +1677,15 @@ function renderJoinedPlansList() {
     plansToRender = plansToRender.filter(matchesPlanSearch);
     plansToRender = sortJoinedPlansChronologically(plansToRender);
 
+    // 每日靈修／小組聚會週計畫「功能設定」（總開關＋個人偏好）還沒讀到 → 先讀，
+    // 讀到之後如果有變化（例如剛好在總開關開著、自己也開了）再重畫一次讓計畫
+    // 現身；isDevotionalPlanVisibleToUser/isGroupMeetingPlanVisibleToUser 讀的
+    // 是快取的 window.* 全域變數，第一次進來時可能還沒抓到，不能只算一次。
+    if (typeof window.devotionGroupFeaturesMasterEnabled !== "boolean"
+      && typeof ensureDevotionGroupPreferencesLoaded === "function") {
+      ensureDevotionGroupPreferencesLoaded().then(() => renderJoinedPlansList()).catch(() => {});
+    }
+
     // 每日靈修／小組聚會週計畫沒有「加入」這回事，改成直接從 state.globalPlans
     // 撈出「這個人看得到」的那幾份，跟已加入的一般計畫一起放在「我的計畫」──但
     // 只在「進行中」分頁顯示，這種計畫沒有「已結束/已完成」的概念可以歸類。
@@ -2386,15 +2395,6 @@ function renderPresetPlansList() {
   if (!container) return;
   container.innerHTML = "";
   updatePlanSidebarIntroCardVisibility();
-
-  // 每日靈修功能旗標還沒讀到 → 先讀，讀到「開啟」再重畫一次讓靈修計畫現身。
-  if (typeof window.dailyDevotionFeatureEnabled !== "boolean" && typeof isDailyDevotionFeatureEnabled === "function") {
-    isDailyDevotionFeatureEnabled().then(v => { if (v === true) renderPresetPlansList(); }).catch(() => {});
-  }
-  // 小組聚會週計畫功能旗標同理。
-  if (typeof window.groupMeetingPlanFeatureEnabled !== "boolean" && typeof isGroupMeetingFeatureEnabled === "function") {
-    isGroupMeetingFeatureEnabled().then(v => { if (v === true) renderPresetPlansList(); }).catch(() => {});
-  }
 
   const legacyCategoryIdPrefix = "00000000-0000-0000-a000-";
   // 第一輪期末賽（第 2 階段）已拆成 4 個「月度期末賽」（c126 命名空間）。DB 裡
@@ -3230,32 +3230,60 @@ async function isDailyQuizFeatureEnabled() {
   return dailyQuizFeatureRequest;
 }
 
-let dailyDevotionFeatureRequest = null;
-async function isDailyDevotionFeatureEnabled() {
-  if (typeof window.dailyDevotionFeatureEnabled === "boolean") return window.dailyDevotionFeatureEnabled;
-  if (!dailyDevotionFeatureRequest) {
-    dailyDevotionFeatureRequest = db.getFeatureSetting("daily_devotion", false).then(result => {
-      window.dailyDevotionFeatureEnabled = !result.error && result.enabled === true;
-      return window.dailyDevotionFeatureEnabled;
-    }).catch(() => false).finally(() => { dailyDevotionFeatureRequest = null; });
+// 每日靈修／小組聚會週計畫「功能設定」（migration 0156）：總開關（admin 專屬）
+// + 每人一份的個人偏好。get_my_devotion_group_preferences 一次回三個值，這裡
+// 快取到同一組全域變數，devotion/group-meeting 兩邊共用一支 request，不用各自
+// 打一次 API。window.dailyDevotionFeatureEnabled / groupMeetingPlanFeatureEnabled
+// 這兩個變數名稱是舊的（原本代表「全教會共用一個開關」），現在意思改成
+// 「目前登入者自己的偏好」——沿用名稱是為了不用逐一改所有既有讀取點。
+let devotionGroupPreferencesRequest = null;
+async function ensureDevotionGroupPreferencesLoaded() {
+  if (typeof window.devotionGroupFeaturesMasterEnabled === "boolean") {
+    return {
+      masterEnabled: window.devotionGroupFeaturesMasterEnabled,
+      dailyDevotion: window.dailyDevotionFeatureEnabled === true,
+      groupMeetingPlan: window.groupMeetingPlanFeatureEnabled === true
+    };
   }
-  return dailyDevotionFeatureRequest;
+  if (!devotionGroupPreferencesRequest) {
+    devotionGroupPreferencesRequest = db.getMyDevotionGroupPreferences().then(res => {
+      const data = (res && res.success && res.data) || {};
+      window.devotionGroupFeaturesMasterEnabled = data.masterEnabled === true;
+      window.dailyDevotionFeatureEnabled = data.dailyDevotion === true;
+      window.groupMeetingPlanFeatureEnabled = data.groupMeetingPlan === true;
+      return {
+        masterEnabled: window.devotionGroupFeaturesMasterEnabled,
+        dailyDevotion: window.dailyDevotionFeatureEnabled,
+        groupMeetingPlan: window.groupMeetingPlanFeatureEnabled
+      };
+    }).catch(() => ({ masterEnabled: false, dailyDevotion: false, groupMeetingPlan: false }))
+      .finally(() => { devotionGroupPreferencesRequest = null; });
+  }
+  return devotionGroupPreferencesRequest;
+}
+window.ensureDevotionGroupPreferencesLoaded = ensureDevotionGroupPreferencesLoaded;
+
+async function isDailyDevotionFeatureEnabled() {
+  const prefs = await ensureDevotionGroupPreferencesLoaded();
+  return prefs.dailyDevotion === true;
 }
 window.isDailyDevotionFeatureEnabled = isDailyDevotionFeatureEnabled;
-// 每日靈修計畫是否出現在「探索計畫」清單：
-//  · daily_devotion 功能開 → 所有人看得到
-//  · 功能關 → 只有 admin / pastor 看得到（卡片會標「開發中・會友看不到」），一般會友完全看不到
+// 每日靈修計畫對「這個人」看不看得到：
+//  · 管理員 / 牧者：一律看得到（先建內容用）。
+//  · 一般會友：要「總開關開著」而且「自己在個人分頁功能設定裡開啟」才看得到，
+//    是每個人各自的偏好，不是全教會共用一個值。
 function isDevotionalPlanVisibleToUser(plan) {
   if (!plan || (plan.planKind || plan.plan_kind) !== "devotional") return true; // 非靈修計畫不受此限
-  if (window.dailyDevotionFeatureEnabled === true) return true;
   const role = typeof getUserRoleCode === "function" ? getUserRoleCode(state.currentUser) : null;
-  return role === "admin" || role === "pastor";
+  if (role === "admin" || role === "pastor") return true;
+  if (window.devotionGroupFeaturesMasterEnabled !== true) return false;
+  return window.dailyDevotionFeatureEnabled === true;
 }
 window.isDevotionalPlanVisibleToUser = isDevotionalPlanVisibleToUser;
-// 目前這份靈修計畫是「開發中、只有管理員看得到」的狀態嗎？
+// 總開關還沒開＝功能整個還沒對會友開放（只有管理員/牧者看得到，可以先建內容）。
 function isDevotionalPlanDevMode(plan) {
   return (plan && (plan.planKind || plan.plan_kind) === "devotional")
-    && window.dailyDevotionFeatureEnabled !== true;
+    && window.devotionGroupFeaturesMasterEnabled !== true;
 }
 window.isDevotionalPlanDevMode = isDevotionalPlanDevMode;
 
@@ -3278,28 +3306,24 @@ function previewDevotionalPlanAsMember(globalPlanId) {
 window.previewDevotionalPlanAsMember = previewDevotionalPlanAsMember;
 
 // ── 小組聚會週計畫（plan_kind='group_meeting'，migration 0148）──────────────
-let groupMeetingPlanFeatureRequest = null;
+// 跟每日靈修共用同一支「功能設定」總開關 + 個人偏好（見上面
+// ensureDevotionGroupPreferencesLoaded，migration 0156）。
 async function isGroupMeetingFeatureEnabled() {
-  if (typeof window.groupMeetingPlanFeatureEnabled === "boolean") return window.groupMeetingPlanFeatureEnabled;
-  if (!groupMeetingPlanFeatureRequest) {
-    groupMeetingPlanFeatureRequest = db.getFeatureSetting("group_meeting_plan", false).then(result => {
-      window.groupMeetingPlanFeatureEnabled = !result.error && result.enabled === true;
-      return window.groupMeetingPlanFeatureEnabled;
-    }).catch(() => false).finally(() => { groupMeetingPlanFeatureRequest = null; });
-  }
-  return groupMeetingPlanFeatureRequest;
+  const prefs = await ensureDevotionGroupPreferencesLoaded();
+  return prefs.groupMeetingPlan === true;
 }
 window.isGroupMeetingFeatureEnabled = isGroupMeetingFeatureEnabled;
 function isGroupMeetingPlanVisibleToUser(plan) {
   if (!plan || (plan.planKind || plan.plan_kind) !== "group_meeting") return true;
-  if (window.groupMeetingPlanFeatureEnabled === true) return true;
   const role = typeof getUserRoleCode === "function" ? getUserRoleCode(state.currentUser) : null;
-  return role === "admin" || role === "pastor";
+  if (role === "admin" || role === "pastor") return true;
+  if (window.devotionGroupFeaturesMasterEnabled !== true) return false;
+  return window.groupMeetingPlanFeatureEnabled === true;
 }
 window.isGroupMeetingPlanVisibleToUser = isGroupMeetingPlanVisibleToUser;
 function isGroupMeetingPlanDevMode(plan) {
   return (plan && (plan.planKind || plan.plan_kind) === "group_meeting")
-    && window.groupMeetingPlanFeatureEnabled !== true;
+    && window.devotionGroupFeaturesMasterEnabled !== true;
 }
 window.isGroupMeetingPlanDevMode = isGroupMeetingPlanDevMode;
 function previewGroupMeetingPlanAsMember(globalPlanId) {

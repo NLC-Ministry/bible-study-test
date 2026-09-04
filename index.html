@@ -1666,6 +1666,24 @@
                         <span class="nlc-icon nlc-icon--sm" data-icon="chevronRight" aria-hidden="true"></span>
                       </span>
                     </button>
+                    <!-- 每日靈修／小組聚會週計畫，每個會友自己的偏好開關。只有「管理」
+                         分頁的「功能設定」總開關開著時才會出現（見 js/modules/profile.js
+                         updateFeatureSettingsRowVisibility()）——不是管理員專屬，所有
+                         會友都看得到。 -->
+                    <button type="button" class="app-settings-item w-full text-left hidden" id="profile-feature-settings-row" data-profile-open="feature-settings">
+                      <div class="app-settings-item__leading">
+                        <span class="app-settings-icon-wrap app-settings-icon-wrap--neutral">
+                          <span class="nlc-icon nlc-icon--sm" data-icon="setting" aria-hidden="true"></span>
+                        </span>
+                        <div class="app-settings-item__meta">
+                          <span class="app-settings-item__title">功能設定</span>
+                          <span class="app-settings-item__subtitle">每日靈修、小組經營自由選擇要不要啟用</span>
+                        </div>
+                      </div>
+                      <span class="app-settings-item__chevron">
+                        <span class="nlc-icon nlc-icon--sm" data-icon="chevronRight" aria-hidden="true"></span>
+                      </span>
+                    </button>
                   </div>
                 </div>
 
@@ -1973,28 +1991,22 @@
                 </button>
               </div>
               <p class="admin-feature-setting-feedback hidden" id="admin-exam-feature-feedback" role="status"></p>
+              <!-- 每日靈修／小組聚會週計畫的實際開關搬到「個人」分頁的「功能設定」
+                   子頁面，每個會友各自一份偏好；這裡只留一顆總開關，關閉時強制清空
+                   所有會友的個人偏好。見 js/modules/admin.js renderAdminFeatureSettings()、
+                   js/modules/profile.js renderFeatureSettingsSubpage()。 -->
               <div class="admin-feature-setting-row">
                 <div class="admin-feature-setting-row__label">
-                  <strong>每日靈修</strong>
-                  <span id="admin-daily-devotion-feature-status">讀取設定中…</span>
+                  <strong>功能設定</strong>
+                  <span id="admin-devotion-master-status">讀取設定中…</span>
                 </div>
-                <button type="button" class="feature-switch" id="admin-daily-devotion-feature-toggle"
-                  role="switch" aria-checked="false" aria-label="開放每日靈修" disabled>
+                <button type="button" class="feature-switch" id="admin-devotion-master-toggle"
+                  role="switch" aria-checked="false" aria-label="開啟每日靈修與小組經營功能設定" disabled>
                   <span class="feature-switch__thumb" aria-hidden="true"></span>
                 </button>
               </div>
-              <p class="admin-feature-setting-feedback hidden" id="admin-daily-devotion-feature-feedback" role="status"></p>
-              <div class="admin-feature-setting-row">
-                <div class="admin-feature-setting-row__label">
-                  <strong>小組聚會週計畫</strong>
-                  <span id="admin-group-meeting-feature-status">讀取設定中…</span>
-                </div>
-                <button type="button" class="feature-switch" id="admin-group-meeting-feature-toggle"
-                  role="switch" aria-checked="false" aria-label="開放小組聚會週計畫" disabled>
-                  <span class="feature-switch__thumb" aria-hidden="true"></span>
-                </button>
-              </div>
-              <p class="admin-feature-setting-feedback hidden" id="admin-group-meeting-feature-feedback" role="status"></p>
+              <p class="admin-feature-setting-feedback hidden" id="admin-devotion-master-feedback" role="status"></p>
+              <p class="feature-settings-hint">開啟後，「個人」分頁會多出「功能設定」，會友可以自己選擇是否啟用每日靈修、小組經營；關閉時會一併清空所有會友已經自己開啟的個人偏好，「個人」分頁也不會再顯示這一排。</p>
             </div>
           </div>
           </div>
@@ -2543,6 +2555,44 @@
       </div>
     </div>
 
+    </div>
+  </div>
+
+  <div id="profile-tab-content-feature-settings" class="profile-subpage hidden" aria-hidden="true">
+    <header class="profile-subpage__header">
+      <button type="button" class="profile-subpage__back" data-profile-close aria-label="返回">
+        <span class="nlc-icon nlc-icon--md nav-back-chevron" data-icon="chevronLeft" aria-hidden="true"></span>
+        <span>返回</span>
+      </button>
+      <span class="profile-subpage__title">功能設定</span>
+      <span class="profile-subpage__header-spacer"></span>
+    </header>
+    <div class="profile-subpage__body">
+      <p class="feature-settings-hint">這裡的開關只影響你自己，不會影響其他會友。</p>
+      <div class="app-settings-group">
+        <div class="admin-feature-setting-row">
+          <div class="admin-feature-setting-row__label">
+            <strong>每日靈修</strong>
+            <span id="profile-daily-devotion-feature-status">讀取設定中…</span>
+          </div>
+          <button type="button" class="feature-switch" id="profile-daily-devotion-feature-toggle"
+            role="switch" aria-checked="false" aria-label="開放每日靈修" disabled>
+            <span class="feature-switch__thumb" aria-hidden="true"></span>
+          </button>
+        </div>
+        <p class="admin-feature-setting-feedback hidden" id="profile-daily-devotion-feature-feedback" role="status"></p>
+        <div class="admin-feature-setting-row">
+          <div class="admin-feature-setting-row__label">
+            <strong>小組聚會週計畫</strong>
+            <span id="profile-group-meeting-feature-status">讀取設定中…</span>
+          </div>
+          <button type="button" class="feature-switch" id="profile-group-meeting-feature-toggle"
+            role="switch" aria-checked="false" aria-label="開放小組聚會週計畫" disabled>
+            <span class="feature-switch__thumb" aria-hidden="true"></span>
+          </button>
+        </div>
+        <p class="admin-feature-setting-feedback hidden" id="profile-group-meeting-feature-feedback" role="status"></p>
+      </div>
     </div>
   </div>
 
