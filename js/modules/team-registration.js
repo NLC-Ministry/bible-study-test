@@ -699,6 +699,96 @@ import {
     }));
   }
 
+  // 隊長手動把這支隊伍帶進下一階段——取代舊版「一次性自動彈窗」（容易被誤關、
+  // 關掉後整個 session 都不會再問，也沒有任何地方能重試）。這裡改成一個常駐在
+  // 團隊卡片上的按鈕：只有偵測到「下一階段已開放、且這個組別確實可以帶隊」時
+  // 才會出現，隊長隨時可以自己按，失敗了也能立刻再按一次。
+  async function renderCaptainCarryoverAction(container, plan, team) {
+    const actionsRow = container.querySelector(".reading-team-inline-actions");
+    if (!actionsRow
+      || !state.isSupabaseMode
+      || !state.supabase
+      || (state.currentUser && state.currentUser.is_demo)
+      || typeof db.getReadingTeamCarryoverOffer !== "function"
+      || typeof db.carryReadingTeamsToStage !== "function"
+      || typeof isCampaignStageKind !== "function") {
+      return;
+    }
+
+    const currentStageNo = Number(plan && (plan.stageNo || (plan.campaignDefinition && plan.campaignDefinition.stageNo)) || 0);
+    if (!currentStageNo) return;
+
+    const nextStagePlan = (state.globalPlans || []).find(candidate =>
+      candidate
+      && isCampaignStageKind(candidate)
+      && !(typeof isPlanHidden === "function" && isPlanHidden(candidate))
+      && Number(candidate.stageNo || (candidate.campaignDefinition && candidate.campaignDefinition.stageNo) || 0) === currentStageNo + 1
+    );
+    if (!nextStagePlan) return;
+
+    const offerResult = await db.getReadingTeamCarryoverOffer(nextStagePlan);
+    if (!offerResult.success) return;
+    const offer = offerResult.context || {};
+    const offerTeams = Array.isArray(offer.teams) ? offer.teams : [];
+    if (!offer.eligible || !offerTeams.some(item => Number(item.division) === Number(team.division))) return;
+
+    const targetStageNo = Number(offer.targetStageNo
+      || nextStagePlan.stageNo
+      || (nextStagePlan.campaignDefinition && nextStagePlan.campaignDefinition.stageNo)
+      || 0);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "text-xs";
+    btn.dataset.carryTeamToStage = "";
+    btn.style.cssText = "background:none; border:none; padding:0.5rem; cursor:pointer; display:inline-flex; align-items:center; gap:0.25rem; font-size:0.875rem; font-weight:500; color: var(--color-brand); margin-right: auto;";
+    btn.innerHTML = `<span class="nlc-icon nlc-icon--sm" data-icon="chevronRight" aria-hidden="true"></span><span>帶隊進入第 ${targetStageNo} 階段</span>`;
+    actionsRow.insertBefore(btn, actionsRow.firstChild);
+    if (typeof hydrateIcons === "function") hydrateIcons(btn);
+
+    btn.addEventListener("click", async () => {
+      const confirmed = await window.showConfirmDialog({
+        title: `帶隊進入第 ${targetStageNo} 階段`,
+        message: `確認後「${team.name || ""}」全體隊員會直接加入第 ${targetStageNo} 階段，不需要重新報名或輸入邀請碼。若有隊員已經在第 ${targetStageNo} 階段加入了別的隊伍，會略過那位隊員，其餘隊員照常帶入。`,
+        confirmText: "帶隊進入",
+        cancelText: "取消"
+      });
+      if (!confirmed) return;
+
+      btn.disabled = true;
+      loader.show("正在帶領團隊進入下一階段…");
+      const carryResult = await db.carryReadingTeamsToStage(nextStagePlan);
+      loader.hide();
+      btn.disabled = false;
+
+      if (!carryResult.success) {
+        alert(carryResult.message || "帶隊失敗，請稍後再試。");
+        return;
+      }
+
+      const carriedTeams = (carryResult.data && carryResult.data.teams) || [];
+      const skippedTeams = (carryResult.data && carryResult.data.skippedTeams) || [];
+      const thisTeamSkipped = skippedTeams.find(item => Number(item.division) === Number(team.division));
+
+      if (thisTeamSkipped) {
+        alert(`你已經在第 ${targetStageNo} 階段的這個組別加入了其他團隊，沒辦法用這個身份帶隊。`);
+        return;
+      }
+
+      const thisTeamResult = carriedTeams.find(item => Number(item.division) === Number(team.division));
+      const skippedNames = ((thisTeamResult && thisTeamResult.skippedMembers) || [])
+        .map(member => member.name)
+        .filter(Boolean);
+
+      let message = `已將「${team.name || ""}」帶入第 ${targetStageNo} 階段。`;
+      if (skippedNames.length) {
+        message += `\n${skippedNames.join("、")}已在第 ${targetStageNo} 階段加入其他團隊，未一併帶入。`;
+      }
+      alert(message);
+      window.location.reload(true);
+    });
+  }
+
   window.renderMyReadingTeamInline = function renderMyReadingTeamInline(container, plan, context, mode = "members") {
     if (!container || !context || !context.team) return;
     const team = context.team;
@@ -783,6 +873,8 @@ import {
           alert("解散團隊失敗: " + ((result && (result.message || result.error && result.error.message)) || "未知錯誤"));
         }
       });
+
+      void renderCaptainCarryoverAction(container, plan, team);
     }
 
     container.querySelector("[data-rename-team-inline]")?.addEventListener("click", async () => {

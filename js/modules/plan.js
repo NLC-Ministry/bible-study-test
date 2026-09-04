@@ -36,8 +36,6 @@ let planUpgradeInFlight = false;
 let dateClickDebounceTimer = null;
 let viewMode = 'calendar'; // Today reading always shows calendar + chapter list
 let planSearchQuery = '';
-let teamCarryoverOfferInFlight = false;
-let teamCarryoverCheckedSignature = "";
 let planTeamInviteVisibilityRequestId = 0;
 
 const PLAN_ROUTE = Object.freeze({
@@ -1094,102 +1092,6 @@ function initPlanControls() {
 
 
 
-async function maybeOfferNextStageTeamCarryover() {
-  if (teamCarryoverOfferInFlight
-    || !state.currentUser
-    || !state.isSupabaseMode
-    || !state.supabase
-    || state.currentUser.is_demo
-    || typeof db.getReadingTeamCarryoverOffer !== "function"
-    || typeof db.carryReadingTeamsToStage !== "function"
-    || typeof window.showConfirmDialog !== "function") {
-    return;
-  }
-
-  const openNextStages = (state.globalPlans || [])
-    .filter(plan => plan && window.isCampaignStagePlan(plan))
-    .filter(plan => Number(plan.stageNo || plan.campaignDefinition && plan.campaignDefinition.stageNo || 0) > 1)
-    .filter(plan => !isPlanHidden(plan))
-    .sort((left, right) =>
-      Number(left.stageNo || left.campaignDefinition && left.campaignDefinition.stageNo || 0)
-      - Number(right.stageNo || right.campaignDefinition && right.campaignDefinition.stageNo || 0)
-    );
-  const signature = openNextStages
-    .map(plan => String(plan.id || plan.globalPlanId || plan.presetKey || ""))
-    .filter(Boolean)
-    .join("|");
-  if (!signature || signature === teamCarryoverCheckedSignature) return;
-
-  teamCarryoverCheckedSignature = signature;
-  teamCarryoverOfferInFlight = true;
-  let shouldRetry = false;
-  let carryoverLoaderVisible = false;
-
-  try {
-    for (const plan of openNextStages) {
-      const planKey = String(plan.id || plan.globalPlanId || plan.presetKey || "");
-      if (!planKey || sessionStorage.getItem("reading_team_carryover_deferred_" + planKey) === "1") continue;
-
-      const offerResult = await db.getReadingTeamCarryoverOffer(plan);
-      if (!offerResult.success) {
-        shouldRetry = true;
-        continue;
-      }
-
-      const offer = offerResult.context || {};
-      const teams = Array.isArray(offer.teams) ? offer.teams : [];
-      if (!offer.eligible || teams.length === 0) continue;
-
-      const targetStageNo = Number(offer.targetStageNo
-        || plan.stageNo
-        || plan.campaignDefinition && plan.campaignDefinition.stageNo
-        || 0);
-      const teamNames = teams.map(team => String(team.name || "")).filter(Boolean).join("、");
-      const teamDescription = teamNames
-        ? "「" + teamNames + "」"
-        : "上一階段的原團隊";
-      const confirmed = await window.showConfirmDialog({
-        title: "第 " + targetStageNo + " 階段已開放報名",
-        message: "是否由隊長帶領 " + teamDescription
-          + " 整隊進入第 " + targetStageNo
-          + " 階段？確認後全體隊員會直接加入，不需要重新報名或輸入邀請碼。",
-        confirmText: "保留原團隊",
-        cancelText: "稍後決定"
-      });
-
-      if (!confirmed) {
-        sessionStorage.setItem("reading_team_carryover_deferred_" + planKey, "1");
-        return;
-      }
-
-      loader.show("正在帶領原團隊進入下一階段…");
-      carryoverLoaderVisible = true;
-      const carryResult = await db.carryReadingTeamsToStage(plan);
-      loader.hide();
-      carryoverLoaderVisible = false;
-
-      if (!carryResult.success) {
-        shouldRetry = true;
-        showToast(carryResult.message || "原團隊尚未完成轉移，請稍後再試。");
-        return;
-      }
-
-      await db.loadUserData(true);
-      calculateAllPlansProgress();
-      showToast("已保留原團隊並進入第 " + targetStageNo + " 階段。");
-      await renderPlanView();
-      return;
-    }
-  } catch (error) {
-    shouldRetry = true;
-    console.error("Reading team carryover offer failed:", error);
-  } finally {
-    if (carryoverLoaderVisible) loader.hide();
-    teamCarryoverOfferInFlight = false;
-    if (shouldRetry) teamCarryoverCheckedSignature = "";
-  }
-}
-
 async function renderPlanView() {
   if (typeof appRouter !== "undefined" && appRouter.currentTab && appRouter.currentTab !== "plan-view") {
     return;
@@ -1241,8 +1143,6 @@ async function renderPlanView() {
     if (state.activePlan && isPlanHidden(state.activePlan) && canManageHiddenPlans()) {
       showToast("這個計畫目前已隱藏，一般使用者不會看到。");
     }
-
-    void maybeOfferNextStageTeamCarryover();
 
     // NOTE: updateNavigationChrome() is intentionally NOT called here.
     // It is the exclusive responsibility of app.js switchTab to call it
