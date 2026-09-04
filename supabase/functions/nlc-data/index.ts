@@ -197,6 +197,15 @@ const GROUP_MEETING_RPC_FUNCTIONS = new Set([
   "bulk_upsert_group_meeting_weeks",
   "set_group_meeting_plan_future_open"
 ]);
+// 每日靈修／小組聚會週計畫的「功能設定」總開關 + 每人一份的個人偏好
+// （migration 0156）。get_/set_my_* 一律只操作呼叫者自己那筆，不接受目標使用者
+// 參數；set_devotion_group_features_master 自己在 SQL 端檢查 admin 角色。這裡
+// 只需注入 p_actor_id。
+const DEVOTION_GROUP_FEATURE_RPC_FUNCTIONS = new Set([
+  "get_my_devotion_group_preferences",
+  "set_my_devotion_group_preference",
+  "set_devotion_group_features_master"
+]);
 // 回報對話串（issue_reports 工單 + issue_report_messages，migration 0153）。
 // 每支 RPC 自己在 SQL 端用 _issue_actor()/_issue_is_admin() 做「本人或 admin」授權；
 // 這裡只需注入 p_actor_id。碰 Storage 的（附件上傳/簽名網址/刪物件）不是 RPC，
@@ -223,6 +232,7 @@ const RPC_FUNCTIONS = new Set([
   ...EXAM_RPC_FUNCTIONS,
   ...DEVOTION_RPC_FUNCTIONS,
   ...GROUP_MEETING_RPC_FUNCTIONS,
+  ...DEVOTION_GROUP_FEATURE_RPC_FUNCTIONS,
   ...ISSUE_RPC_FUNCTIONS
 ]);
 
@@ -657,6 +667,7 @@ Deno.serve(async (req: Request) => {
         || EXAM_RPC_FUNCTIONS.has(functionName)
         || DEVOTION_RPC_FUNCTIONS.has(functionName)
         || GROUP_MEETING_RPC_FUNCTIONS.has(functionName)
+        || DEVOTION_GROUP_FEATURE_RPC_FUNCTIONS.has(functionName)
         || ISSUE_RPC_FUNCTIONS.has(functionName)
         || functionName === "get_admin_registration_statistics"
         || functionName === "create_region_stage_cohort")

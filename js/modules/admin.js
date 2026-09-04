@@ -63,16 +63,21 @@ function updateExamFeatureControl(enabled, options = {}) {
     : "已關閉：隱藏「大測驗」分頁並停止作答；既有試卷、題目與成績都會保留。";
 }
 
-function updateDevotionFeatureControl(enabled, options = {}) {
-  const toggle = document.getElementById("admin-daily-devotion-feature-toggle");
-  const status = document.getElementById("admin-daily-devotion-feature-status");
+// 每日靈修／小組聚會週計畫「功能設定」總開關（migration 0156）。這是唯一放在
+// 這張卡片裡的一顆：關閉時「個人」分頁不會出現「功能設定」，且會清空所有
+// 會友已經自己開啟的個人偏好；開啟後不會幫任何人預設打開，要各自去「個人」
+// 分頁的「功能設定」子頁面自己開。實際的「每日靈修」「小組經營」兩顆開關在
+// 那個子頁面（js/modules/profile.js renderFeatureSettingsSubpage()），不在這裡。
+function updateDevotionMasterFeatureControl(enabled, options = {}) {
+  const toggle = document.getElementById("admin-devotion-master-toggle");
+  const status = document.getElementById("admin-devotion-master-status");
   if (!toggle || !status) return;
   toggle.setAttribute("aria-checked", enabled ? "true" : "false");
-  toggle.setAttribute("aria-label", enabled ? "每日靈修功能已開啟" : "每日靈修功能已關閉");
+  toggle.setAttribute("aria-label", enabled ? "功能設定已開啟" : "功能設定已關閉");
   toggle.disabled = options.disabled === true;
   status.textContent = enabled
-    ? "已開啟：會友在「計畫」看得到靈修計畫，可按日期閱讀每日靈修內容。"
-    : "已關閉：會友端隱藏所有靈修計畫；管理端仍可先編輯內容，既有內容都保留。";
+    ? "已開啟：「個人」分頁會出現「功能設定」，會友可以自己選擇要不要啟用每日靈修、小組經營。"
+    : "已關閉：「個人」分頁不會出現「功能設定」；所有會友已經自己開啟的個人偏好也會一併清空。";
 }
 
 // 「每日靈修」計劃管理分頁：admin / pastor 一律看得到（功能對會友暫不開放時
@@ -85,18 +90,6 @@ function applyAdminDevotionVisibility(_enabled) {
   if (!canSee && activeAdminSection === "devotions") setAdminSection("join-status");
   if (!canSee && panel) panel.classList.add("hidden");
   if (typeof renderAdminSectionNav === "function") renderAdminSectionNav();
-}
-
-function updateGroupMeetingFeatureControl(enabled, options = {}) {
-  const toggle = document.getElementById("admin-group-meeting-feature-toggle");
-  const status = document.getElementById("admin-group-meeting-feature-status");
-  if (!toggle || !status) return;
-  toggle.setAttribute("aria-checked", enabled ? "true" : "false");
-  toggle.setAttribute("aria-label", enabled ? "小組聚會週計畫功能已開啟" : "小組聚會週計畫功能已關閉");
-  toggle.disabled = options.disabled === true;
-  status.textContent = enabled
-    ? "已開啟：會友在「計畫」看得到小組聚會週計畫，可按週查看信息經文 / 奉獻經文 / 詩歌。"
-    : "已關閉：會友端隱藏小組聚會週計畫；管理端仍可先編輯內容，既有內容都保留。";
 }
 
 // 「小組聚會」計劃管理分頁：admin / pastor 一律看得到（比照每日靈修）。
@@ -137,12 +130,20 @@ export async function renderAdminFeatureSettings() {
 
   const isAdmin = state.currentUser && getUserRoleCode(state.currentUser) === "admin";
   card.classList.toggle("hidden", !isAdmin);
+
+  // 「計劃管理」分頁的每日靈修/小組聚會子分頁看不看得到純粹依角色，跟功能設定
+  // 總開關無關，不用等旗標抓回來才判斷。
+  applyAdminDevotionVisibility();
+  applyAdminGroupMeetingVisibility();
+
+  const masterToggle = document.getElementById("admin-devotion-master-toggle");
+  const masterFeedback = document.getElementById("admin-devotion-master-feedback");
+
   if (!isAdmin) {
-    const [quizResult, examResult, devotionResult, groupMeetingResult] = await Promise.all([
+    const [quizResult, examResult, masterResult] = await Promise.all([
       db.getFeatureSetting("daily_quiz", false),
       db.getFeatureSetting("speed_reading_exam", false),
-      db.getFeatureSetting("daily_devotion", false),
-      db.getFeatureSetting("group_meeting_plan", false)
+      db.getFeatureSetting("devotion_group_features_master", false)
     ]);
     const quizEnabled = !quizResult.error && quizResult.enabled === true;
     window.dailyQuizFeatureEnabled = quizEnabled;
@@ -150,12 +151,7 @@ export async function renderAdminFeatureSettings() {
     const examEnabled = !examResult.error && examResult.enabled === true;
     window.speedReadingExamFeatureEnabled = examEnabled;
     applyAdminExamVisibility(examEnabled);
-    const devotionEnabled = !devotionResult.error && devotionResult.enabled === true;
-    window.dailyDevotionFeatureEnabled = devotionEnabled;
-    applyAdminDevotionVisibility(devotionEnabled);
-    const groupMeetingEnabled = !groupMeetingResult.error && groupMeetingResult.enabled === true;
-    window.groupMeetingPlanFeatureEnabled = groupMeetingEnabled;
-    applyAdminGroupMeetingVisibility(groupMeetingEnabled);
+    window.devotionGroupFeaturesMasterEnabled = !masterResult.error && masterResult.enabled === true;
     return;
   }
 
@@ -167,19 +163,14 @@ export async function renderAdminFeatureSettings() {
   updateDailyQuizFeatureControl(false, { disabled: true });
   if (examFeedback) { examFeedback.classList.add("hidden"); examFeedback.textContent = ""; }
   updateExamFeatureControl(false, { disabled: true });
-  const devotionFeedback = document.getElementById("admin-daily-devotion-feature-feedback");
-  if (devotionFeedback) { devotionFeedback.classList.add("hidden"); devotionFeedback.textContent = ""; }
-  updateDevotionFeatureControl(false, { disabled: true });
-  const groupMeetingFeedback = document.getElementById("admin-group-meeting-feature-feedback");
-  if (groupMeetingFeedback) { groupMeetingFeedback.classList.add("hidden"); groupMeetingFeedback.textContent = ""; }
-  updateGroupMeetingFeatureControl(false, { disabled: true });
+  if (masterFeedback) { masterFeedback.classList.add("hidden"); masterFeedback.textContent = ""; }
+  updateDevotionMasterFeatureControl(false, { disabled: true });
 
-  const [result, quizResult, examResult, devotionResult, groupMeetingResult] = await Promise.all([
+  const [result, quizResult, examResult, masterResult] = await Promise.all([
     db.getFeatureSetting("pastoral_sharing_wall", false),
     db.getFeatureSetting("daily_quiz", false),
     db.getFeatureSetting("speed_reading_exam", false),
-    db.getFeatureSetting("daily_devotion", false),
-    db.getFeatureSetting("group_meeting_plan", false)
+    db.getFeatureSetting("devotion_group_features_master", false)
   ]);
   if (result.error) {
     updatePastoralWallControl(false, { disabled: true });
@@ -210,77 +201,41 @@ export async function renderAdminFeatureSettings() {
     updateExamFeatureControl(examEnabled);
     applyAdminExamVisibility(examEnabled);
   }
-  if (devotionResult.error) {
-    updateDevotionFeatureControl(false, { disabled: true });
-    if (devotionFeedback) {
-      devotionFeedback.textContent = "無法載入設定：從伺服器獲取每日靈修設定失敗。";
-      devotionFeedback.classList.remove("hidden");
+  if (masterResult.error) {
+    updateDevotionMasterFeatureControl(false, { disabled: true });
+    if (masterFeedback) {
+      masterFeedback.textContent = "無法載入設定：從伺服器獲取功能設定失敗。";
+      masterFeedback.classList.remove("hidden");
     }
   } else {
-    const devotionEnabled = devotionResult.enabled === true;
-    window.dailyDevotionFeatureEnabled = devotionEnabled;
-    updateDevotionFeatureControl(devotionEnabled);
-    applyAdminDevotionVisibility(devotionEnabled);
+    const masterEnabled = masterResult.enabled === true;
+    window.devotionGroupFeaturesMasterEnabled = masterEnabled;
+    updateDevotionMasterFeatureControl(masterEnabled);
   }
-  if (groupMeetingResult.error) {
-    updateGroupMeetingFeatureControl(false, { disabled: true });
-    if (groupMeetingFeedback) {
-      groupMeetingFeedback.textContent = "無法載入設定：從伺服器獲取小組聚會週計畫設定失敗。";
-      groupMeetingFeedback.classList.remove("hidden");
-    }
-  } else {
-    const groupMeetingEnabled = groupMeetingResult.enabled === true;
-    window.groupMeetingPlanFeatureEnabled = groupMeetingEnabled;
-    updateGroupMeetingFeatureControl(groupMeetingEnabled);
-    applyAdminGroupMeetingVisibility(groupMeetingEnabled);
-  }
-  const groupMeetingToggle = document.getElementById("admin-group-meeting-feature-toggle");
-  if (groupMeetingToggle && !groupMeetingToggle.dataset.featureSettingBound) {
-    groupMeetingToggle.dataset.featureSettingBound = "true";
-    groupMeetingToggle.addEventListener("click", async () => {
-      const currentEnabled = groupMeetingToggle.getAttribute("aria-checked") === "true";
+
+  if (masterToggle && !masterToggle.dataset.featureSettingBound) {
+    masterToggle.dataset.featureSettingBound = "true";
+    masterToggle.addEventListener("click", async () => {
+      const currentEnabled = masterToggle.getAttribute("aria-checked") === "true";
       const nextEnabled = !currentEnabled;
-      updateGroupMeetingFeatureControl(currentEnabled, { disabled: true });
-      groupMeetingFeedback?.classList.add("hidden");
-      const saveResult = await db.updateFeatureSetting("group_meeting_plan", nextEnabled);
-      if (saveResult.error) {
-        updateGroupMeetingFeatureControl(currentEnabled);
-        if (groupMeetingFeedback) {
-          groupMeetingFeedback.textContent = "更新設定失敗：無法將設定儲存至伺服器。";
-          groupMeetingFeedback.classList.remove("hidden");
+      updateDevotionMasterFeatureControl(currentEnabled, { disabled: true });
+      masterFeedback?.classList.add("hidden");
+      const saveResult = await db.setDevotionGroupFeaturesMaster(nextEnabled);
+      if (!saveResult.success) {
+        updateDevotionMasterFeatureControl(currentEnabled);
+        if (masterFeedback) {
+          masterFeedback.textContent = saveResult.message || "更新設定失敗：無法將設定儲存至伺服器。";
+          masterFeedback.classList.remove("hidden");
         }
         return;
       }
-      window.groupMeetingPlanFeatureEnabled = nextEnabled;
-      updateGroupMeetingFeatureControl(nextEnabled);
-      applyAdminGroupMeetingVisibility(nextEnabled);
+      window.devotionGroupFeaturesMasterEnabled = nextEnabled;
+      updateDevotionMasterFeatureControl(nextEnabled);
       if (typeof showToast === "function") {
-        showToast(nextEnabled ? "小組聚會週計畫功能已開啟！" : "小組聚會週計畫功能已關閉。內容都會保留。");
-      }
-    });
-  }
-  const devotionToggle = document.getElementById("admin-daily-devotion-feature-toggle");
-  if (devotionToggle && !devotionToggle.dataset.featureSettingBound) {
-    devotionToggle.dataset.featureSettingBound = "true";
-    devotionToggle.addEventListener("click", async () => {
-      const currentEnabled = devotionToggle.getAttribute("aria-checked") === "true";
-      const nextEnabled = !currentEnabled;
-      updateDevotionFeatureControl(currentEnabled, { disabled: true });
-      devotionFeedback?.classList.add("hidden");
-      const saveResult = await db.updateFeatureSetting("daily_devotion", nextEnabled);
-      if (saveResult.error) {
-        updateDevotionFeatureControl(currentEnabled);
-        if (devotionFeedback) {
-          devotionFeedback.textContent = "更新設定失敗：無法將設定儲存至伺服器。";
-          devotionFeedback.classList.remove("hidden");
-        }
-        return;
-      }
-      window.dailyDevotionFeatureEnabled = nextEnabled;
-      updateDevotionFeatureControl(nextEnabled);
-      applyAdminDevotionVisibility(nextEnabled);
-      if (typeof showToast === "function") {
-        showToast(nextEnabled ? "每日靈修功能已開啟！" : "每日靈修功能已關閉。內容都會保留。");
+        const resetCount = saveResult.data && saveResult.data.resetCount;
+        showToast(nextEnabled
+          ? "功能設定已開啟。「個人」分頁會多出「功能設定」，會友可以自己選擇要不要啟用。"
+          : `功能設定已關閉。${Number.isFinite(resetCount) && resetCount > 0 ? `已一併清空 ${resetCount} 位會友自己開啟過的個人偏好。` : ""}`);
       }
     });
   }
