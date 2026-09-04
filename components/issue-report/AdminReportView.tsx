@@ -407,7 +407,9 @@ export const AdminThreadPane: React.FC<{
               onChange={(e) => setText(e.target.value.slice(0, 500))}
               onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } }}
               placeholder="輸入回覆…"
-              className="max-h-[120px] min-h-[2.5rem] flex-1 resize-none rounded-2xl border border-border bg-card px-3 py-2 text-sm"
+              aria-label="輸入回覆"
+              data-admin-reply-textarea
+              className="max-h-[120px] min-h-[2.5rem] flex-1 resize-none rounded-2xl border border-border bg-card px-3 py-2 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             />
             <button type="button" className="primary-btn h-10 w-10 p-0 justify-center"
               disabled={busy || (!text.trim() && !image)} onClick={send} aria-label="送出">
@@ -489,7 +491,7 @@ export const AdminMiniList: React.FC<{
           className="w-full text-left rounded-lg border border-border bg-card p-3 shadow-sm hover:border-muted-foreground/40"
         >
           <div className="flex items-center gap-2">
-            {r.unreadFromMember && <span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" aria-label="會友有新訊息" />}
+            {r.unreadFromMember && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="會友有新訊息" />}
             <span className={CATEGORY_BADGE_CLASS}>{CAT_LABEL[r.category] || r.category}</span>
             <span className={statusBadgeClass(r.status)}>{ST_LABEL[r.status] || r.status}</span>
             <span className="ml-auto text-xs text-muted-foreground">{formatWhen(r.lastMessageAt || r.createdAt)}</span>

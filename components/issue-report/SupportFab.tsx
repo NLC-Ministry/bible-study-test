@@ -122,11 +122,11 @@ export const SupportFab: React.FC<SupportFabProps> = ({ onClick, isOpen, unreadR
                 minWidth: "1.25rem",
                 height: "1.25rem",
                 padding: "0 0.3rem",
-                fontSize: "0.7rem",
+                fontSize: "0.75rem",
                 lineHeight: 1,
-                backgroundColor: "var(--color-danger, #ef4444)",
-                color: "#fff",
-                border: "2px solid var(--bg-page, #fff)"
+                backgroundColor: "var(--color-danger)",
+                color: "var(--color-solid-fill-foreground, #fff)",
+                border: "2px solid var(--bg-app, var(--bg-card))"
               }}
               aria-hidden="true"
             >
