@@ -524,14 +524,21 @@ describe("NLC and browser integration", () => {
     expect(plan).not.toContain("async function enterOrgStatsState");
     expect(plan).not.toContain("setPlanState(PLAN_ROUTE.ORG_STATS)");
     expect(html).not.toContain('id="view-reading-team-stats-btn"');
-    expect(html).toContain('id="stats-team-view-select"');
-    expect(html).toContain('id="members-team-view-select"');
+    // Segmented control, not a hidden-affordance <select>: users who joined both
+    // the 3-person and 6-person team must see both options at once, never a
+    // dropdown they have to notice and open first (that shape produced real
+    // "can't see my 6-person team" reports).
+    expect(html).toContain('id="stats-team-view-tabs"');
+    expect(html).toContain('id="members-team-view-tabs"');
+    expect(html).not.toContain('id="stats-team-view-select"');
+    expect(html).not.toContain('id="members-team-view-select"');
     expect(plan).toContain("async function prepareReadingTeamSubview");
     expect(plan).toContain('prepareReadingTeamSubview("stats")');
     expect(plan).toContain('prepareReadingTeamSubview("members")');
     expect(plan).toContain('reading-team-');
-    expect(plan).toContain('data-reading-team-division');
+    expect(plan).toContain('readingTeamDivision');
     expect(plan).toContain('readingTeamDefaultPlan');
+    expect(plan).toContain('segment-toggle-btn');
     expect(plan).toContain('statsTab.textContent = "團隊"');
     expect(teamUi).toContain("renderMyReadingTeamInline");
     expect(teamUi).toContain("data-team-view-division");

@@ -4680,6 +4680,19 @@ button.logout-btn:hover {
   min-height: 1.75rem;
 }
 
+/* 團隊分組切換（3 人團隊／6 人團隊）：兩個選項一律並排顯示，不是隱藏在下拉選單
+   裡才發現有第二個選項——這正是「看不到 6 人團隊」回報的根因，所以按鈕要夠大、
+   夠明顯，維持一般可點按元件的 44px 觸控高度。 */
+.reading-team-subview-switch {
+  margin-bottom: 0.8rem;
+}
+.reading-team-subview-tabs .segment-toggle-btn {
+  padding: 0.6rem 0.75rem;
+  border-radius: calc(var(--radius-md) - 2px);
+  font-size: 0.9375rem;
+  min-height: 44px;
+}
+
 .stats-inner-tab {
   padding: 0.5rem;
   border-radius: calc(var(--radius-md) - 2px);

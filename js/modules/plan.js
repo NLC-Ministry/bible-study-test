@@ -535,9 +535,9 @@ async function prepareReadingTeamSubview(mode) {
 
   const isStats = mode === "stats";
   const switcher = document.getElementById(isStats ? "stats-team-view-switch" : "members-team-view-switch");
-  const select = document.getElementById(isStats ? "stats-team-view-select" : "members-team-view-select");
+  const tabs = document.getElementById(isStats ? "stats-team-view-tabs" : "members-team-view-tabs");
   const inline = document.getElementById(isStats ? "reading-team-stats-inline" : "reading-team-members-inline");
-  if (!switcher || !select || !inline) return true;
+  if (!switcher || !tabs || !inline) return true;
 
   const supported = typeof window.isReadingTeamPlan === "function" && window.isReadingTeamPlan(state.activePlan);
   if (!supported) {
@@ -548,18 +548,11 @@ async function prepareReadingTeamSubview(mode) {
 
   const result = await db.getMyReadingTeam(state.activePlan);
   const contexts = result && result.success ? getJoinedReadingTeamContexts(result.context) : [];
-  const activeDivisions = new Set(contexts.map(context => Number(context.team.division)));
-
-  const orgOption = select.querySelector('option[value="organization"]');
-  if (orgOption) orgOption.remove();
-
-  select.querySelectorAll('option[data-reading-team-division]').forEach(option => {
-    if (!activeDivisions.has(Number(option.dataset.readingTeamDivision))) option.remove();
-  });
 
   if (contexts.length === 0) {
-    select.value = "organization";
-    delete select.dataset.readingTeamDefaultPlan;
+    tabs.innerHTML = "";
+    delete tabs.dataset.readingTeamDefaultPlan;
+    delete tabs.dataset.readingTeamSelectedDivision;
     switcher.classList.add("hidden");
     inline.classList.add("hidden");
     return true;
@@ -568,19 +561,9 @@ async function prepareReadingTeamSubview(mode) {
   const regContainer = document.getElementById("reading-team-registration-inline");
   if (regContainer) regContainer.classList.add("hidden");
 
-  contexts.forEach(context => {
-    const division = Number(context.team.division);
-    const value = "reading-team-" + division;
-    let option = select.querySelector('option[value="' + value + '"]');
-    if (!option) {
-      option = document.createElement("option");
-      option.value = value;
-      option.dataset.readingTeamDivision = String(division);
-      select.appendChild(option);
-    }
-    option.textContent = "第 " + division + " 人組";
-  });
-
+  // 使用者同時加入 3 人與 6 人團隊時，兩個選項一律並排顯示（segmented control），
+  // 不再靠一個沒展開就看不出還有別的選項的下拉選單——先前這樣做，導致有人加入
+  // 6 人團隊後回報「看不到 6 人團隊」，其實只是沒發現下拉選單裡還有別的選項。
   const activePlanKey = String(
     state.activePlan.globalPlanId
       || state.activePlan.id
@@ -588,36 +571,53 @@ async function prepareReadingTeamSubview(mode) {
       || state.activePlan.name
       || "current-plan"
   );
-  if (select.dataset.readingTeamDefaultPlan !== activePlanKey) {
-    select.dataset.readingTeamDefaultPlan = activePlanKey;
-    select.value = "reading-team-" + Number(contexts[0].team.division);
-  }
+  const planChanged = tabs.dataset.readingTeamDefaultPlan !== activePlanKey;
+  const previousDivision = Number(tabs.dataset.readingTeamSelectedDivision || 0);
+  const hasPreviousDivision = contexts.some(context => Number(context.team.division) === previousDivision);
+  const selectedDivision = (!planChanged && hasPreviousDivision)
+    ? previousDivision
+    : Number(contexts[0].team.division);
 
-  if (contexts.length > 1) {
-    switcher.classList.remove("hidden");
-  } else {
-    switcher.classList.add("hidden");
-  }
+  tabs.dataset.readingTeamDefaultPlan = activePlanKey;
+  tabs.dataset.readingTeamSelectedDivision = String(selectedDivision);
 
-  if (!select.dataset.readingTeamBound) {
-    select.dataset.readingTeamBound = "true";
-    select.addEventListener("change", async () => {
-      if (isStats) {
-        await prepareReadingTeamSubview("stats");
-      } else {
-        await prepareReadingTeamSubview("members");
-      }
+  const renderSelectedTeam = () => {
+    const division = Number(tabs.dataset.readingTeamSelectedDivision);
+    const selectedContext = contexts.find(context => Number(context.team.division) === division) || contexts[0];
+    inline.classList.toggle("hidden", !selectedContext);
+    if (selectedContext && typeof window.renderMyReadingTeamInline === "function") {
+      window.renderMyReadingTeamInline(inline, state.activePlan, selectedContext, mode);
+    }
+  };
+
+  tabs.innerHTML = "";
+  contexts.forEach(context => {
+    const division = Number(context.team.division);
+    const isActive = division === selectedDivision;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "segment-toggle-btn" + (isActive ? " active" : "");
+    btn.dataset.readingTeamDivision = String(division);
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+    btn.textContent = division + " 人團隊";
+    btn.addEventListener("click", () => {
+      if (Number(tabs.dataset.readingTeamSelectedDivision) === division) return;
+      tabs.dataset.readingTeamSelectedDivision = String(division);
+      tabs.querySelectorAll(".segment-toggle-btn").forEach(otherBtn => {
+        const active = Number(otherBtn.dataset.readingTeamDivision) === division;
+        otherBtn.classList.toggle("active", active);
+        otherBtn.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      renderSelectedTeam();
     });
-  }
+    tabs.appendChild(btn);
+  });
 
-  // Direct C logic: render the team progress inline details
-  const selectedDivision = Number(String(select.value).replace("reading-team-", ""));
-  const selectedContext = contexts.find(context => Number(context.team.division) === selectedDivision) || contexts[0];
-  const showTeam = !!selectedContext;
-  inline.classList.toggle("hidden", !showTeam);
-  if (showTeam && typeof window.renderMyReadingTeamInline === "function") {
-    window.renderMyReadingTeamInline(inline, state.activePlan, selectedContext, mode);
-  }
+  // 只有一個團隊時沒什麼好切換的，直接隱藏切換列，內容照樣顯示。
+  switcher.classList.toggle("hidden", contexts.length <= 1);
+
+  renderSelectedTeam();
 
   return true;
 }

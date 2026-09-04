@@ -57,7 +57,7 @@
       window.location.replace("/repair?version=" + Date.now());
     };
   </script>
-  <link rel="stylesheet" href="index.css?v=20260904_cumulative_chapters_scope" onerror="window.showAppStyleRecovery(this)">
+  <link rel="stylesheet" href="index.css?v=20260904_team_switch_segmented" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/admin-registration-statistics.css?v=20260812_clean-user-directory-ui" onerror="window.showAppStyleRecovery(this)">
   <link rel="stylesheet" href="css/team-registration.css?v=20260802_pwa_shell_recovery" onerror="window.showAppStyleRecovery(this)">
 
@@ -1015,10 +1015,8 @@
             style="display: flex; flex-direction: column; gap: 1.2rem; width: 100%;">
 
             <div class="reading-team-subview-switch hidden" id="stats-team-view-switch">
-              <label for="stats-team-view-select">查看內容</label>
-              <select id="stats-team-view-select" class="form-control">
-                <option value="organization">教會團體</option>
-              </select>
+              <div class="capsule-segmented-control segment-track reading-team-subview-tabs" id="stats-team-view-tabs"
+                role="tablist" aria-label="查看內容"></div>
             </div>
 
             <div id="reading-team-stats-inline" class="reading-team-inline hidden" aria-live="polite"></div>
@@ -1290,10 +1288,8 @@
               <h2 class="text-base font-bold text-slate-800 dark:text-white mb-2"
                 style="font-size: 1rem; font-weight: 500; color: var(--text-primary); margin: 0 0 0.5rem 0;">組員狀況</h2>
               <div class="reading-team-subview-switch hidden" id="members-team-view-switch">
-                <label for="members-team-view-select">查看內容</label>
-                <select id="members-team-view-select" class="form-control">
-                  <option value="organization">教會小組</option>
-                </select>
+                <div class="capsule-segmented-control segment-track reading-team-subview-tabs" id="members-team-view-tabs"
+                  role="tablist" aria-label="查看內容"></div>
               </div>
             </div>
 
@@ -2767,7 +2763,7 @@
     </div>
   </div>
 
-  <script type="module" src="js/app.js?v=20260904_cumulative_chapters_scope"></script>
+  <script type="module" src="js/app.js?v=20260904_team_switch_segmented"></script>
 </body>
 
 </html>
