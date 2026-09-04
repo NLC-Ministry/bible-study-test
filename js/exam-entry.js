@@ -14,10 +14,10 @@ import './design/design-system-helpers.js?v=20260901_round_schedule_restore';
 import './design/icon-registry.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './design/icons.js';
 import './state.js?v=20260901_highlights_notes_review';
-import './auth.js?v=20260903_login_continuation_return_fix';
+import './auth.js?v=20260904_highlights_cross_user_leak_fix';
 import './auth-launch.mjs';
-import './db.js?v=20260903_exam_grading_fixes';
-import './utils.js?v=20260903_score_input_validation';
+import './db.js?v=20260904_highlights_cross_user_leak_fix';
+import './utils.js?v=20260905_r1final_badge_puzzle';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import { mountExamRunner } from './modules/exam.js?v=20260903_hide_aggregate_stage2';
 
