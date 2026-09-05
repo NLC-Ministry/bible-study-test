@@ -1510,14 +1510,15 @@ async function renderExamAssign(host, paperId, locked = false) {
       zsel.dataset.filled = "1";
     }
     if (listBox) listBox.innerHTML = `
-      <p class="exam-assign__meta">共 ${rows.length} 位。勾選後指派給下方選定的批改人員。</p>
+      <p class="exam-assign__meta">共 ${rows.length} 位。勾選後指派給下方選定的批改人員；序號依目前清單順序（篩選為「全部」時對齊固定序號）。</p>
       <div class="exam-assign__list-wrap"><table class="exam-assign__table">
         <thead><tr>
           <th><input type="checkbox" data-ea-all aria-label="全選"></th>
-          <th>姓名</th><th>牧區</th><th>小組</th><th>狀態</th><th>目前指派</th>
+          <th>序號</th><th>姓名</th><th>牧區</th><th>小組</th><th>狀態</th><th>目前指派</th>
         </tr></thead>
-        <tbody>${rows.map((x) => `<tr>
+        <tbody>${rows.map((x, idx) => `<tr>
           <td><input type="checkbox" data-ea-pick="${esc(x.attemptId)}"></td>
+          <td>${idx + 1}</td>
           <td>${esc(x.name || "")}</td>
           <td>${esc(x.pastoralZone || "—")}</td>
           <td>${esc(x.smallGroup || "—")}</td>
@@ -1569,6 +1570,12 @@ async function renderExamAssign(host, paperId, locked = false) {
         </select></label>
         <button type="button" class="secondary-btn" data-ea-reload>套用篩選</button>
       </div>
+      <div class="exam-assign__bar">
+        <label>序號從<input type="number" min="1" step="1" data-ea-range-start placeholder="1" ${locked ? "disabled" : ""}></label>
+        <label>到<input type="number" min="1" step="1" data-ea-range-end placeholder="140" ${locked ? "disabled" : ""}></label>
+        <button type="button" class="secondary-btn" data-ea-range-pick ${locked ? "disabled" : ""}>選取此序號範圍</button>
+        <span class="exam-assign__meta">依清單目前順序取代目前勾選（篩選請保持「全部」才會對齊固定序號）</span>
+      </div>
       <div class="exam-assign__grader">
         <label>批改人員（搜尋姓名 / email）
           <input type="search" data-ea-search placeholder="輸入至少 1 個字" ${locked ? "disabled" : ""}>
@@ -1585,6 +1592,28 @@ async function renderExamAssign(host, paperId, locked = false) {
   });
   host.querySelector("[data-ea-reload]")?.addEventListener("click", load);
   [statusFilterEl(), assignFilterEl(), zoneFilterEl()].forEach((el) => el && el.addEventListener("change", load));
+
+  host.querySelector("[data-ea-range-pick]")?.addEventListener("click", () => {
+    const start = parseInt(host.querySelector("[data-ea-range-start]")?.value, 10);
+    const end = parseInt(host.querySelector("[data-ea-range-end]")?.value, 10);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 1 || end < start) {
+      toast("請輸入正確的序號範圍");
+      return;
+    }
+    const listBox = host.querySelector("[data-ea-list]");
+    const checkboxes = [...(listBox?.querySelectorAll("[data-ea-pick]") || [])];
+    if (!checkboxes.length) { toast("清單還沒載入"); return; }
+    examAssignState.selected = new Set();
+    checkboxes.forEach((cb, i) => {
+      const inRange = (i + 1) >= start && (i + 1) <= end;
+      cb.checked = inRange;
+      if (inRange) examAssignState.selected.add(cb.dataset.eaPick);
+    });
+    const allCb = listBox?.querySelector("[data-ea-all]");
+    if (allCb) allCb.checked = examAssignState.selected.size === checkboxes.length && checkboxes.length > 0;
+    syncAssignBtn();
+    toast(`已選取序號 ${start}–${Math.min(end, checkboxes.length)}（共 ${examAssignState.selected.size} 張）`);
+  });
 
   let searchTimer = null;
   host.querySelector("[data-ea-search]")?.addEventListener("input", (e) => {
