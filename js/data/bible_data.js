@@ -82,10 +82,14 @@ async function fetchJson(url) {
   // Bound the worst case: a hung public API request used to have no upper
   // limit, so a stalled connection could keep the reader in "loading" far
   // longer than the fallback sources or the placeholder text would ever need.
-  const response = await fetch(url, {
-    headers: { "Accept": "application/json" },
-    signal: AbortSignal.timeout(8000)
-  });
+  // Feature-detected because AbortSignal.timeout isn't guaranteed on every
+  // runtime this file loads in (older mobile browsers, minimal test sandboxes)
+  // — without a signal, fetch just behaves exactly as it did before.
+  const options = { headers: { "Accept": "application/json" } };
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+    options.signal = AbortSignal.timeout(8000);
+  }
+  const response = await fetch(url, options);
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
   return response.json();
 }

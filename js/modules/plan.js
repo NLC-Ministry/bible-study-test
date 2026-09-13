@@ -8190,8 +8190,8 @@ const statsRenderGuard = (typeof window !== "undefined" && typeof window.createR
   : { start: () => 0, isStale: () => false };
 
 async function updateStatsView(filterPresetKey = null) {
-  const statsRenderToken = statsRenderGuard.start();
   ensureChartLib().catch(() => {}); // A2：管理端統計儀表板圖多，提前開始抓 Chart.js
+  const statsRenderToken = statsRenderGuard.start();
   // If no filter is provided, fallback to the current active plan's global key.
   if (!filterPresetKey && state.activePlan) {
     filterPresetKey = state.activePlan.globalPlanId || state.activePlan.presetKey || state.activePlan.name || state.activePlan.id;
