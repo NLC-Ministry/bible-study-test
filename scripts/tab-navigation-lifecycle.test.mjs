@@ -9,7 +9,9 @@ describe("primary tab navigation lifecycle", () => {
   it("routes tab-bar clicks through the reselect-aware handler", () => {
     expect(stateSource).toContain("this.handleTabClick(target)");
     expect(stateSource).toContain("if (tabId !== this.currentTab)");
-    expect(stateSource).toContain("if (this.isTabTransitioning) return");
+    // Only re-clicking the same in-flight destination is swallowed; tapping a
+    // different tab must always go through immediately, even mid-transition.
+    expect(stateSource).toContain("if (this.isTabTransitioning && this.transitioningToTab === tabId) return");
     expect(stateSource).toContain("restoreTabScroll: true");
   });
 

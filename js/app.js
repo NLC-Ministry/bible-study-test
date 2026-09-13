@@ -2,7 +2,7 @@
 
 // Import support and core files needed before first paint.
 import '../config.js';
-import './data/bible_data.js?v=20260901_ten_verse_chapter_load_fix';
+import './data/bible_data.js?v=20260914_chapter_fetch_timeout';
 import './data/bible_verse_counts.js';
 import './copy/zh-Hant.js?v=20260901_member_hub_org_dedupe';
 import './data/church_campaign.js?v=20260901_r1final_monthly_split';
@@ -10,11 +10,11 @@ import './design/design-tokens.js';
 import './design/design-system-helpers.js?v=20260901_round_schedule_restore';
 import './design/icon-registry.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import './design/icons.js';
-import './state.js?v=20260901_r1final_monthly_split';
+import './state.js?v=20260914_tab_switch_navguard';
 import './auth.js?v=20260906_session_expired_event';
 import './auth-launch.mjs';
 import './db.js?v=20260911_exam_paper_linked_plan';
-import './utils.js?v=20260909_prestige_svg';
+import './utils.js?v=20260914_render_guard';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import { initModalManager } from './modules/modal-manager.mjs';
 
@@ -574,8 +574,11 @@ function paintReaderChromeFromState() {
   if (navBadge) navBadge.textContent = versionLabel;
 }
 
-// ─── Tab Switching: isSwitching guard prevents concurrent race conditions ───
-let isSwitching = false;
+// ─── Tab Switching: navRenderGuard lets the newest switchTab call always win.
+// A superseded call's own chrome/history side effects are skipped instead of
+// blocking the newer navigation from starting — see handleTabClick in
+// state.js for the matching guard on the tab-bar click itself. ───
+const navRenderGuard = createRenderGuard();
 
 appRouter.switchTab = async function (tabId, options = {}) {
   // ── Offline reading mode: only the Bible reader tab is reachable. Other
@@ -592,13 +595,13 @@ appRouter.switchTab = async function (tabId, options = {}) {
     return;
   }
 
-  // ── State Lock: block double-tap / rapid navigation ──
-  if (isSwitching) {
-    console.warn(`[Router] switchTab('${tabId}') blocked — previous transition still in progress.`);
-    return;
-  }
-  isSwitching = true;
+  // ── Take a ticket: this call proceeds immediately. If a newer switchTab
+  // call starts before this one's async work finishes, this one's tail
+  // effects (step 6 below) quietly no-op instead of clobbering the newer
+  // navigation's chrome/history state. ──
+  const myGen = navRenderGuard.start();
   this.isTabTransitioning = true;
+  this.transitioningToTab = tabId;
 
   const previousTab = this.currentTab;
   if (previousTab && previousTab !== tabId && typeof this.captureTabScroll === "function") {
@@ -768,7 +771,10 @@ appRouter.switchTab = async function (tabId, options = {}) {
     }
 
     // ── 6. updateNavigationChrome — THE SINGLE, FINAL CALL ──
-    // All async rendering is complete. State is now fully settled.
+    // Only the newest switchTab call gets to touch chrome/history/scroll; an
+    // older call that's been superseded quietly stops here instead of
+    // undoing what the newer navigation already rendered.
+    if (navRenderGuard.isStale(myGen)) return;
     this.updateNavigationChrome();
     refreshCareReminderBadge();
 
@@ -778,6 +784,7 @@ appRouter.switchTab = async function (tabId, options = {}) {
 
   } catch (error) {
     console.error(`[Router] switchTab('${tabId}') failed:`, error);
+    if (navRenderGuard.isStale(myGen)) return;
     // Best-effort recovery: fall back to the previous (working) tab instead
     // of leaving the user stuck staring at a half-rendered pane whose lazy
     // module (home.js/bible.js/plan.js/…) never finished loading — a failed
@@ -813,9 +820,13 @@ appRouter.switchTab = async function (tabId, options = {}) {
         : "頁面切換失敗，請稍後再試。");
     }
   } finally {
-    // ── 7. Always release the lock, even on error ──
-    this.isTabTransitioning = false;
-    isSwitching = false;
+    // ── 7. Release the transition flag — but only if we're still the
+    // current navigation. A superseded call must not clear the flags a
+    // newer, still-in-flight switchTab call owns. ──
+    if (!navRenderGuard.isStale(myGen)) {
+      this.isTabTransitioning = false;
+      this.transitioningToTab = null;
+    }
   }
 };
 
@@ -1277,12 +1288,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 啟動時與路由切換時，確保 Root State 存在
     pushRootState();
 
-    // 攔截 switchTab 以在切換 Tab 時重新確認/鎖定 history 狀態
+    // 攔截 switchTab 以在切換 Tab 時重新確認/鎖定 history 狀態。
+    // 只有「還是最新一次」的切換才 push history，過期的切換完成時安靜跳過，
+    // 避免快速連續切分頁時 history 被重複/錯序寫入。
     if (window.appRouter) {
       const originalSwitchTab = window.appRouter.switchTab;
       window.appRouter.switchTab = async function(tabId, options) {
-        const result = await originalSwitchTab.call(this, tabId, options);
-        pushRootState();
+        const callPromise = originalSwitchTab.call(this, tabId, options);
+        const myGen = navRenderGuard.current;
+        const result = await callPromise;
+        if (!navRenderGuard.isStale(myGen)) pushRootState();
         return result;
       };
     }

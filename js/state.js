@@ -201,6 +201,7 @@ const appRouter = {
   currentTab: "dashboard-view",
   tabScrollPositions: Object.create(null),
   isTabTransitioning: false,
+  transitioningToTab: null,
 
   getScrollContainer() {
     return document.querySelector(".main-content") || document.scrollingElement || window;
@@ -294,7 +295,9 @@ const appRouter = {
 
   async handleTabClick(tabId) {
     if (!tabId) return;
-    if (this.isTabTransitioning) return;
+    // 只擋「還在切到同一個分頁」的重複點擊；切到別的分頁要立刻放行，
+    // 不要因為前一個分頁還在背景載入資料就卡住整個導覽列。
+    if (this.isTabTransitioning && this.transitioningToTab === tabId) return;
 
     if (tabId !== this.currentTab) {
       await this.switchTab(tabId, { fromTabBar: true, restoreTabScroll: true });
