@@ -79,7 +79,13 @@ function getBollsBookId(bookEngName) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, { headers: { "Accept": "application/json" } });
+  // Bound the worst case: a hung public API request used to have no upper
+  // limit, so a stalled connection could keep the reader in "loading" far
+  // longer than the fallback sources or the placeholder text would ever need.
+  const response = await fetch(url, {
+    headers: { "Accept": "application/json" },
+    signal: AbortSignal.timeout(8000)
+  });
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
   return response.json();
 }

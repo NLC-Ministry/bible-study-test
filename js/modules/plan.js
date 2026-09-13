@@ -8182,8 +8182,15 @@ function snapCalendarToMyProgress() {
 
 // Statistics & charts tab view controller
 
+// 快速連續切換篩選條件／分頁時，先發起的請求可能比後發起的晚回來；沒有這層
+// 保護的話，舊條件算出的結果會在使用者已經看到新條件的畫面之後，把
+// window.unfilteredAllUsersCache 跟畫面又蓋回舊的。
+const statsRenderGuard = (typeof window !== "undefined" && typeof window.createRenderGuard === "function")
+  ? window.createRenderGuard()
+  : { start: () => 0, isStale: () => false };
 
 async function updateStatsView(filterPresetKey = null) {
+  const statsRenderToken = statsRenderGuard.start();
   ensureChartLib().catch(() => {}); // A2：管理端統計儀表板圖多，提前開始抓 Chart.js
   // If no filter is provided, fallback to the current active plan's global key.
   if (!filterPresetKey && state.activePlan) {
@@ -8209,6 +8216,9 @@ async function updateStatsView(filterPresetKey = null) {
 
   // Pass filterPresetKey to fetchMergedUsersList so stats are plan-specific!
   const unfilteredAllUsers = await db.fetchMergedUsersList(filterPresetKey);
+  // 這是整個函式唯一的 await；回來後如果已經有更新一次的 updateStatsView 呼叫
+  // 蓋過去了，直接放棄，不要用比較舊的結果覆寫畫面／全域快取／圖表。
+  if (statsRenderGuard.isStale(statsRenderToken)) return;
   window.unfilteredAllUsersCache = unfilteredAllUsers;
 
   const mockUser = unfilteredAllUsers.find(u => u.name === state.currentUser.name) || {

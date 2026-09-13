@@ -3065,6 +3065,34 @@ if (typeof window !== "undefined") {
   window.renderInto = renderInto;
 }
 
+// ============================================================================
+// createRenderGuard —— 「過期非同步結果就默默放棄」的共用工具
+//
+// 用途：某個 render 函式在 await 之後才要寫入畫面/共用狀態時，先跟 guard
+// 要一個號碼牌；await 回來後如果自己已經不是最新一次呼叫，直接 return，
+// 不要蓋掉更新一次呼叫已經寫入的結果。
+//
+// 用法：
+//   const guard = createRenderGuard();
+//   async function renderX() {
+//     const myToken = guard.start();
+//     const data = await fetchData();
+//     if (guard.isStale(myToken)) return;
+//     applyToDom(data);
+//   }
+// ============================================================================
+function createRenderGuard() {
+  let current = 0;
+  return {
+    start() { return ++current; },
+    isStale(token) { return token !== current; },
+    get current() { return current; }
+  };
+}
+if (typeof window !== "undefined") {
+  window.createRenderGuard = createRenderGuard;
+}
+
 // 改考卷分數欄防呆：讓使用者自由輸入（不要每個按鍵都打斷），離開欄位
 // (blur) 時把值收斂到 [0, max] 範圍內；非數字、空白或打到一半的內容一律
 // 視為未填、清空欄位，不留下無效資料。用在 grade.html（線上批改）跟後台
