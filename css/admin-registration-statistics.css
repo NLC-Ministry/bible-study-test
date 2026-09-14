@@ -467,29 +467,6 @@
   overflow-wrap: anywhere;
 }
 
-.admin-user-directory__name-review {
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--border-card);
-}
-
-.admin-user-directory__name-review-reason {
-  margin: 0 0 0.5rem;
-  color: var(--color-warning);
-  font-size: 0.78rem;
-  line-height: 1.5;
-}
-
-.admin-user-directory__name-review-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.admin-user-directory__name-review-input {
-  flex: 1 1 100%;
-}
-
 .admin-user-directory__empty {
   grid-column: 1 / -1;
   padding: 1.25rem;

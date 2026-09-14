@@ -20,7 +20,7 @@ describe("admin participant basic information", () => {
 
     expect(html).toContain("使用者基本資料");
     expect(html).toContain("管理範圍設定");
-    expect(admin).toContain('escapeHTML(profile.name || "尚未取得姓名")');
+    expect(admin).toContain('escapeHTML(profile.name || "未設定")');
     expect(admin).toContain("escapeHTML(email)");
     expect(admin).toContain("escapeHTML(roleLabel)");
     expect(admin).toContain("escapeHTML(placement)");

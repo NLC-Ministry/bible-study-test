@@ -203,7 +203,7 @@ function paintProfileIdentityChrome() {
   const displayName = typeof getDisplayName === "function" ? getDisplayName(user) : String(user.name || "").trim() || null;
   const nameUnset = (typeof COPY !== "undefined" && COPY.memberHub && COPY.memberHub.nameUnset)
     ? COPY.memberHub.nameUnset
-    : "尚未取得姓名";
+    : "未設定";
   const orgUnset = (typeof COPY !== "undefined" && COPY.memberHub && COPY.memberHub.orgUnset)
     ? COPY.memberHub.orgUnset
     : "未設定所屬小組";
@@ -951,7 +951,7 @@ export function updateHeaderAvatar() {
   const roleLabel = roleNames[userRole] || userRole;
   const nameUnset = (typeof COPY !== "undefined" && COPY.memberHub && COPY.memberHub.nameUnset)
     ? COPY.memberHub.nameUnset
-    : "尚未取得姓名";
+    : "未設定";
 
   if (nameEl) nameEl.textContent = userName || nameUnset;
   if (roleEl) roleEl.textContent = roleLabel;

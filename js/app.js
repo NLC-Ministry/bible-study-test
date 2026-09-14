@@ -4,7 +4,7 @@
 import '../config.js';
 import './data/bible_data.js?v=20260914_chapter_fetch_timeout';
 import './data/bible_verse_counts.js';
-import './copy/zh-Hant.js?v=20260901_member_hub_org_dedupe';
+import './copy/zh-Hant.js?v=20260914_name_placeholder_unify';
 import './data/church_campaign.js?v=20260901_r1final_monthly_split';
 import './design/design-tokens.js';
 import './design/design-system-helpers.js?v=20260901_round_schedule_restore';
@@ -13,8 +13,8 @@ import './design/icons.js';
 import './state.js?v=20260914_tab_switch_navguard';
 import './auth.js?v=20260906_session_expired_event';
 import './auth-launch.mjs';
-import './db.js?v=20260911_exam_paper_linked_plan';
-import './utils.js?v=20260914_render_guard';
+import './db.js?v=20260914_name_review_removed';
+import './utils.js?v=20260914_name_review_removed';
 import './gamification.js?v=20260826_quiz_remove_duplicate_scope_filter';
 import { initModalManager } from './modules/modal-manager.mjs';
 

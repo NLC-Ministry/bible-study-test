@@ -46,7 +46,7 @@ window.APP_COPY = {
     formNotice: "若欄位無法編輯，請至會員中心更新；儲存於此的變更僅適用於本 app 可編輯項目。",
     orgUnset: "未設定所屬小組",
     orgSetupCta: "前往會員中心設定",
-    nameUnset: "尚未取得姓名",
+    nameUnset: "未設定",
     dropdownLabel: "會員中心",
     profileSettings: "帳號設定（本 app）",
   },

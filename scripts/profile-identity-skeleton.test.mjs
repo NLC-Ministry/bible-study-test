@@ -22,11 +22,9 @@ describe("No invented display-name fallbacks", () => {
     expect(html).toMatch(/id="profile-summary-name"[^>]*aria-busy="true"/);
   });
 
-  it("defines getDisplayName and rejects known invented placeholders", () => {
+  it("defines getDisplayName, trusting Member Hub as the sole source of truth (no local placeholder-name list)", () => {
     expect(utilsJs).toContain("function getDisplayName");
-    expect(utilsJs).toContain("INVENTED_DISPLAY_NAMES");
-    expect(utilsJs).toContain("新使用者");
-    expect(utilsJs).toContain("NLC User");
+    expect(utilsJs).not.toContain("INVENTED_DISPLAY_NAMES");
     expect(utilsJs).toContain("function isMemberContextPending");
   });
 
@@ -77,7 +75,7 @@ describe("Profile identity skeleton lifecycle", () => {
 
   it("exposes approved empty name copy after sync", () => {
     expect(copyJs).toContain("nameUnset");
-    expect(copyJs).toContain("尚未取得姓名");
+    expect(copyJs).toContain("未設定");
     expect(profileJs).toContain("nameUnset");
   });
 });

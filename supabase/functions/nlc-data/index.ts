@@ -174,10 +174,11 @@ const EXAM_ADMIN_RPC_FUNCTIONS = new Set([
   // exam_get_grading_workspace / _sheet / _save_grading_draft / _grade_attempt /
   // _grade_attempts_bulk 也不在此：閘門是「指派給我」，批改人員不必是 admin。
 ]);
-const PROFILE_SELECT = "id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, name_review_approved, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_contract_version, member_context_membership_lifecycle_state, member_context_placement_state, member_context_placement_workflow_state, member_context_has_required_placement, member_context_required_action, member_context_required_action_url, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments, role_definition:role_definitions(id, code, label, sort_order, is_assignable, can_manage_plans, can_manage_permissions, scope_type)";
-// Same as PROFILE_SELECT minus name_review_approved (migration 0069) — used
-// as a retry target wherever a query against PROFILE_SELECT fails, so a
-// database that hasn't been migrated yet degrades instead of hard-failing.
+const PROFILE_SELECT = "id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_contract_version, member_context_membership_lifecycle_state, member_context_placement_state, member_context_placement_workflow_state, member_context_has_required_placement, member_context_required_action, member_context_required_action_url, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments, role_definition:role_definitions(id, code, label, sort_order, is_assignable, can_manage_plans, can_manage_permissions, scope_type)";
+// Missing the member_context_contract_version/membership_lifecycle_state/
+// placement_* / required_action* columns — used as a retry target wherever a
+// query against PROFILE_SELECT fails, so a database that hasn't run the
+// member-journey migration yet degrades instead of hard-failing.
 const PROFILE_SELECT_LEGACY = "id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments, role_definition:role_definitions(id, code, label, sort_order, is_assignable, can_manage_plans, can_manage_permissions, scope_type)";
 // 每日靈修（devotional plan，migration 0145）。write 的 RPC 自己在 SQL 端用
 // _devotion_actor_can_manage() 檢查 admin/pastor；get_devotional_plan 自己檢查
@@ -304,26 +305,24 @@ async function fetchProfileData(supabaseAdmin: any, userId: string) {
   try {
     const { data: basicProfile, error: basicError } = await supabaseAdmin
       .from("profiles")
-      .select("id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, name_review_approved, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments")
+      .select("id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments")
       .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
       .maybeSingle();
     if (!basicError) return basicProfile;
   } catch (err) {
-    console.warn("Fallback profile query with name_review_approved failed; retrying without it (migration 0069 not yet applied?):", err);
+    console.warn("Fallback profile query failed; retrying with the legacy select:", err);
   }
 
-  // Profile resolution runs on every request — never let one optional
-  // column (added by migration 0069, which may not be deployed to this
-  // database yet) take down auth for the whole app. Callers that actually
-  // need name_review_approved already degrade to `false` when it's absent
-  // (see fetchAdminUserProfiles).
+  // Profile resolution runs on every request — never let optional
+  // member-journey columns (which may not be deployed to this database yet)
+  // take down auth for the whole app.
   const { data: legacyProfile, error: legacyError } = await supabaseAdmin
     .from("profiles")
     .select(PROFILE_SELECT_LEGACY)
     .or(`id.eq.${userId},auth_user_id.eq.${userId}`)
     .maybeSingle();
   if (legacyError) throw legacyError;
-  return legacyProfile ? { ...legacyProfile, name_review_approved: false } : legacyProfile;
+  return legacyProfile;
 }
 
 async function resolveProfile(supabaseAdmin: any, accessToken: string) {
@@ -1034,15 +1033,10 @@ Deno.serve(async (req: Request) => {
       }
 
       const nextName = payload.name ?? profile.name ?? "";
-      const nameChanged = String(nextName) !== String(profile.name ?? "");
       const updatePayload: Record<string, unknown> = {
         name: nextName,
         updated_at: new Date().toISOString()
       };
-      // save_profile is the only path a non-admin can use to change their own
-      // name. A fresh self-edit must go back through admin review rather than
-      // silently keeping a stale approval from a previously flagged name.
-      if (nameChanged) updatePayload.name_review_approved = false;
 
       let savedProfile: any = null;
       let saveError: any = null;
@@ -1053,12 +1047,11 @@ Deno.serve(async (req: Request) => {
         .select(PROFILE_SELECT)
         .single());
 
-      if (saveError && nameChanged) {
-        // The name_review_approved column (migration 0069) may not be
-        // deployed to this database yet — retry without it rather than
-        // blocking every member from saving their own name.
-        console.warn("save_profile with name_review_approved failed; retrying without it (migration 0069 not yet applied?):", saveError);
-        delete updatePayload.name_review_approved;
+      if (saveError) {
+        // Member-journey columns may not be deployed to this database yet —
+        // retry with the legacy select rather than blocking every member
+        // from saving their own name.
+        console.warn("save_profile with PROFILE_SELECT failed; retrying with the legacy select:", saveError);
         ({ data: savedProfile, error: saveError } = await supabaseAdmin
           .from("profiles")
           .update(updatePayload)

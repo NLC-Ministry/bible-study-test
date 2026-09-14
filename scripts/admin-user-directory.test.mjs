@@ -29,10 +29,9 @@ describe("read-only admin user directory", () => {
     expect(section).toContain("未填會員資料（沒有牧區或沒有名稱）");
     expect(section).toContain('id="admin-user-directory-filter-stage-one"');
     expect(section).toContain("未加入第一階段計畫");
-    expect(section).toContain('id="admin-user-directory-filter-name-review"');
-    // The only static button here is the CSV export (a read, not a write);
-    // any write action (approve/edit a flagged name) is added later per-row
-    // by renderAdminUserDirectoryList, not baked into this static template.
+    expect(section).not.toContain('id="admin-user-directory-filter-name-review"');
+    // The only static button here is the CSV export (a read, not a write) —
+    // this directory has no write action at all.
     const staticButtons = [...section.matchAll(/<button[^>]*id="([^"]+)"/g)].map(match => match[1]);
     expect(staticButtons).toEqual(["admin-user-directory-export-btn"]);
   });
@@ -100,7 +99,7 @@ describe("read-only admin user directory", () => {
     expect(method).not.toContain(".upsert(");
   });
 
-  it("escapes profile data, and gates its one write action to admin-only name review", () => {
+  it("escapes profile data and stays entirely read-only, no write action anywhere", () => {
     const admin = read("js/modules/admin.js");
     const start = admin.indexOf("function renderAdminUserDirectoryList");
     const end = admin.indexOf("let managedScopeProfiles");
@@ -114,33 +113,21 @@ describe("read-only admin user directory", () => {
     expect(directory).toContain('class="admin-user-directory__card-summary"');
     expect(directory).toContain("escapeHTML(pastoralZone)");
     expect(directory).toContain("missingRequiredProfile");
-    // Placeholder names are now the single shared list from js/utils.js
-    // (INVENTED_DISPLAY_NAMES), not a third hardcoded duplicate here.
-    expect(directory).toContain("window.INVENTED_DISPLAY_NAMES");
-    expect(directory).toContain("placeholderNames.has(normalizedName)");
+    // The incomplete-profile filter now only judges emptiness — no
+    // placeholder-name detection list on the frontend anymore.
+    expect(directory).not.toContain("INVENTED_DISPLAY_NAMES");
+    expect(directory).not.toContain("placeholderNames");
     expect(directory).toContain("notJoinedStageOneOnly");
     expect(directory).toContain("statusClass");
     expect(directory).toContain("第一階段計畫");
-    // The directory's browsing/filtering surface stays free of inline
-    // handlers or ad hoc writes — the one legitimate write path (approving
-    // or correcting a flagged name) is wired separately in
-    // bindAdminUserDirectoryNameReviewActions via addEventListener, not here.
+    // No write action anywhere in this directory (the old name-review
+    // approve/edit action was removed entirely, not just hidden).
     expect(directory).not.toContain("db.update");
+    expect(directory).not.toContain("db.approveProfileName");
+    expect(directory).not.toContain("db.adminOverwriteProfileName");
     // HTML inline-attribute handlers, not JS property assignment (the outer
     // renderAdminUserDirectory() legitimately sets exportBtn.onclick = ...).
     expect(directory).not.toContain('onclick="');
-    expect(directory).toContain("needsNameReview");
-  });
-
-  it("wires the flagged-name write action outside the render function, admin-gated, with no inline handlers", () => {
-    const admin = read("js/modules/admin.js");
-    const db = read("js/db.js");
-
-    expect(admin).toContain("function bindAdminUserDirectoryNameReviewActions(list)");
-    expect(admin).not.toMatch(/onclick\s*=\s*"[^"]*db\.(approveProfileName|adminOverwriteProfileName)/);
-    expect(admin).toContain('list.addEventListener("click"');
-    expect(admin).toContain("db.approveProfileName(profileId)");
-    expect(admin).toContain("db.adminOverwriteProfileName(");
-    expect(db).toContain('getUserRoleCode(state.currentUser) !== "admin"');
+    expect(directory).not.toContain("needsNameReview");
   });
 });

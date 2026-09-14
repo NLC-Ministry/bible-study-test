@@ -208,66 +208,6 @@ window.showPromptDialog = showPromptDialog;
 
 // ── User Avatar (shadcn-inspired: image + initials fallback) ──
 
-/** Known invented placeholders — never treat as a real display name. */
-const INVENTED_DISPLAY_NAMES = new Set([
-  "新使用者",
-  "NLC User",
-  "系統管理員",
-  "訪客",
-  "尚未取得姓名",
-  "未命名使用者",
-  "教會肢體"
-]);
-
-/** Emoji / pictograph ranges commonly seen in joke or spam profile names. */
-const PROFILE_NAME_EMOJI_PATTERN = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}️]/u;
-const PROFILE_NAME_DIGIT_PATTERN = /[0-9]/;
-
-/**
- * Heuristic only: a run of Latin letters with no vowel, a long consonant
- * run, or a tripled letter reads as keyboard-mash rather than a real word.
- * False positives are expected (e.g. genuine short romanized names) — this
- * is a first-pass filter for the admin review queue, not a hard reject.
- * @param {string} token
- */
-function looksLikeGibberishEnglish(token) {
-  if (!/^[a-zA-Z]+$/.test(token) || token.length < 2) return false;
-  const lower = token.toLowerCase();
-  if (!/[aeiouy]/.test(lower)) return true;
-  if (/([a-z])\1{2,}/.test(lower)) return true;
-  if (/[bcdfghjklmnpqrstvwxz]{5,}/.test(lower)) return true;
-  return false;
-}
-
-/**
- * Returns the list of reasons a profile name looks incomplete or
- * suspicious, or [] if it looks like a normal display name.
- * @param {string|null|undefined} name
- * @returns {string[]} subset of "empty" | "placeholder" | "digits" | "emoji" | "gibberish_english"
- */
-function getProfileNameFlags(name) {
-  const trimmed = String(name || "").trim();
-  if (!trimmed) return ["empty"];
-  const flags = [];
-  if (INVENTED_DISPLAY_NAMES.has(trimmed)) flags.push("placeholder");
-  if (PROFILE_NAME_DIGIT_PATTERN.test(trimmed)) flags.push("digits");
-  if (PROFILE_NAME_EMOJI_PATTERN.test(trimmed)) flags.push("emoji");
-  const latinTokens = trimmed.match(/[a-zA-Z]+/g) || [];
-  if (latinTokens.some(looksLikeGibberishEnglish)) flags.push("gibberish_english");
-  return flags;
-}
-
-/**
- * @param {string|null|undefined} name
- * @returns {boolean} true when the name has none of the suspicious flags above
- */
-function isProfileNameValid(name) {
-  return getProfileNameFlags(name).length === 0;
-}
-window.INVENTED_DISPLAY_NAMES = INVENTED_DISPLAY_NAMES;
-window.getProfileNameFlags = getProfileNameFlags;
-window.isProfileNameValid = isProfileNameValid;
-
 // 計畫資格（能不能進讀經計畫）改成「只在登入時判斷」——由 db.init 的
 // getUserOnboardingBlock() → getLoginGateCopy() 在會員資料剛同步過的當下決定，
 // 通過了才進 App。計畫分頁本身不再有獨立的資格閘門（那個閘門會在冷啟動
@@ -275,7 +215,9 @@ window.isProfileNameValid = isProfileNameValid;
 // getPlanEligibilityBlock / 「本 session 已確認過」的旗標。
 
 /**
- * Resolve a displayable person name. Returns null when missing or invented.
+ * Resolve a displayable person name. Returns null when missing.
+ * Member Hub is the sole source of truth for the name (see nlc-session's
+ * resolveProjectedProfileName) — this just trusts whatever is stored.
  * @param {string|{name?: string}|null|undefined} source
  * @returns {string|null}
  */
@@ -284,9 +226,7 @@ function getDisplayName(source) {
     ? source
     : (source && typeof source === "object" ? source.name : "");
   const trimmed = String(raw || "").trim();
-  if (!trimmed) return null;
-  if (INVENTED_DISPLAY_NAMES.has(trimmed)) return null;
-  return trimmed;
+  return trimmed || null;
 }
 
 /**

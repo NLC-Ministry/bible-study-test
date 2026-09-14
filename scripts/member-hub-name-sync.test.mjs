@@ -49,10 +49,8 @@ describe("Member Hub canonical name sync", () => {
     expect(normalizeMemberName("Ethan D")).toBe("Ethan D");
   });
 
-  it("only resets review approval for a valid canonical name change", () => {
-    expect(session).toContain("const canonicalNameChanged");
-    expect(session).toContain("profilePayload.name_review_approved = false");
-    expect(session.indexOf("const canonicalName ="))
-      .toBeLessThan(session.indexOf("const canonicalNameChanged"));
+  it("no longer tracks a name-review approval flag on the canonical name projection", () => {
+    expect(session).not.toContain("canonicalNameChanged");
+    expect(session).not.toContain("name_review_approved");
   });
 });

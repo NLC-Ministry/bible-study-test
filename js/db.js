@@ -1036,7 +1036,6 @@ const db = {
     state.currentUser.member_context_leadership_assignments = Array.isArray(profile.member_context_leadership_assignments)
       ? profile.member_context_leadership_assignments
       : [];
-    state.currentUser.name_review_approved = profile.name_review_approved === true;
     if (profile.avatar_url) state.currentUser.avatar_url = profile.avatar_url;
     if (Array.isArray(lockedFields)) state.profileLockedFields = lockedFields;
     state.currentUser.is_demo = false;
@@ -1342,7 +1341,7 @@ const db = {
         const [[globalPlansResult, profileResult, plansResult], logsResult, highlightsResult] = await Promise.all([
           this.batchSelect([
             state.supabase.from("global_plans").select("id, name, description, start_date, end_date, target_books, is_hidden, is_fixed, plan_kind, rules, rule_version, published_at, audience_regions").order("start_date", { ascending: true }),
-            state.supabase.from("profiles").select("id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, name_review_approved, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments, role_definition:role_definitions!profiles_role_definition_fkey(id, code, label, sort_order, is_assignable, can_manage_plans, can_manage_permissions, scope_type)").eq("id", user.id).maybeSingle(),
+            state.supabase.from("profiles").select("id, name, email, avatar_url, great_region, pastoral_zone, small_group, role_id, is_demo, is_active, managed_regions, managed_zones, managed_groups, member_context_synced_at, member_context_sync_attempted_at, member_context_sync_status, member_context_sync_error, member_context_leadership_display_label, member_context_leadership_primary_assignment_id, member_context_leadership_assignments, role_definition:role_definitions!profiles_role_definition_fkey(id, code, label, sort_order, is_assignable, can_manage_plans, can_manage_permissions, scope_type)").eq("id", user.id).maybeSingle(),
             state.supabase.from("reading_plans").select("id, user_id, global_plan_id, name, start_date, end_date, target_books, preset_key, current_round, upgrade_prompt_handled, current_round_started_at, is_fixed, reading_days_per_week, rest_weekdays, created_at").eq("user_id", user.id).order("created_at", { ascending: false })
           ]),
           window.readingLogRepository
@@ -1425,7 +1424,6 @@ const db = {
             state.currentUser.role_id = profile.role_id || "10000000-0000-4000-8000-000000000001";
             state.currentUser.role_definition = profile.role_definition || getRoleDefinition(state.currentUser.role_id);
             state.currentUser.is_demo = !!profile.is_demo;
-            state.currentUser.name_review_approved = profile.name_review_approved === true;
 
           } else {
             // First-time login: create profile without local org placement (Hub-owned).
@@ -1438,7 +1436,6 @@ const db = {
             state.currentUser.role_id = "10000000-0000-4000-8000-000000000001";
             state.currentUser.role_definition = getRoleDefinition(state.currentUser.role_id);
             state.currentUser.is_demo = false;
-            state.currentUser.name_review_approved = false;
 
 
             try {
@@ -2318,31 +2315,18 @@ const db = {
 
       const { data: pData, error: pError } = await fetchAllRows(() => state.supabase
         .from("profiles")
-        .select("id, name, email, great_region, pastoral_zone, small_group, is_active, name_review_approved, member_context_synced_at, member_context_sync_status, role_id, role_definition:role_definitions(id, code, label)")
+        .select("id, name, email, great_region, pastoral_zone, small_group, is_active, member_context_synced_at, member_context_sync_status, role_id, role_definition:role_definitions(id, code, label)")
         .eq("is_demo", false)
         .order("name", { ascending: true }));
 
       if (pError) {
         const { data: fallbackProfiles, error: fbErr } = await fetchAllRows(() => state.supabase
           .from("profiles")
-          .select("id, name, email, great_region, pastoral_zone, small_group, is_active, name_review_approved, member_context_synced_at, member_context_sync_status, role_id")
+          .select("id, name, email, great_region, pastoral_zone, small_group, is_active, member_context_synced_at, member_context_sync_status, role_id")
           .eq("is_demo", false)
           .order("name", { ascending: true }));
-        if (fbErr) {
-          // Both attempts included name_review_approved (migration 0069).
-          // If that column hasn't been deployed to this database yet, both
-          // fail identically — degrade once more without it rather than
-          // breaking the whole admin directory over one optional field.
-          const { data: legacyProfiles, error: legacyErr } = await fetchAllRows(() => state.supabase
-            .from("profiles")
-            .select("id, name, email, great_region, pastoral_zone, small_group, is_active, member_context_synced_at, member_context_sync_status, role_id")
-            .eq("is_demo", false)
-            .order("name", { ascending: true }));
-          if (legacyErr) return { data: [], error: legacyErr };
-          profiles = (legacyProfiles || []).map(profile => ({ ...profile, name_review_approved: false }));
-        } else {
-          profiles = fallbackProfiles || [];
-        }
+        if (fbErr) return { data: [], error: fbErr };
+        profiles = fallbackProfiles || [];
       } else {
         profiles = pData || [];
       }
@@ -2536,42 +2520,6 @@ const db = {
       state.currentUser.managed_groups = updatePayload.managed_groups || "";
     }
     return { data: resultData, error: null };
-  },
-
-  /** Admin approves a name the getProfileNameFlags() heuristic flags, without changing it. */
-  async approveProfileName(profileId) {
-    if (!state.isSupabaseMode || !state.supabase) {
-      return { data: null, error: new Error("profile_name_review_requires_supabase") };
-    }
-    if (getUserRoleCode(state.currentUser) !== "admin") {
-      return { data: null, error: new Error("profile_name_review_admin_required") };
-    }
-    const { data, error } = await state.supabase
-      .from("profiles")
-      .update({ name_review_approved: true })
-      .eq("id", profileId)
-      .select("id, name, name_review_approved")
-      .maybeSingle();
-    return { data, error };
-  },
-
-  /** Admin directly corrects a flagged name and approves the replacement. */
-  async adminOverwriteProfileName(profileId, name) {
-    if (!state.isSupabaseMode || !state.supabase) {
-      return { data: null, error: new Error("profile_name_review_requires_supabase") };
-    }
-    if (getUserRoleCode(state.currentUser) !== "admin") {
-      return { data: null, error: new Error("profile_name_review_admin_required") };
-    }
-    const trimmed = String(name || "").trim();
-    if (!trimmed) return { data: null, error: new Error("profile_name_required") };
-    const { data, error } = await state.supabase
-      .from("profiles")
-      .update({ name: trimmed, name_review_approved: true })
-      .eq("id", profileId)
-      .select("id, name, name_review_approved")
-      .maybeSingle();
-    return { data, error };
   },
 
   async fetchRoleDefinitions() {
